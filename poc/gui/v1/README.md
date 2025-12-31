@@ -37,7 +37,7 @@ python -m pip install PySide6 trimesh pymeshfix meshio
 3. Run the prototype from the repository root:
 
 ```powershell
-python gui\app.py
+python poc\gui\v1\app.py
 ```
 
 Conda alternative (recommended if `pip install pymeshfix` fails)
@@ -47,7 +47,7 @@ conda create -n meshprep python=3.10
 conda activate meshprep
 conda install -c conda-forge pymeshfix trimesh meshio
 python -m pip install PySide6
-python gui\app.py
+python poc\gui\v1\app.py
 ```
 
 Notes
