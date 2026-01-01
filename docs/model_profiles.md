@@ -32,6 +32,15 @@ On model load the scanner computes a diagnostics vector using `trimesh` and othe
 | `aspect_ratio` | float | Ratio of longest to shortest bbox dimension |
 | `nested_shell_count` | int | Number of nested internal shells |
 | `overhang_face_ratio` | float | Ratio of faces with steep overhangs |
+| `ngon_count` | int | Number of n-gon faces (> 4 vertices) |
+| `quad_count` | int | Number of quad faces |
+| `concave_face_count` | int | Number of concave (non-convex) faces |
+| `coplanar_face_count` | int | Number of coplanar adjacent faces |
+| `t_junction_count` | int | Number of T-junction vertices |
+| `boundary_edge_count` | int | Number of naked/boundary edges |
+| `symmetry_score` | float | 0..1 bilateral symmetry measure |
+| `up_axis` | str | Detected up axis (Y, Z, or unknown) |
+| `face_orientation_variance` | float | Variance in face orientations |
 
 A rule engine evaluates these diagnostics against configurable thresholds and selects the best matching profile(s). The GUI shows the diagnostics and a short explanation of why a profile was suggested. Users can accept, tweak, or replace the suggested filter script.
 
@@ -39,10 +48,12 @@ A rule engine evaluates these diagnostics against configurable thresholds and se
 
 ## Profile Catalog
 
-The system includes **40+ profiles** organized into categories. Each profile has:
+The system includes **75+ profiles** organized into categories. Each profile has:
 - **Summary**: What the profile represents
 - **Detection**: Heuristics that trigger this profile
 - **Suggested Actions**: Default filter script actions
+
+---
 
 ### Category: Clean / Minimal Repair
 
@@ -75,6 +86,16 @@ The system includes **40+ profiles** organized into categories. Each profile has
 - **Detection**: `hole_count > 0` AND `non_manifold_edge_count > 0`.
 - **Suggested Actions**: `trimesh_basic`, `pymeshfix_repair`, `fill_holes`, `recalculate_normals`, `validate`.
 
+#### `partial-boundary-loop`
+- **Summary**: Incomplete boundary edges that don't form closed loops.
+- **Detection**: Boundary edges present but don't form complete loops.
+- **Suggested Actions**: `stitch_boundaries`, `fill_holes`, `validate`.
+
+#### `many-small-holes`
+- **Summary**: Numerous small holes scattered across the surface.
+- **Detection**: `hole_count` high but individual hole sizes small.
+- **Suggested Actions**: `fill_holes(max_hole_size=small)`, `smooth`, `validate`.
+
 ---
 
 ### Category: Fragmented / Multi-Component
@@ -93,6 +114,16 @@ The system includes **40+ profiles** organized into categories. Each profile has
 - **Summary**: Disconnected components positioned away from main part.
 - **Detection**: Small components with centroid distance > threshold from largest component.
 - **Suggested Actions**: `remove_floating_components(distance_threshold)`, `validate`.
+
+#### `debris-particles`
+- **Summary**: Tiny isolated triangles or micro-components.
+- **Detection**: Many components with < 10 triangles each.
+- **Suggested Actions**: `remove_small_components(min_faces=10)`, `validate`.
+
+#### `split-along-seam`
+- **Summary**: Model split into parts along what should be a continuous surface.
+- **Detection**: Multiple components with matching boundary edges.
+- **Suggested Actions**: `stitch_boundaries(tolerance)`, `merge_vertices`, `validate`.
 
 ---
 
@@ -123,6 +154,21 @@ The system includes **40+ profiles** organized into categories. Each profile has
 - **Detection**: `is_watertight == true` but `volume` ≈ 0.
 - **Suggested Actions**: `check_winding_order`, `fix_normals`, `validate`; flag for user review.
 
+#### `t-junction-heavy`
+- **Summary**: Many T-junction vertices causing topology issues.
+- **Detection**: `t_junction_count` > threshold.
+- **Suggested Actions**: `fix_t_junctions`, `merge_vertices(eps)`, `validate`.
+
+#### `duplicate-faces`
+- **Summary**: Overlapping or duplicate triangles present.
+- **Detection**: Face duplication detection finds overlapping triangles.
+- **Suggested Actions**: `remove_duplicate_faces`, `validate`.
+
+#### `inconsistent-winding`
+- **Summary**: Face winding order is inconsistent across the mesh.
+- **Detection**: Adjacent faces have inconsistent vertex ordering.
+- **Suggested Actions**: `fix_winding_order`, `recalculate_normals`, `validate`.
+
 ---
 
 ### Category: Normal Issues
@@ -142,6 +188,16 @@ The system includes **40+ profiles** organized into categories. Each profile has
 - **Detection**: Negative determinant in transform matrix, or all normals inverted.
 - **Suggested Actions**: `fix_winding_order`, `flip_normals`, `validate`.
 
+#### `mixed-flipped-faces`
+- **Summary**: Random faces flipped throughout the mesh.
+- **Detection**: Scattered flipped faces detected (not consistent pattern).
+- **Suggested Actions**: `unify_normals`, `recalculate_normals`, `validate`.
+
+#### `smoothing-group-artifacts`
+- **Summary**: Normal artifacts from incorrect smoothing groups.
+- **Detection**: Sharp normal discontinuities at unexpected locations.
+- **Suggested Actions**: `recalculate_normals(angle_threshold)`, `validate`.
+
 ---
 
 ### Category: Self-Intersection
@@ -160,6 +216,16 @@ The system includes **40+ profiles** organized into categories. Each profile has
 - **Summary**: Signs of prior bad boolean operations.
 - **Detection**: Zero-area faces, T-junctions, duplicate edges at intersection seams.
 - **Suggested Actions**: `remove_degenerate_faces`, `merge_vertices(eps)`, `pymeshfix_repair`, `validate`.
+
+#### `overlapping-shells`
+- **Summary**: Multiple shells occupying the same space.
+- **Detection**: Shells with significant volume overlap.
+- **Suggested Actions**: `boolean_union`, `validate`.
+
+#### `interpenetrating-parts`
+- **Summary**: Distinct parts of the model penetrating each other.
+- **Detection**: Separate logical parts with intersection detected.
+- **Suggested Actions**: `boolean_union` or `separate_parts`, prompt user, `validate`.
 
 ---
 
@@ -185,6 +251,16 @@ The system includes **40+ profiles** organized into categories. Each profile has
 - **Detection**: Uniform thin wall thickness, single outer shell, clean topology.
 - **Suggested Actions**: `validate`; prompt user before any fill/removal operations.
 
+#### `internal-faces`
+- **Summary**: Faces inside the mesh that serve no purpose.
+- **Detection**: Faces completely enclosed within mesh volume.
+- **Suggested Actions**: `remove_internal_faces`, `validate`.
+
+#### `double-walled`
+- **Summary**: Model has double walls (two surfaces close together).
+- **Detection**: Parallel surfaces at near-constant small distance.
+- **Suggested Actions**: Prompt user to `keep` or `merge_walls`, `validate`.
+
 ---
 
 ### Category: Thin Features / Wall Thickness
@@ -203,6 +279,16 @@ The system includes **40+ profiles** organized into categories. Each profile has
 - **Summary**: Many narrow elongated pin-like features.
 - **Detection**: High aspect ratio features with small cross-section.
 - **Suggested Actions**: `identify_thin_features`, prompt user, optionally `thicken_features`, `validate`.
+
+#### `paper-thin-faces`
+- **Summary**: Single-layer faces with no thickness (not a solid).
+- **Detection**: Open surface with no volume, planar or near-planar regions.
+- **Suggested Actions**: `solidify(thickness)`, `validate`.
+
+#### `knife-edge`
+- **Summary**: Extremely sharp edges that won't print.
+- **Detection**: Edges with near-zero dihedral angle forming sharp ridges.
+- **Suggested Actions**: `chamfer_edges` or `fillet_edges`, `validate`.
 
 ---
 
@@ -233,6 +319,16 @@ The system includes **40+ profiles** organized into categories. Each profile has
 - **Detection**: High variance in triangle areas.
 - **Suggested Actions**: `remesh_isotropic`, `validate`.
 
+#### `spike-artifacts`
+- **Summary**: Spike or needle-like protrusions from scan errors.
+- **Detection**: Vertices with extreme displacement from local surface.
+- **Suggested Actions**: `remove_spikes`, `smooth`, `validate`.
+
+#### `scan-alignment-seam`
+- **Summary**: Visible seams from multi-scan alignment.
+- **Detection**: Linear artifacts or steps from scan registration.
+- **Suggested Actions**: `smooth_seams`, `blend_regions`, `validate`.
+
 ---
 
 ### Category: Complex Topology
@@ -246,6 +342,11 @@ The system includes **40+ profiles** organized into categories. Each profile has
 - **Summary**: Small region with many handles or holes.
 - **Detection**: Local genus analysis shows concentrated complexity.
 - **Suggested Actions**: `identify_complex_regions`, `remesh_region`, `validate`.
+
+#### `topological-noise`
+- **Summary**: Small topological features that add unnecessary complexity.
+- **Detection**: Many small handles or tunnels that could be simplified.
+- **Suggested Actions**: `simplify_topology`, `fill_small_holes`, `validate`.
 
 ---
 
@@ -276,6 +377,11 @@ The system includes **40+ profiles** organized into categories. Each profile has
 - **Detection**: `aspect_ratio` > threshold (e.g., > 20:1).
 - **Suggested Actions**: `validate`; flag for user (may be intentional, e.g., sword blade).
 
+#### `microscale`
+- **Summary**: Model has features at microscale level.
+- **Detection**: Features detected at sub-millimeter scale.
+- **Suggested Actions**: `validate`; suggest scaling up or specialized micro-printing.
+
 ---
 
 ### Category: Printability Hints
@@ -300,6 +406,16 @@ The system includes **40+ profiles** organized into categories. Each profile has
 - **Detection**: Exceeds build volume, or complexity suggests multi-part print.
 - **Suggested Actions**: `split_model`, `validate`.
 
+#### `island-regions`
+- **Summary**: Regions that would print as unsupported islands per layer.
+- **Detection**: Layer simulation shows disconnected regions.
+- **Suggested Actions**: `validate`; suggest supports or reorientation.
+
+#### `trapped-volume`
+- **Summary**: Enclosed volumes that could trap resin or powder.
+- **Detection**: Internal cavities with no drainage path.
+- **Suggested Actions**: `add_drain_holes` or prompt user, `validate`.
+
 ---
 
 ### Category: Fine Detail / Precision
@@ -314,6 +430,276 @@ The system includes **40+ profiles** organized into categories. Each profile has
 - **Detection**: Many features near or below typical printer resolution.
 - **Suggested Actions**: `validate`; suggest high-resolution print settings.
 
+#### `mechanical-tolerances`
+- **Summary**: Model appears to have mechanical fit requirements.
+- **Detection**: Cylindrical features, gear teeth, or assembly interfaces detected.
+- **Suggested Actions**: `validate`; warn about shrinkage and tolerance compensation.
+
+---
+
+### Category: Polygon / Face Issues
+
+#### `ngon-heavy`
+- **Summary**: Many n-gon faces (polygons with more than 4 vertices).
+- **Detection**: `ngon_count` > threshold.
+- **Suggested Actions**: `triangulate`, `validate`.
+
+#### `quad-dominant`
+- **Summary**: Model is primarily quads, needs triangulation.
+- **Detection**: `quad_count` > 50% of faces.
+- **Suggested Actions**: `triangulate`, `validate`.
+
+#### `concave-faces`
+- **Summary**: Concave (non-convex) polygons present.
+- **Detection**: `concave_face_count` > 0.
+- **Suggested Actions**: `triangulate`, `validate`.
+
+#### `coplanar-faces`
+- **Summary**: Many coplanar adjacent faces that could be merged.
+- **Detection**: `coplanar_face_count` > threshold.
+- **Suggested Actions**: `merge_coplanar_faces` (optional), `validate`.
+
+#### `sliver-triangles`
+- **Summary**: Very thin elongated triangles with poor aspect ratio.
+- **Detection**: Triangles with aspect ratio > threshold.
+- **Suggested Actions**: `remesh_isotropic`, `validate`.
+
+#### `zero-area-faces`
+- **Summary**: Faces with zero or near-zero area.
+- **Detection**: Face area calculation finds zero-area triangles.
+- **Suggested Actions**: `remove_degenerate_faces`, `validate`.
+
+---
+
+### Category: Edge Issues
+
+#### `boundary-edges-open`
+- **Summary**: Open boundary edges (naked edges).
+- **Detection**: `boundary_edge_count` > 0 on what should be closed mesh.
+- **Suggested Actions**: `fill_holes`, `stitch_boundaries`, `validate`.
+
+#### `crease-artifacts`
+- **Summary**: Unwanted hard edges from crease/sharp edge data.
+- **Detection**: Sharp edges detected at unexpected locations.
+- **Suggested Actions**: `remove_creases`, `smooth`, `validate`.
+
+#### `edge-collapse-needed`
+- **Summary**: Very short edges that should be collapsed.
+- **Detection**: Edges with length below threshold.
+- **Suggested Actions**: `collapse_short_edges(threshold)`, `validate`.
+
+#### `long-thin-edges`
+- **Summary**: Abnormally long edges creating poor triangulation.
+- **Detection**: Edge length variance is very high.
+- **Suggested Actions**: `remesh`, `validate`.
+
+---
+
+### Category: Orientation Issues
+
+#### `wrong-up-axis`
+- **Summary**: Model oriented with wrong axis as up.
+- **Detection**: `up_axis` detection doesn't match expected (Z-up vs Y-up).
+- **Suggested Actions**: `rotate_to_z_up` or `rotate_to_y_up`, `validate`.
+
+#### `upside-down`
+- **Summary**: Model appears to be inverted/upside down.
+- **Detection**: Base detection suggests model is flipped.
+- **Suggested Actions**: `rotate(180, axis)`, `validate`.
+
+#### `tilted`
+- **Summary**: Model is tilted and not aligned to axes.
+- **Detection**: Principal axes don't align with world axes.
+- **Suggested Actions**: `align_to_axes`, `validate`.
+
+#### `off-origin`
+- **Summary**: Model is positioned far from origin.
+- **Detection**: Centroid or bbox is far from world origin.
+- **Suggested Actions**: `center_to_origin`, `validate`.
+
+---
+
+### Category: Symmetry Issues
+
+#### `asymmetric-unexpected`
+- **Summary**: Model should be symmetric but isn't.
+- **Detection**: `symmetry_score` low for model type that typically is symmetric.
+- **Suggested Actions**: `detect_symmetry_plane`, prompt user, optionally `mirror_repair`, `validate`.
+
+#### `mirror-seam-artifacts`
+- **Summary**: Problems at the mirror/symmetry plane.
+- **Detection**: Artifacts detected along detected symmetry plane.
+- **Suggested Actions**: `merge_vertices_at_seam`, `validate`.
+
+#### `radial-symmetry-broken`
+- **Summary**: Radial symmetry is inconsistent.
+- **Detection**: Radial pattern detected but not consistent.
+- **Suggested Actions**: Prompt user, optionally `repair_radial_symmetry`, `validate`.
+
+---
+
+### Category: CAD Conversion Artifacts
+
+#### `tessellation-artifacts`
+- **Summary**: Artifacts from NURBS to mesh conversion.
+- **Detection**: Regular grid-like patterns, faceting on curved surfaces.
+- **Suggested Actions**: `smooth`, `subdivide`, `validate`; suggest re-export with finer tessellation.
+
+#### `cad-tolerance-gaps`
+- **Summary**: Small gaps from CAD model tolerance issues.
+- **Detection**: Small gaps between what should be connected surfaces.
+- **Suggested Actions**: `stitch_boundaries(tolerance)`, `fill_holes`, `validate`.
+
+#### `parametric-seams`
+- **Summary**: Visible seams from parametric surface boundaries.
+- **Detection**: Linear seams on curved surfaces from UV boundaries.
+- **Suggested Actions**: `merge_vertices`, `smooth_seams`, `validate`.
+
+#### `fillet-faceting`
+- **Summary**: Fillets and rounds are heavily faceted.
+- **Detection**: Curved features have low polygon count.
+- **Suggested Actions**: `subdivide`, `smooth`, `validate`.
+
+#### `chamfer-artifacts`
+- **Summary**: Artifacts on chamfered edges.
+- **Detection**: T-junctions or degenerate faces at chamfer regions.
+- **Suggested Actions**: `fix_t_junctions`, `merge_vertices`, `validate`.
+
+---
+
+### Category: Sculpt / Artistic Mesh
+
+#### `sculpt-base-mesh`
+- **Summary**: Low-poly base mesh for sculpting (not final).
+- **Detection**: Very low polygon count with quad topology.
+- **Suggested Actions**: `validate`; warn this appears to be a base mesh.
+
+#### `dynmesh-artifacts`
+- **Summary**: Artifacts from dynamic remeshing (ZBrush Dynamesh, etc).
+- **Detection**: Uniform triangle size with small holes or intersections.
+- **Suggested Actions**: `fill_holes`, `pymeshfix_repair`, `validate`.
+
+#### `remesh-boundary-artifacts`
+- **Summary**: Artifacts at boundaries of remeshed regions.
+- **Detection**: Topology changes at region boundaries.
+- **Suggested Actions**: `smooth_boundaries`, `merge_vertices`, `validate`.
+
+#### `multires-mismatch`
+- **Summary**: Multi-resolution sculpting levels not properly collapsed.
+- **Detection**: Inconsistent detail levels across surface.
+- **Suggested Actions**: `remesh_uniform`, `validate`.
+
+#### `zbrush-polygroup-seams`
+- **Summary**: Visible seams at polygroup boundaries.
+- **Detection**: Vertex splits or discontinuities at group boundaries.
+- **Suggested Actions**: `merge_vertices`, `smooth_seams`, `validate`.
+
+---
+
+### Category: Photogrammetry / Reconstruction
+
+#### `photogrammetry-holes`
+- **Summary**: Holes from incomplete photogrammetry reconstruction.
+- **Detection**: Multiple holes in otherwise dense mesh.
+- **Suggested Actions**: `fill_holes`, `smooth`, `validate`.
+
+#### `photogrammetry-noise`
+- **Summary**: Noisy surface from photogrammetry reconstruction.
+- **Detection**: High-frequency noise on surface, color data present.
+- **Suggested Actions**: `smooth_taubin`, `decimate`, `validate`.
+
+#### `point-cloud-incomplete`
+- **Summary**: Incomplete surface from point cloud reconstruction.
+- **Detection**: Many boundary edges, sparse regions.
+- **Suggested Actions**: `fill_holes`, `reconstruct_surface`, `validate`.
+
+#### `texture-projection-artifacts`
+- **Summary**: Mesh artifacts from texture-based reconstruction.
+- **Detection**: Geometry follows texture boundaries unnaturally.
+- **Suggested Actions**: `smooth`, `remesh`, `validate`.
+
+#### `floating-reconstruction-debris`
+- **Summary**: Floating debris from reconstruction errors.
+- **Detection**: Many small disconnected components.
+- **Suggested Actions**: `remove_small_components`, `validate`.
+
+---
+
+### Category: Import / Data Issues
+
+#### `corrupted-data`
+- **Summary**: File appears to have corrupted data.
+- **Detection**: Invalid vertex coordinates (NaN, Inf), malformed faces.
+- **Suggested Actions**: `remove_invalid_data`, `validate`; suggest re-export from source.
+
+#### `incomplete-import`
+- **Summary**: Import appears incomplete or truncated.
+- **Detection**: Unexpected end of file, missing data.
+- **Suggested Actions**: `validate`; suggest checking source file.
+
+#### `format-conversion-artifacts`
+- **Summary**: Artifacts from file format conversion.
+- **Detection**: Data loss patterns typical of format conversion.
+- **Suggested Actions**: `repair`, `validate`; suggest native format if available.
+
+#### `empty-mesh`
+- **Summary**: File contains no geometry.
+- **Detection**: Zero vertices or zero faces.
+- **Suggested Actions**: Flag error; cannot process.
+
+#### `single-triangle`
+- **Summary**: Mesh contains only one or very few triangles.
+- **Detection**: `triangle_count` < threshold (e.g., < 4).
+- **Suggested Actions**: Flag warning; likely not a valid 3D model.
+
+#### `ascii-precision-loss`
+- **Summary**: Precision loss from ASCII format export.
+- **Detection**: Vertex coordinates show truncation artifacts.
+- **Suggested Actions**: `validate`; suggest binary format re-export.
+
+---
+
+### Category: Subdivision / LOD
+
+#### `over-subdivided`
+- **Summary**: Model has been over-subdivided unnecessarily.
+- **Detection**: Very high triangle count with little geometric variation.
+- **Suggested Actions**: `decimate`, `validate`.
+
+#### `under-subdivided`
+- **Summary**: Model needs more subdivision for smooth appearance.
+- **Detection**: Low polygon count on curved surfaces.
+- **Suggested Actions**: `subdivide`, `smooth`, `validate`.
+
+#### `lod-mismatch`
+- **Summary**: Inconsistent level of detail across the model.
+- **Detection**: Large variance in triangle density across surface.
+- **Suggested Actions**: `remesh_adaptive`, `validate`.
+
+#### `subdivision-crease-loss`
+- **Summary**: Lost crease data from subdivision surface.
+- **Detection**: Rounded edges where sharp edges expected.
+- **Suggested Actions**: `validate`; suggest re-export with creases preserved.
+
+---
+
+### Category: Material / Color Data
+
+#### `vertex-color-only`
+- **Summary**: Model has vertex colors but no UVs/textures.
+- **Detection**: Vertex color data present, no UV coordinates.
+- **Suggested Actions**: `validate`; note color data will be lost in STL export.
+
+#### `multi-material-seams`
+- **Summary**: Seams or artifacts at material boundaries.
+- **Detection**: Discontinuities at material assignment boundaries.
+- **Suggested Actions**: `merge_vertices_at_seams`, `validate`.
+
+#### `uv-seam-splits`
+- **Summary**: Vertex splits from UV seams affecting geometry.
+- **Detection**: Duplicate vertices at UV boundaries.
+- **Suggested Actions**: `merge_vertices`, `validate`.
+
 ---
 
 ## Profile Summary Table
@@ -325,45 +711,112 @@ The system includes **40+ profiles** organized into categories. Each profile has
 | 3 | `holes-only` | Holes | Holes present, single component |
 | 4 | `open-bottom` | Holes | Single large planar hole |
 | 5 | `mesh-with-holes-and-non-manifold` | Holes | Holes + non-manifold edges |
-| 6 | `fragmented` | Fragmented | Many small components |
-| 7 | `multiple-disconnected-large` | Fragmented | Multiple large components |
-| 8 | `floating-components` | Fragmented | Distant small components |
-| 9 | `non-manifold` | Topology | Non-manifold edges/vertices |
-| 10 | `non-manifold-shells` | Topology | Shells with shared bad topology |
-| 11 | `degenerate-heavy` | Topology | Many degenerate faces |
-| 12 | `duplicate-vertices-heavy` | Topology | High duplicate vertex ratio |
-| 13 | `zero-volume` | Topology | Closed shell, zero volume |
-| 14 | `normals-inconsistent` | Normals | Low normal consistency |
-| 15 | `inverted-normals` | Normals | All normals pointing inward |
-| 16 | `inverted-scale` | Normals | Negative scale transform |
-| 17 | `self-intersecting` | Self-Intersection | Self-intersections detected |
-| 18 | `self-touching` | Self-Intersection | Parts touch without intersection |
-| 19 | `boolean-artifacts` | Self-Intersection | Bad boolean operation remnants |
-| 20 | `hollow-porous` | Internal | Internal cavities, porous |
-| 21 | `nested-shells` | Internal | Shells inside shells |
-| 22 | `internal-geometry` | Internal | Enclosed internal components |
-| 23 | `likely-intentional-hollow` | Internal | Clean thin-walled hollow |
-| 24 | `thin-shell` | Thin Features | Global thin walls |
-| 25 | `thin-walls-localized` | Thin Features | Localized thin regions |
-| 26 | `thin-pin-features` | Thin Features | Narrow pin-like features |
-| 27 | `noisy-scan` | Scan/Noisy | High density, many defects |
-| 28 | `repeated-pattern-artifact` | Scan/Noisy | Repetitive noise patterns |
-| 29 | `high-triangle-density` | Scan/Noisy | Excessive triangle count |
-| 30 | `low-triangle-density` | Scan/Noisy | Undersampled, faceted |
-| 31 | `anisotropic-triangulation` | Scan/Noisy | Non-uniform triangle sizes |
-| 32 | `complex-high-genus` | Complex | High genus topology |
-| 33 | `high-genus-localized` | Complex | Local complex region |
-| 34 | `small-part` | Scale | Very small dimensions |
-| 35 | `oversized` | Scale | Exceeds build volume |
-| 36 | `uniform-scale-error` | Scale | Extreme non-uniform scale |
-| 37 | `mixed-units-suspect` | Scale | Unit mismatch suspected |
-| 38 | `high-aspect-ratio` | Scale | Extreme dimension ratio |
-| 39 | `overhang-heavy` | Printability | Many steep overhangs |
-| 40 | `bridge-heavy` | Printability | Long unsupported spans |
-| 41 | `requires-supports-by-default` | Printability | Heavy support needed |
-| 42 | `requires-splitting` | Printability | Too large/complex for single print |
-| 43 | `text-labels-or-fine-engraving` | Fine Detail | Small high-frequency geometry |
-| 44 | `precision-model` | Fine Detail | Features near resolution limit |
+| 6 | `partial-boundary-loop` | Holes | Incomplete boundary edges |
+| 7 | `many-small-holes` | Holes | Numerous small holes scattered |
+| 8 | `fragmented` | Fragmented | Many small components |
+| 9 | `multiple-disconnected-large` | Fragmented | Multiple large components |
+| 10 | `floating-components` | Fragmented | Distant small components |
+| 11 | `debris-particles` | Fragmented | Tiny isolated triangles |
+| 12 | `split-along-seam` | Fragmented | Split parts with matching boundaries |
+| 13 | `non-manifold` | Topology | Non-manifold edges/vertices |
+| 14 | `non-manifold-shells` | Topology | Shells with shared bad topology |
+| 15 | `degenerate-heavy` | Topology | Many degenerate faces |
+| 16 | `duplicate-vertices-heavy` | Topology | High duplicate vertex ratio |
+| 17 | `zero-volume` | Topology | Closed shell, zero volume |
+| 18 | `t-junction-heavy` | Topology | Many T-junction vertices |
+| 19 | `duplicate-faces` | Topology | Overlapping triangles |
+| 20 | `inconsistent-winding` | Topology | Inconsistent vertex ordering |
+| 21 | `normals-inconsistent` | Normals | Low normal consistency |
+| 22 | `inverted-normals` | Normals | All normals pointing inward |
+| 23 | `inverted-scale` | Normals | Negative scale transform |
+| 24 | `mixed-flipped-faces` | Normals | Random flipped faces |
+| 25 | `smoothing-group-artifacts` | Normals | Normal discontinuities |
+| 26 | `self-intersecting` | Self-Intersection | Self-intersections detected |
+| 27 | `self-touching` | Self-Intersection | Parts touch without intersection |
+| 28 | `boolean-artifacts` | Self-Intersection | Bad boolean operation remnants |
+| 29 | `overlapping-shells` | Self-Intersection | Shells in same space |
+| 30 | `interpenetrating-parts` | Self-Intersection | Parts penetrating each other |
+| 31 | `hollow-porous` | Internal | Internal cavities, porous |
+| 32 | `nested-shells` | Internal | Shells inside shells |
+| 33 | `internal-geometry` | Internal | Enclosed internal components |
+| 34 | `likely-intentional-hollow` | Internal | Clean thin-walled hollow |
+| 35 | `internal-faces` | Internal | Faces inside mesh |
+| 36 | `double-walled` | Internal | Parallel double surfaces |
+| 37 | `thin-shell` | Thin Features | Global thin walls |
+| 38 | `thin-walls-localized` | Thin Features | Localized thin regions |
+| 39 | `thin-pin-features` | Thin Features | Narrow pin-like features |
+| 40 | `paper-thin-faces` | Thin Features | Single-layer, no thickness |
+| 41 | `knife-edge` | Thin Features | Extremely sharp edges |
+| 42 | `noisy-scan` | Scan/Noisy | High density, many defects |
+| 43 | `repeated-pattern-artifact` | Scan/Noisy | Repetitive noise patterns |
+| 44 | `high-triangle-density` | Scan/Noisy | Excessive triangle count |
+| 45 | `low-triangle-density` | Scan/Noisy | Undersampled, faceted |
+| 46 | `anisotropic-triangulation` | Scan/Noisy | Non-uniform triangle sizes |
+| 47 | `spike-artifacts` | Scan/Noisy | Spike protrusions |
+| 48 | `scan-alignment-seam` | Scan/Noisy | Multi-scan seams |
+| 49 | `complex-high-genus` | Complex | High genus topology |
+| 50 | `high-genus-localized` | Complex | Local complex region |
+| 51 | `topological-noise` | Complex | Small unnecessary features |
+| 52 | `small-part` | Scale | Very small dimensions |
+| 53 | `oversized` | Scale | Exceeds build volume |
+| 54 | `uniform-scale-error` | Scale | Extreme non-uniform scale |
+| 55 | `mixed-units-suspect` | Scale | Unit mismatch suspected |
+| 56 | `high-aspect-ratio` | Scale | Extreme dimension ratio |
+| 57 | `microscale` | Scale | Microscale features |
+| 58 | `overhang-heavy` | Printability | Many steep overhangs |
+| 59 | `bridge-heavy` | Printability | Long unsupported spans |
+| 60 | `requires-supports-by-default` | Printability | Heavy support needed |
+| 61 | `requires-splitting` | Printability | Too large/complex for single print |
+| 62 | `island-regions` | Printability | Unsupported islands per layer |
+| 63 | `trapped-volume` | Printability | Enclosed volumes, no drainage |
+| 64 | `text-labels-or-fine-engraving` | Fine Detail | Small high-frequency geometry |
+| 65 | `precision-model` | Fine Detail | Features near resolution limit |
+| 66 | `mechanical-tolerances` | Fine Detail | Mechanical fit requirements |
+| 67 | `ngon-heavy` | Polygon | Many n-gon faces |
+| 68 | `quad-dominant` | Polygon | Primarily quad faces |
+| 69 | `concave-faces` | Polygon | Non-convex polygons |
+| 70 | `coplanar-faces` | Polygon | Coplanar adjacent faces |
+| 71 | `sliver-triangles` | Polygon | Thin elongated triangles |
+| 72 | `zero-area-faces` | Polygon | Zero-area faces |
+| 73 | `boundary-edges-open` | Edge | Open boundary edges |
+| 74 | `crease-artifacts` | Edge | Unwanted hard edges |
+| 75 | `edge-collapse-needed` | Edge | Very short edges |
+| 76 | `long-thin-edges` | Edge | Abnormally long edges |
+| 77 | `wrong-up-axis` | Orientation | Wrong axis as up |
+| 78 | `upside-down` | Orientation | Model inverted |
+| 79 | `tilted` | Orientation | Not aligned to axes |
+| 80 | `off-origin` | Orientation | Far from origin |
+| 81 | `asymmetric-unexpected` | Symmetry | Should be symmetric but isn't |
+| 82 | `mirror-seam-artifacts` | Symmetry | Problems at symmetry plane |
+| 83 | `radial-symmetry-broken` | Symmetry | Inconsistent radial symmetry |
+| 84 | `tessellation-artifacts` | CAD | NURBS conversion artifacts |
+| 85 | `cad-tolerance-gaps` | CAD | Gaps from tolerance issues |
+| 86 | `parametric-seams` | CAD | Seams from UV boundaries |
+| 87 | `fillet-faceting` | CAD | Faceted fillets/rounds |
+| 88 | `chamfer-artifacts` | CAD | Artifacts on chamfers |
+| 89 | `sculpt-base-mesh` | Sculpt | Low-poly base mesh |
+| 90 | `dynmesh-artifacts` | Sculpt | Dynamic remesh artifacts |
+| 91 | `remesh-boundary-artifacts` | Sculpt | Boundary region artifacts |
+| 92 | `multires-mismatch` | Sculpt | Multi-res level issues |
+| 93 | `zbrush-polygroup-seams` | Sculpt | Polygroup boundary seams |
+| 94 | `photogrammetry-holes` | Photogrammetry | Incomplete reconstruction holes |
+| 95 | `photogrammetry-noise` | Photogrammetry | Noisy reconstruction surface |
+| 96 | `point-cloud-incomplete` | Photogrammetry | Incomplete point cloud surface |
+| 97 | `texture-projection-artifacts` | Photogrammetry | Texture-based artifacts |
+| 98 | `floating-reconstruction-debris` | Photogrammetry | Floating debris |
+| 99 | `corrupted-data` | Import | Invalid data (NaN, Inf) |
+| 100 | `incomplete-import` | Import | Truncated file |
+| 101 | `format-conversion-artifacts` | Import | Format conversion issues |
+| 102 | `empty-mesh` | Import | No geometry |
+| 103 | `single-triangle` | Import | Very few triangles |
+| 104 | `ascii-precision-loss` | Import | ASCII truncation |
+| 105 | `over-subdivided` | Subdivision | Too many subdivisions |
+| 106 | `under-subdivided` | Subdivision | Needs more subdivision |
+| 107 | `lod-mismatch` | Subdivision | Inconsistent detail levels |
+| 108 | `subdivision-crease-loss` | Subdivision | Lost crease data |
+| 109 | `vertex-color-only` | Material | Vertex colors, no UVs |
+| 110 | `multi-material-seams` | Material | Material boundary seams |
+| 111 | `uv-seam-splits` | Material | UV seam vertex splits |
 
 ---
 
@@ -420,6 +873,7 @@ actions:
 - **Confidence scores**: Each profile includes a confidence score (0.0–1.0) shown in the UI.
 - **Explanations**: Short explanation strings describe why a profile was selected.
 - **Multi-profile detection**: Models may match multiple profiles; top 2–3 are shown with scores.
+- **Profile combinations**: Some issues co-occur; the system can suggest combined filter scripts.
 
 ---
 
