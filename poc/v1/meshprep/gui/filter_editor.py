@@ -389,16 +389,17 @@ class ActionParameterPanel(QFrame):
 class FilterScriptEditor(QDialog):
     """Dialog for editing filter scripts."""
     
-    def __init__(self, script: FilterScript = None, parent=None):
+    def __init__(self, script: FilterScript = None, parent=None, theme: str = "dark"):
         super().__init__(parent)
         self.registry = get_action_registry()
         self.original_script = script
         self.script = self._copy_script(script) if script else self._new_script()
+        self._theme = theme
         
         self.setWindowTitle("Filter Script Editor")
         self.setMinimumSize(1000, 600)
         self._setup_ui()
-        apply_theme(self, "dark")
+        apply_theme(self, self._theme)
     
     def _copy_script(self, script: FilterScript) -> FilterScript:
         """Create a deep copy of a filter script."""

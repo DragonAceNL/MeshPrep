@@ -679,7 +679,7 @@ class MainWindow(QMainWindow):
     
     def _edit_script(self):
         """Open the filter script editor."""
-        dialog = FilterScriptEditor(self.script, self)
+        dialog = FilterScriptEditor(self.script, self, theme=self._current_theme)
         if dialog.exec() == FilterScriptEditor.Accepted:
             self.script = dialog.get_script()
             self._update_script_preview()
