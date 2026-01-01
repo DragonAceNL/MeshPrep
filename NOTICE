@@ -1,15 +1,66 @@
-MeshPrep — NOTICE
-Copyright 2026 Dragon Ace
+MeshPrep â€” NOTICE
+Copyright 2025 Dragon Ace
 
-This product includes software developed by Dragon Ace (https://your-website.example).
+This product includes software developed by Dragon Ace.
+Project repository: https://github.com/DragonAceNL/MeshPrep
 
-Attribution:
-  - Original project: MeshPrep by Dragon Ace
-  - License: Apache License 2.0 (see LICENSE file)
+================================================================================
+ATTRIBUTION
+================================================================================
+
+Original project: MeshPrep by Dragon Ace
+License: Apache License 2.0 (see LICENSE file)
 
 Required attribution text for redistributions:
-  "This product includes code from MeshPrep by Dragon Ace (https://your-website.example), licensed under the Apache License 2.0."
+  "This product includes code from MeshPrep by Dragon Ace
+   (https://github.com/DragonAceNL/MeshPrep), licensed under the
+   Apache License 2.0."
 
-Optional additional credits:
-  - Major contributors: [Name1]; [Name2]
-  - Third-party components: [Component A] — [License]; [Component B] — [License]
+================================================================================
+THIRD-PARTY COMPONENTS
+================================================================================
+
+This software uses the following third-party libraries:
+
+trimesh
+  License: MIT License
+  Website: https://trimsh.org/
+  Copyright: Michael Dawson-Haggerty and contributors
+
+pymeshfix
+  License: MIT License
+  Website: https://github.com/pyvista/pymeshfix
+  Copyright: PyVista developers
+
+meshio
+  License: MIT License
+  Website: https://github.com/nschloe/meshio
+  Copyright: Nico SchlÃ¶mer and contributors
+
+PySide6 (Qt for Python)
+  License: LGPL v3 / Commercial
+  Website: https://www.qt.io/qt-for-python
+  Copyright: The Qt Company
+
+NumPy
+  License: BSD 3-Clause License
+  Website: https://numpy.org/
+  Copyright: NumPy developers
+
+Blender (optional, for escalation features)
+  License: GPL v3
+  Website: https://www.blender.org/
+  Copyright: Blender Foundation
+  Note: Blender is an OPTIONAL external tool that must be installed
+        separately by the user. MeshPrep invokes Blender as a subprocess;
+        it does not bundle, link to, or include any Blender code.
+        This usage is permitted under GPL's "mere aggregation" clause.
+
+================================================================================
+ADDITIONAL CREDITS
+================================================================================
+
+Icons and visual assets may include resources from:
+  - Material Design Icons (Apache License 2.0)
+
+================================================================================
