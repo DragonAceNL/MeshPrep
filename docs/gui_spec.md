@@ -26,10 +26,9 @@ The GUI provides a step-by-step wizard interface for non-technical Windows users
 |                |                                                        |
 |  1. Env        |                                                        |
 |  2. Select     |                                                        |
-|  3. Suggest    |                                                        |
-|  4. Dry-Run    |                                                        |
-|  5. Execute    |                                                        |
-|  6. Results    |                                                        |
+|  3. Review     |                                                        |
+|  4. Execute    |                                                        |
+|  5. Results    |                                                        |
 |                |                                                        |
 +----------------+--------------------------------------------------------+
 |  Global Log (collapsible)                                               |
@@ -266,9 +265,9 @@ See `docs/functional_spec.md` for the complete action catalog with parameters.
 
 ---
 
-## Step 3: Suggest Filter Script (Profile Detection)
+## Step 3: Review Filter Script
 
-**Purpose**: Analyze model, detect profile, and present suggested filter script for review/editing.
+**Purpose**: Review the suggested filter script before execution.
 
 ### UI Elements
 
@@ -313,41 +312,7 @@ See `docs/functional_spec.md` for the complete action catalog with parameters.
 
 ---
 
-## Step 4: Dry-Run Preview
-
-**Purpose**: Simulate filter script execution without writing output; show intermediate diagnostics.
-
-### UI Elements
-
-| Element | Type | Description |
-|---------|------|-------------|
-| Steps Table | Table widget | Columns: Step, Action, Status, Diagnostics, Notes |
-| Run Dry-Run Button | Button | Start simulation |
-| Stop Button | Button | Abort dry-run |
-| Progress Bar | Progress bar | Shows overall progress |
-| Diagnostics Detail | Text area (read-only) | Shows detailed diagnostics for selected step |
-
-### Behavior
-
-1. On Run Dry-Run:
-   - For each action in filter script:
-     - Execute action in dry-run mode (no file writes).
-     - Capture intermediate diagnostics.
-     - Update Steps Table row with status (pending → running → ok/warn/error).
-     - Populate Diagnostics Detail on row selection.
-   - Show overall progress in Progress Bar.
-2. If an action fails or produces warnings, highlight row and show details.
-3. User can Stop at any time; partial results remain visible.
-4. On completion, show summary: expected final state, any warnings.
-5. User can return to Step 3 to edit filter script and re-run dry-run.
-
-### Validation
-
-- Dry-run is optional; user can skip to Execute if confident.
-
----
-
-## Step 5: Execute
+## Step 4: Execute
 
 **Purpose**: Run the filter script for real; produce cleaned STL and reports.
 
@@ -391,7 +356,7 @@ See `docs/functional_spec.md` for the complete action catalog with parameters.
 
 ---
 
-## Step 6: Results & Export
+## Step 5: Results & Export
 
 **Purpose**: Show run summary, provide access to artifacts, and offer export/share options.
 
@@ -652,7 +617,6 @@ These mockups demonstrate how the theme colors work together in typical UI conte
 | Use preset | `--preset <name>` |
 | Load filter script | `--filter <file>` |
 | Set output dir | `--output <dir>` |
-| Dry-run | `--dry-run` |
 | Execute | (default) |
 | Export run package | `--export-run <dir>` |
 | Verbose logging | `--verbose` |

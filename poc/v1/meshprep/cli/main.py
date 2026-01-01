@@ -34,8 +34,11 @@ Examples:
   # Use a named preset
   python -m meshprep.cli --input model.stl --preset holes-only
 
-  # Dry-run with verbose output
-  python -m meshprep.cli --input model.stl --dry-run --verbose
+  # Verbose output
+  python -m meshprep.cli --input model.stl --verbose
+
+  # Export run package for sharing
+  python -m meshprep.cli --input model.stl --export-run ./share/run1/
         """,
     )
     
@@ -90,12 +93,6 @@ Examples:
         choices=["always", "on-failure", "never"],
         default="on-failure",
         help="When to use Blender escalation (default: on-failure)",
-    )
-    
-    parser.add_argument(
-        "--dry-run",
-        action="store_true",
-        help="Simulate filter actions without writing output",
     )
     
     parser.add_argument(
@@ -218,8 +215,8 @@ def run_cli(args: argparse.Namespace) -> int:
     
     runner.set_progress_callback(progress_callback)
     
-    log("Running filter script..." if not args.dry_run else "Running dry-run...", "info", verbose)
-    result = runner.run(script, mesh, dry_run=args.dry_run)
+    log("Running filter script...", "info", verbose)
+    result = runner.run(script, mesh)
     
     # Print results
     if verbose:
@@ -228,26 +225,24 @@ def run_cli(args: argparse.Namespace) -> int:
     if result.success:
         log(f"Filter script completed successfully ({result.total_runtime_ms:.1f}ms)", "success")
         
-        if not args.dry_run:
-            # Save output
-            args.output.mkdir(parents=True, exist_ok=True)
-            
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            output_file = args.output / f"{args.input.stem}__{script.name}__{timestamp}.stl"
-            
-            if output_file.exists() and not args.overwrite:
-                log(f"Output file exists (use --overwrite): {output_file}", "error")
-                return 1
-            
-            save_mock_stl(result.final_mesh, output_file)
-            log(f"Output saved to: {output_file}", "success")
+        # Save output
+        args.output.mkdir(parents=True, exist_ok=True)
+        
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        output_file = args.output / f"{args.input.stem}__{script.name}__{timestamp}.stl"
+        
+        if output_file.exists() and not args.overwrite:
+            log(f"Output file exists (use --overwrite): {output_file}", "error")
+            return 1
+        
+        save_mock_stl(result.final_mesh, output_file)
+        log(f"Output saved to: {output_file}", "success")
         
         # Save report
         report = {
             "timestamp": datetime.now().isoformat(),
             "input_file": str(args.input),
             "script_name": script.name,
-            "dry_run": args.dry_run,
             "success": result.success,
             "total_runtime_ms": result.total_runtime_ms,
             "steps": [

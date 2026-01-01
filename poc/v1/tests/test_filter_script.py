@@ -204,20 +204,6 @@ class TestFilterScriptRunner:
         assert all(s.status == "success" for s in result.steps)
         assert result.final_mesh is not None
     
-    def test_run_dry_run(self):
-        """Test dry-run mode."""
-        mesh = MockMesh()
-        script = FilterScript(
-            name="test",
-            actions=[FilterAction(name="trimesh_basic")],
-        )
-        
-        runner = FilterScriptRunner()
-        result = runner.run(script, mesh, dry_run=True)
-        
-        assert result.success
-        assert len(result.steps) == 1
-    
     def test_run_with_progress_callback(self):
         """Test progress callback."""
         mesh = MockMesh()

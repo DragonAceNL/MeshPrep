@@ -277,15 +277,13 @@ class FilterScriptRunner:
         if self._progress_callback:
             self._progress_callback(step, total, message)
     
-    def run(self, script: FilterScript, mesh: MockMesh, 
-            dry_run: bool = False) -> RunResult:
+    def run(self, script: FilterScript, mesh: MockMesh) -> RunResult:
         """
         Execute a filter script on a mesh.
         
         Args:
             script: The filter script to execute.
             mesh: The input mesh.
-            dry_run: If True, simulate without writing output.
             
         Returns:
             RunResult with the execution results.
@@ -319,7 +317,6 @@ class FilterScriptRunner:
                 action.name,
                 current_mesh,
                 action.params,
-                dry_run=dry_run,
             )
             
             if result.success:

@@ -36,8 +36,8 @@ python run_cli.py --input model.stl --output ./clean/
 # Use a specific filter script
 python run_cli.py --input model.stl --filter filters/holes-only.json
 
-# Dry-run with verbose output
-python run_cli.py --input model.stl --dry-run --verbose
+# Verbose output
+python run_cli.py --input model.stl --verbose
 
 # Show help
 python run_cli.py --help
@@ -99,13 +99,11 @@ poc/v1/
 - Profile detection with confidence scores
 - Filter script preview and editing
 - Filter script editor with drag-and-drop
-- Dry-run preview
 - Execution with progress tracking
 - Results summary and export
 
 ### CLI Features
 - Auto-detection or manual filter script selection
-- Dry-run mode
 - JSON/CSV reporting
 - Run package export for reproducibility
 - Verbose logging

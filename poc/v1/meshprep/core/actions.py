@@ -381,8 +381,7 @@ class ActionRegistry:
         """Get actions in a specific category."""
         return [a for a in self._actions.values() if a.category == category]
     
-    def execute(self, action_name: str, mesh: MockMesh, params: dict, 
-                dry_run: bool = False) -> ActionResult:
+    def execute(self, action_name: str, mesh: MockMesh, params: dict) -> ActionResult:
         """
         Execute an action on a mesh.
         
@@ -390,7 +389,6 @@ class ActionRegistry:
             action_name: Name of the action to execute.
             mesh: The mesh to process.
             params: Action parameters.
-            dry_run: If True, simulate without modifying.
             
         Returns:
             ActionResult with the result of the execution.
@@ -416,12 +414,7 @@ class ActionRegistry:
         start = time.perf_counter()
         
         try:
-            if dry_run and not action.dry_run_supported:
-                # Simulate by just computing diagnostics
-                result_mesh = mesh.copy()
-                result_mesh.modifications.append(f"{action_name} (dry-run)")
-            else:
-                result_mesh = impl(mesh, params)
+            result_mesh = impl(mesh, params)
             
             diagnostics = compute_diagnostics(result_mesh)
             elapsed = (time.perf_counter() - start) * 1000

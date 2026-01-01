@@ -880,7 +880,7 @@ actions:
 ## Testing and Validation
 
 - Add fixtures for each profile in `tests/fixtures/` following the naming convention: `profile_<profile_name>.stl`
-- Unit tests verify detection accuracy and suggested filter script behavior in dry-run mode
+- Unit tests verify detection accuracy and suggested filter script behavior
 - Each profile should have at least one representative test fixture
 
 ---

@@ -52,8 +52,6 @@ class WorkerThread(QThread):
                 self._run_scan()
             elif self.task == "execute":
                 self._run_execute()
-            elif self.task == "dry_run":
-                self._run_dry_run()
         except Exception as e:
             self.finished.emit(False, str(e))
     
@@ -95,29 +93,11 @@ class WorkerThread(QThread):
         
         runner.set_progress_callback(progress_callback)
         
-        result = runner.run(script, mesh, dry_run=False)
+        result = runner.run(script, mesh)
         
         # Save output if successful
         if result.success and result.final_mesh and output_path:
             save_mock_stl(result.final_mesh, Path(output_path))
-        
-        self.kwargs["result"] = result
-        self.finished.emit(result.success, result.summary())
-    
-    def _run_dry_run(self):
-        """Run a dry-run of the filter script."""
-        mesh = self.kwargs.get("mesh")
-        script = self.kwargs.get("script")
-        
-        runner = FilterScriptRunner()
-        
-        def progress_callback(step, total, msg):
-            pct = int((step / total) * 100) if total > 0 else 0
-            self.progress.emit(pct, msg)
-        
-        runner.set_progress_callback(progress_callback)
-        
-        result = runner.run(script, mesh, dry_run=True)
         
         self.kwargs["result"] = result
         self.finished.emit(result.success, result.summary())
@@ -129,8 +109,7 @@ class MainWindow(QMainWindow):
     STEPS = [
         "Environment",
         "Select Model",
-        "Profile & Script",
-        "Dry-Run",
+        "Review Script",
         "Execute",
         "Results",
     ]
@@ -216,16 +195,13 @@ class MainWindow(QMainWindow):
         # Step 1: Select Model
         self.stack.addWidget(self._create_select_page())
         
-        # Step 2: Profile & Script
+        # Step 2: Review Script
         self.stack.addWidget(self._create_profile_page())
         
-        # Step 3: Dry-Run
-        self.stack.addWidget(self._create_dryrun_page())
-        
-        # Step 4: Execute
+        # Step 3: Execute
         self.stack.addWidget(self._create_execute_page())
         
-        # Step 5: Results
+        # Step 4: Results
         self.stack.addWidget(self._create_results_page())
     
     def _create_env_page(self) -> QWidget:
@@ -326,7 +302,7 @@ class MainWindow(QMainWindow):
         page = QWidget()
         layout = QVBoxLayout(page)
         
-        title = QLabel("Profile Detection & Filter Script")
+        title = QLabel("Review Filter Script")
         title.setObjectName("header")
         title.setFont(QFont("Segoe UI", 16, QFont.Bold))
         layout.addWidget(title)
@@ -386,42 +362,6 @@ class MainWindow(QMainWindow):
         splitter.setSizes([400, 500])
         
         layout.addWidget(splitter)
-        
-        return page
-    
-    def _create_dryrun_page(self) -> QWidget:
-        """Create dry-run preview page."""
-        page = QWidget()
-        layout = QVBoxLayout(page)
-        
-        title = QLabel("Dry-Run Preview")
-        title.setObjectName("header")
-        title.setFont(QFont("Segoe UI", 16, QFont.Bold))
-        layout.addWidget(title)
-        
-        desc = QLabel("Simulate the filter script without writing output files.")
-        desc.setObjectName("secondary")
-        layout.addWidget(desc)
-        
-        self.dryrun_progress = ProgressPanel()
-        layout.addWidget(self.dryrun_progress)
-        
-        # Steps table
-        self.dryrun_table = QTableWidget()
-        self.dryrun_table.setColumnCount(4)
-        self.dryrun_table.setHorizontalHeaderLabels(["Step", "Action", "Status", "Notes"])
-        self.dryrun_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
-        layout.addWidget(self.dryrun_table)
-        
-        btn_layout = QHBoxLayout()
-        
-        self.dryrun_btn = QPushButton("Run Dry-Run")
-        self.dryrun_btn.setObjectName("primary")
-        self.dryrun_btn.clicked.connect(self._run_dry_run)
-        btn_layout.addWidget(self.dryrun_btn)
-        
-        btn_layout.addStretch()
-        layout.addLayout(btn_layout)
         
         return page
     
@@ -522,7 +462,7 @@ class MainWindow(QMainWindow):
         self.next_btn.setEnabled(step < len(self.STEPS) - 1)
         
         # Update next button text
-        if step == 4:  # Execute
+        if step == 3:  # Execute
             self.next_btn.setText("View Results →")
         elif step == len(self.STEPS) - 1:
             self.next_btn.setText("Finish")
@@ -631,7 +571,7 @@ class MainWindow(QMainWindow):
                 QMessageBox.critical(self, "Error", f"Failed to load filter script: {e}")
                 self.log_console.log(f"Failed to load filter script: {e}", "error")
     
-    # Step 2: Profile & Script
+    # Step 2: Review Script
     def _run_scan(self):
         """Run model scan."""
         if not hasattr(self, "_selected_file_path"):
@@ -712,20 +652,13 @@ class MainWindow(QMainWindow):
         """Export filter script."""
         self._save_preset()
     
-    # Step 3: Dry-Run
-    def _run_dry_run(self):
-        """Run dry-run."""
-        if not self.mesh or not self.script:
-            return
-        
-        self._setup_table(self.dryrun_table)
-        
-        self.worker = WorkerThread("dry_run", mesh=self.mesh, script=self.script)
-        self.worker.progress.connect(lambda p, m: self.dryrun_progress.set_progress(p, "Running...", m))
-        self.worker.finished.connect(self._on_dryrun_finished)
-        self.worker.start()
-        
-        self.dryrun_btn.setEnabled(False)
+    # Step 3: Execute
+    def _browse_output(self):
+        """Browse for output directory."""
+        path = QFileDialog.getExistingDirectory(self, "Select Output Directory")
+        if path:
+            self.output_path_label.setText(path)
+            self.output_path = Path(path)
     
     def _setup_table(self, table: QTableWidget):
         """Set up execution table."""
@@ -738,30 +671,6 @@ class MainWindow(QMainWindow):
                 table.setItem(i, 3, QTableWidgetItem(""))
             if table.columnCount() > 4:
                 table.setItem(i, 4, QTableWidgetItem(""))
-    
-    @Slot(bool, str)
-    def _on_dryrun_finished(self, success: bool, message: str):
-        self.dryrun_btn.setEnabled(True)
-        
-        result = self.worker.kwargs.get("result")
-        if result:
-            for i, step in enumerate(result.steps):
-                self.dryrun_table.setItem(i, 2, QTableWidgetItem(step.status))
-                self.dryrun_table.setItem(i, 3, QTableWidgetItem(step.message or step.error or ""))
-        
-        self.dryrun_progress.set_progress(100, "Complete" if success else "Failed")
-        self.log_console.log(f"Dry-run {'complete' if success else 'failed'}", "success" if success else "error")
-        
-        if success:
-            self.step_indicator.mark_completed(3)
-    
-    # Step 4: Execute
-    def _browse_output(self):
-        """Browse for output directory."""
-        path = QFileDialog.getExistingDirectory(self, "Select Output Directory")
-        if path:
-            self.output_path_label.setText(path)
-            self.output_path = Path(path)
     
     def _run_execute(self):
         """Execute the filter script."""
@@ -817,10 +726,10 @@ class MainWindow(QMainWindow):
         self.log_console.log(f"Execution {'complete' if success else 'failed'}", "success" if success else "error")
         
         if success:
-            self.step_indicator.mark_completed(4)
+            self.step_indicator.mark_completed(3)
             self.log_console.log(f"Output saved to: {self.output_path}", "success")
     
-    # Step 5: Results
+    # Step 4: Results
     def _open_output_folder(self):
         """Open output folder in file explorer."""
         if self.output_path and self.output_path.parent.exists():

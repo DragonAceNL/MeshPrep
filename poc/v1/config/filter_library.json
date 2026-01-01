@@ -23,9 +23,7 @@
               "default": true,
               "description": "Merge normals"
             }
-          ],
-          "dry_run_supported": true,
-          "destructive": true
+          ]
         },
         {
           "name": "merge_vertices",
@@ -39,18 +37,14 @@
               "default": 1e-8,
               "description": "Distance threshold for merging"
             }
-          ],
-          "dry_run_supported": true,
-          "destructive": true
+          ]
         },
         {
           "name": "remove_degenerate_faces",
           "display_name": "Remove Degenerate Faces",
           "tool": "trimesh",
           "description": "Remove faces with zero area or invalid topology.",
-          "parameters": [],
-          "dry_run_supported": true,
-          "destructive": true
+          "parameters": []
         }
       ]
     },
@@ -77,9 +71,7 @@
               "enum_values": ["fan", "ear"],
               "description": "Fill method"
             }
-          ],
-          "dry_run_supported": true,
-          "destructive": true
+          ]
         }
       ]
     },
@@ -92,27 +84,21 @@
           "display_name": "Recalculate Normals",
           "tool": "trimesh",
           "description": "Recompute face normals from vertex winding order.",
-          "parameters": [],
-          "dry_run_supported": true,
-          "destructive": true
+          "parameters": []
         },
         {
           "name": "fix_normals",
           "display_name": "Fix Normals",
           "tool": "trimesh",
           "description": "Combine recalculate and reorient for a single-step fix.",
-          "parameters": [],
-          "dry_run_supported": true,
-          "destructive": true
+          "parameters": []
         },
         {
           "name": "flip_normals",
           "display_name": "Flip Normals",
           "tool": "trimesh",
           "description": "Invert all face normals (useful if model is inside-out).",
-          "parameters": [],
-          "dry_run_supported": true,
-          "destructive": true
+          "parameters": []
         }
       ]
     },
@@ -132,27 +118,21 @@
               "default": 100,
               "description": "Minimum faces to keep"
             }
-          ],
-          "dry_run_supported": true,
-          "destructive": true
+          ]
         },
         {
           "name": "boolean_union",
           "display_name": "Boolean Union",
           "tool": "trimesh",
           "description": "Merge overlapping shells into a single watertight mesh.",
-          "parameters": [],
-          "dry_run_supported": false,
-          "destructive": true
+          "parameters": []
         },
         {
           "name": "remove_internal_geometry",
           "display_name": "Remove Internal Geometry",
           "tool": "trimesh",
           "description": "Remove components fully enclosed by the outer shell.",
-          "parameters": [],
-          "dry_run_supported": true,
-          "destructive": true
+          "parameters": []
         }
       ]
     },
@@ -165,9 +145,7 @@
           "display_name": "PyMeshFix Repair",
           "tool": "pymeshfix",
           "description": "Run pymeshfix's automatic repair pass. Fixes many non-manifold issues.",
-          "parameters": [],
-          "dry_run_supported": false,
-          "destructive": true
+          "parameters": []
         }
       ]
     },
@@ -193,9 +171,7 @@
               "default": null,
               "description": "Target face count (overrides ratio)"
             }
-          ],
-          "dry_run_supported": true,
-          "destructive": true
+          ]
         },
         {
           "name": "smooth_laplacian",
@@ -209,9 +185,7 @@
               "default": 1,
               "description": "Smoothing iterations"
             }
-          ],
-          "dry_run_supported": true,
-          "destructive": true
+          ]
         }
       ]
     },
@@ -231,9 +205,7 @@
               "default": 0.8,
               "description": "Minimum thickness (mm)"
             }
-          ],
-          "dry_run_supported": true,
-          "destructive": false
+          ]
         },
         {
           "name": "thicken_regions",
@@ -247,9 +219,7 @@
               "default": 1.0,
               "description": "Target thickness (mm)"
             }
-          ],
-          "dry_run_supported": false,
-          "destructive": true
+          ]
         }
       ]
     },
@@ -262,18 +232,14 @@
           "display_name": "Validate",
           "tool": "internal",
           "description": "Run all validation checks and produce a diagnostics report.",
-          "parameters": [],
-          "dry_run_supported": true,
-          "destructive": false
+          "parameters": []
         },
         {
           "name": "compute_diagnostics",
           "display_name": "Compute Diagnostics",
           "tool": "internal",
           "description": "Compute full diagnostics vector for profile detection.",
-          "parameters": [],
-          "dry_run_supported": true,
-          "destructive": false
+          "parameters": []
         }
       ]
     },
@@ -299,9 +265,7 @@
               "default": false,
               "description": "Use ASCII format"
             }
-          ],
-          "dry_run_supported": false,
-          "destructive": false
+          ]
         }
       ]
     },
@@ -321,18 +285,14 @@
               "default": 0.1,
               "description": "Voxel size"
             }
-          ],
-          "dry_run_supported": false,
-          "destructive": true
+          ]
         },
         {
           "name": "blender_boolean_union",
           "display_name": "Blender Boolean Union",
           "tool": "blender",
           "description": "Merge all mesh parts using Blender's boolean solver.",
-          "parameters": [],
-          "dry_run_supported": false,
-          "destructive": true
+          "parameters": []
         },
         {
           "name": "blender_solidify",
@@ -346,9 +306,7 @@
               "default": 1.0,
               "description": "Wall thickness"
             }
-          ],
-          "dry_run_supported": false,
-          "destructive": true
+          ]
         }
       ]
     }

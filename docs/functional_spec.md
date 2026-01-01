@@ -66,9 +66,8 @@ High-level flow
 3. Profile detection and suggested filter script generation:
    - Run the rule engine to match diagnostics to one or more model profiles and compute confidence scores.
    - Generate a suggested filter script tailored to the detected profile with metadata (model fingerprint, generator version, timestamp, reason/explanation).
-4. Review and dry-run:
+4. Review:
    - Present the suggested or provided filter script and diagnostics to the user with a short explanation of why steps were chosen and expected effect. Show the top alternative profiles if confidence is low.
-   - Offer a `dry-run` option that simulates each filter action (no destructive writes) and reports intermediate diagnostics after each simulated step so the user can preview results.
 5. Edit, save, and export presets:
    - Allow the user to edit the suggested filter script in the GUI or save it as a named preset (JSON/YAML). Presets include metadata (author, description, tags, preset_version).
    - Support import/export of presets for sharing and reproducibility.
@@ -129,9 +128,6 @@ Filter script representation
 - Metadata and provenance
   - Every filter script includes provenance metadata: `model_fingerprint`, `generator_version`, `generator_name`, `author`, `source`, and `timestamp`.
   - When a user imports a community preset (URL/Reddit), the tool records `source` and optionally a user-provided integrity hint (SHA256) and warns if preset is unsigned or from an untrusted source.
-
-- Dry-run and simulation
-  - The driver supports a `dry-run` mode that executes each action's non-destructive simulation path when available and collects intermediate diagnostics after each step. Filter script authors should mark actions as `dry_run_supported` when they provide a safe simulation.
 
 - Validation and sandboxing
   - Imported filter scripts are validated against a JSON schema before execution: structure, action names, parameter types, and required fields.
@@ -200,8 +196,7 @@ The filter library is a comprehensive catalog of all available filter actions, o
 - **Description**: What the action does and when to use it.
 - **Parameters**: List of parameters with types, defaults, and descriptions.
 - **Use cases**: Common scenarios where this action is helpful.
-- **Dry-run support**: Whether the action supports non-destructive simulation.
-- **Destructive**: Whether the action modifies the mesh irreversibly.
+
 
 ### Filter Library — Action Catalog
 
@@ -328,8 +323,7 @@ The following is the initial catalog of filter actions available in MeshPrep, gr
    - Input type matching the parameter type (slider for floats with range, checkbox for bools, dropdown for enums).
    - Default value pre-filled; reset button to restore defaults.
    - Validation feedback (red border for invalid values).
-5. **Dry-run preview**: For actions that support dry-run, show a "Preview" button that runs the action in simulation mode and displays resulting diagnostics.
-6. **Dependency hints**: If an action depends on another (e.g., `export_stl` requires a loaded mesh), show a hint or auto-insert the dependency.
+5. **Dependency hints**: If an action depends on another (e.g., `export_stl` requires a loaded mesh), show a hint or auto-insert the dependency.
 7. **Template presets**: Offer one-click insertion of common action sequences (e.g., "Basic Cleanup", "Hole Fill + Normals", "Aggressive Repair").
 
 ### Filter Library Data File
@@ -357,8 +351,7 @@ The filter library is stored as a JSON file at `config/filter_library.json` with
               "description": "Distance threshold for merging."
             }
           ],
-          "dry_run_supported": true,
-          "destructive": true
+
         }
       ]
     }
@@ -388,7 +381,7 @@ Command-line interface specification for `auto_fix_stl.py`:
 | `--csv` | path | no | `./report.csv` | Path for CSV report output |
 | `--export-run` | path | no | — | Export reproducible run package to specified directory |
 | `--use-blender` | choice | no | `on-failure` | When to use Blender escalation: `always`, `on-failure`, `never` |
-| `--dry-run` | flag | no | false | Simulate filter actions without writing output |
+
 | `--overwrite` | flag | no | false | Overwrite existing output files |
 | `--verbose` | flag | no | false | Enable verbose logging |
 | `--workers` | int | no | 1 | Number of parallel workers (reserved for future batch mode) |
@@ -403,9 +396,6 @@ python auto_fix_stl.py --input model.stl --filter my_filter.json
 
 # Use a named preset
 python auto_fix_stl.py --input model.stl --preset holes-only
-
-# Dry-run with verbose output
-python auto_fix_stl.py --input model.stl --dry-run --verbose
 
 # Export run package for sharing
 python auto_fix_stl.py --input model.stl --export-run ./share/run1/
