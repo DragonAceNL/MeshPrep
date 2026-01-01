@@ -33,7 +33,7 @@ MeshPrep/
 Every new Python file MUST start with this header:
 
 ```python
-# Copyright 2025 Dragon Ace
+# Copyright 2025 Allard Peper (Dragon Ace / DragonAceNL)
 # Licensed under the Apache License, Version 2.0 (see LICENSE).
 # This file is part of MeshPrep — https://github.com/DragonAceNL/MeshPrep
 ```
@@ -49,7 +49,7 @@ Every new Python file MUST start with this header:
 ### Example Function
 
 ```python
-# Copyright 2025 Dragon Ace
+# Copyright 2025 Allard Peper (Dragon Ace / DragonAceNL)
 # Licensed under the Apache License, Version 2.0 (see LICENSE).
 # This file is part of MeshPrep — https://github.com/DragonAceNL/MeshPrep
 
