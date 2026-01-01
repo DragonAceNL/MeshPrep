@@ -169,6 +169,50 @@ def get_stylesheet(theme: dict) -> str:
         background-color: {theme['button_hover']};
     }}
     
+    QTreeWidget {{
+        background-color: {theme['panel']};
+        color: {theme['text']};
+        border: 1px solid {theme['border']};
+        border-radius: 4px;
+        outline: none;
+    }}
+    
+    QTreeWidget::item {{
+        padding: 6px 4px;
+        border-radius: 4px;
+        margin: 1px 4px;
+    }}
+    
+    QTreeWidget::item:selected {{
+        background-color: {theme['accent']};
+        color: {theme['background']};
+    }}
+    
+    QTreeWidget::item:selected:!active {{
+        background-color: {theme['selection']};
+        color: {theme['text']};
+    }}
+    
+    QTreeWidget::item:hover:!selected {{
+        background-color: {theme['button_hover']};
+    }}
+    
+    QTreeWidget::branch {{
+        background-color: transparent;
+    }}
+    
+    QTreeWidget::branch:has-children:!has-siblings:closed,
+    QTreeWidget::branch:closed:has-children:has-siblings {{
+        image: none;
+        border-image: none;
+    }}
+    
+    QTreeWidget::branch:open:has-children:!has-siblings,
+    QTreeWidget::branch:open:has-children:has-siblings {{
+        image: none;
+        border-image: none;
+    }}
+    
     QTableWidget {{
         background-color: {theme['panel']};
         color: {theme['text']};
