@@ -50,6 +50,151 @@ The GUI provides a step-by-step wizard interface for non-technical Windows users
 
 ---
 
+## Filter Script Editor
+
+The Filter Script Editor is a dedicated window/panel for building and modifying filter scripts. It provides an intuitive drag-and-drop interface with a comprehensive filter library.
+
+### Editor Layout
+
+![Filter Script Editor](images/mockup-filter-editor.svg)
+
+The editor is divided into three panels:
+
+| Panel | Width | Purpose |
+|-------|-------|----------|
+| Filter Library | ~25% | Browsable catalog of all available actions, organized by category |
+| Action List | ~45% | The current filter script's ordered list of actions |
+| Parameter Editor | ~30% | Edit parameters for the selected action |
+
+### Filter Library Panel
+
+| Element | Type | Description |
+|---------|------|-------------|
+| Search Box | Text input | Filter actions by name or keyword |
+| Category List | Collapsible tree | Categories: Cleanup, Hole Filling, Normals, Repair, Simplification, Validation, Export, Blender |
+| Action Items | Draggable list items | Each shows action name and tool source (trimesh, pymeshfix, blender) |
+| Tool Filter | Toggle buttons | Filter by tool: All, trimesh, pymeshfix, meshio, blender |
+
+### Action List Panel
+
+| Element | Type | Description |
+|---------|------|-------------|
+| Action Cards | Draggable cards | Numbered cards showing action name, brief description, and tool badge |
+| Add Button (+) | Button | Open action picker to insert new action |
+| Move Up/Down | Buttons | Reorder selected action |
+| Delete Button (×) | Button | Remove selected action |
+| Drop Zone | Visual indicator | Shows where dragged action will be inserted |
+| Template Buttons | Button group | Quick-insert common action sequences |
+| Undo/Redo | Buttons | Undo/redo editor changes |
+| Apply Button | Button | Save changes and close editor |
+
+### Parameter Editor Panel
+
+| Element | Type | Description |
+|---------|------|-------------|
+| Action Name | Label | Name of selected action |
+| Tool Badge | Badge | Source tool (trimesh, pymeshfix, etc.) |
+| Description | Text block | What the action does and when to use it |
+| Parameter Fields | Dynamic form | Input controls appropriate to each parameter type |
+| Reset Button (↺) | Button | Reset parameter to default value |
+| Timeout | Number input | Optional timeout override in seconds |
+| On Error | Dropdown | Error handling: abort, skip, continue |
+| Dry-run Badge | Badge | Shows if action supports dry-run simulation |
+
+### Parameter Input Types
+
+| Parameter Type | Input Control | Example |
+|----------------|---------------|----------|
+| `float` | Number input with optional slider | `eps: 1e-8` |
+| `int` | Number input (integer only) | `max_hole_size: 1000` |
+| `bool` | Checkbox | `ascii: false` |
+| `string` | Text input | `path: "output.stl"` |
+| `enum` | Dropdown | `method: "fan"` |
+| `path` | Text input + Browse button | `tool_mesh: "subtract.stl"` |
+
+### Editor Behavior
+
+1. **Opening the editor**:
+   - From Step 3 (Suggest Filter Script): Click "Edit" or double-click the Actions List.
+   - From menu: Tools → Filter Script Editor.
+   - Editor opens as a modal dialog or docked panel.
+
+2. **Adding actions**:
+   - Drag from Filter Library and drop into Action List at desired position.
+   - Double-click an action in the library to append to the end.
+   - Click (+) button and select from a searchable dropdown.
+
+3. **Editing actions**:
+   - Click an action card to select it; parameters appear in the right panel.
+   - Modify parameters using the appropriate input controls.
+   - Changes are reflected immediately in the action card summary.
+
+4. **Reordering actions**:
+   - Drag action cards up/down within the list.
+   - Use Move Up/Down buttons for keyboard-accessible reordering.
+
+5. **Removing actions**:
+   - Select action and click Delete (×) or press Delete key.
+   - Confirm removal if action has modified parameters.
+
+6. **Using templates**:
+   - Click a template button (e.g., "Basic Cleanup") to insert a predefined sequence.
+   - Templates can be inserted at the current position or replace all actions.
+
+7. **Validation**:
+   - Invalid parameters show red border and error tooltip.
+   - Actions with missing required parameters are highlighted.
+   - "Apply" button disabled until all validation errors resolved.
+
+8. **Applying changes**:
+   - Click "Apply" to save changes and close the editor.
+   - Click "Cancel" or press Escape to discard changes.
+   - If unsaved changes exist, prompt for confirmation before closing.
+
+### Quick Templates
+
+| Template | Actions Included |
+|----------|------------------|
+| Basic Cleanup | `trimesh_basic` → `merge_vertices` → `remove_degenerate_faces` → `validate` |
+| Hole Fill + Normals | `fill_holes` → `recalculate_normals` → `validate` |
+| Aggressive Repair | `pymeshfix_repair` → `fill_holes` → `remove_small_components` → `fix_normals` → `validate` |
+| Blender Fix | `blender_remesh` → `blender_boolean_union` → `blender_triangulate` → `validate` → `export_stl` |
+| Simplify | `decimate` → `smooth_taubin` → `validate` |
+
+### Keyboard Shortcuts (Editor)
+
+| Shortcut | Action |
+|----------|--------|
+| `Ctrl+Z` | Undo |
+| `Ctrl+Y` | Redo |
+| `Delete` | Remove selected action |
+| `Ctrl+D` | Duplicate selected action |
+| `Ctrl+↑` | Move action up |
+| `Ctrl+↓` | Move action down |
+| `Ctrl+F` | Focus search box |
+| `Enter` | Apply changes (when Apply button focused) |
+| `Escape` | Cancel and close editor |
+
+### Filter Library Categories
+
+The library organizes 60+ actions into these categories:
+
+| Category | Actions | Description |
+|----------|---------|-------------|
+| Loading & Cleanup | 7 | Load files, merge vertices, remove degenerates |
+| Hole Filling | 3 | Fill holes, cap boundaries |
+| Normal Correction | 5 | Recalculate, reorient, unify, flip normals |
+| Component Management | 5 | Remove small parts, keep largest, boolean union |
+| Repair & Manifold | 5 | Fix non-manifold, stitch boundaries, pymeshfix |
+| Simplification & Remeshing | 6 | Decimate, subdivide, smooth, remesh |
+| Geometry Analysis | 4 | Identify thin regions, offset, hollow |
+| Boolean & Intersections | 4 | Detect/fix self-intersections, boolean ops |
+| Validation & Diagnostics | 7 | Check watertight, manifold, normals, volume |
+| Export | 5 | Export to STL, OBJ, PLY, 3MF |
+| Blender (Escalation) | 6 | Blender-specific remesh, solidify, boolean |
+
+See `docs/functional_spec.md` for the complete action catalog with parameters.
+
 ## Step 1: Environment Check
 
 **Purpose**: Verify that all required tools and dependencies are installed.
@@ -494,7 +639,8 @@ These mockups demonstrate how the theme colors work together in typical UI conte
 - Batch mode UI (select multiple files, run same filter).
 - Plugin/extension manager for custom actions.
 - Cloud sync for presets.
-- Undo/redo for filter script edits.
+- Action dependency graph visualization.
+- Filter script diff/compare tool.
 
 ---
 
@@ -519,8 +665,12 @@ These mockups demonstrate how the theme colors work together in typical UI conte
 - Built with PySide6 (Qt for Python).
 - Stacked widget for step navigation.
 - Background threads for long operations (env check, dry-run, execute) with signals to update UI.
-- Filter script editing uses a simple JSON editor or form-based approach.
-- Action registry loaded from `config/actions.json` or Python module.
+- Filter Script Editor implemented as a QDialog with three-panel layout (QSplitter).
+- Filter Library loaded from `config/filter_library.json` at startup.
+- Drag-and-drop implemented using Qt's drag-and-drop framework with custom MIME types.
+- Parameter forms dynamically generated from action schema definitions.
+- Undo/redo stack for editor operations using QUndoStack.
+- Action registry maps action names to implementations and validates parameters.
 - Presets stored as JSON files in `filters/` directory.
 
 ---
