@@ -1,0 +1,69 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "meshprep"
+dynamic = ["version"]
+description = "Automated STL cleanup pipeline for 3D printing"
+readme = "README.md"
+license = {text = "Apache-2.0"}
+authors = [
+    {name = "Dragon Ace"}
+]
+requires-python = ">=3.11"
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Multimedia :: Graphics :: 3D Modeling",
+]
+keywords = ["stl", "3d-printing", "mesh", "repair", "cleanup"]
+dependencies = [
+    "trimesh>=4.0.0",
+    "pymeshfix>=0.16.0",
+    "meshio>=5.0.0",
+    "numpy>=1.24.0",
+    "PySide6>=6.5.0",
+    "click>=8.0.0",
+    "PyYAML>=6.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+    "mypy>=1.0.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/DragonAceNL/MeshPrep"
+Repository = "https://github.com/DragonAceNL/MeshPrep"
+Issues = "https://github.com/DragonAceNL/MeshPrep/issues"
+
+[project.scripts]
+meshprep = "meshprep.cli:main"
+
+[project.gui-scripts]
+meshprep-gui = "meshprep.gui:main"
+
+[tool.setuptools.dynamic]
+version = {file = "VERSION"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_functions = ["test_*"]
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+ignore_missing_imports = true

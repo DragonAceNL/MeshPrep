@@ -1,79 +1,63 @@
-# Byte-compiled / optimized / DLL files
+# Visual Studio
+.vs/
+# Python
 __pycache__/
 *.py[cod]
 *$py.class
-
-# C extensions
 *.so
-
-# Distribution / packaging
 .Python
 build/
+develop-eggs/
 dist/
-*.egg-info/
+downloads/
+eggs/
 .eggs/
-pip-wheel-metadata/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
 
 # Virtual environments
 .venv/
 venv/
-env/
 ENV/
-env.bak/
+env/
 
-# Installer logs
-pip-log.txt
-pip-delete-this-directory.txt
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
 
-# Unit test / coverage
+# Testing
 .pytest_cache/
-coverage.xml
+.coverage
 htmlcov/
 .tox/
 .nox/
 
-# IDEs and editors
-.vscode/
-.vs/
-.idea/
-*.suo
-*.user
-*.userosscache
-*.sln.docstates
+# Type checking
+.mypy_cache/
+.dmypy.json
+dmypy.json
 
-# Logs and temp files
-logs/
+# Output and logs
+output/
 *.log
-*.tmp
-tmp/
+logs/
 
-# OS files
+# OS
 .DS_Store
 Thumbs.db
 
-# Python packaging
-*.egg
-*.manifest
-*.spec
-
-# MyPy
-.mypy_cache/
-
-# Pipenv
-Pipfile.lock
-
-# dotenv
-.env
-.env.*
-
-# Jupyter
-.ipynb_checkpoints/
-
-# Node
-node_modules/
-
-# Misc
-coverage/
-
-# Keep local filters/presets tracked; do not ignore `filters/` or `pipelines/`
-# If you store large fixtures locally, consider adding them to .gitignore locally.
+# Project specific
+*.stl
+!tests/fixtures/*.stl
+report.json
+report.csv
