@@ -12,10 +12,10 @@ from PySide6.QtWidgets import (
     QLabel, QPushButton, QFileDialog, QMessageBox, QFrame,
     QSplitter, QTextEdit, QGroupBox, QRadioButton, QButtonGroup,
     QProgressBar, QTableWidget, QTableWidgetItem, QHeaderView,
-    QApplication, QStatusBar,
+    QApplication, QStatusBar, QToolBar,
 )
 from PySide6.QtCore import Qt, QThread, Signal, Slot
-from PySide6.QtGui import QFont
+from PySide6.QtGui import QFont, QAction, QIcon
 from PySide6.QtSvgWidgets import QSvgWidget
 
 from ..core.mock_mesh import MockMesh, load_mock_stl, save_mock_stl
@@ -24,7 +24,7 @@ from ..core.profiles import ProfileDetector, ProfileMatch
 from ..core.filter_script import FilterScript, FilterScriptRunner, generate_filter_script
 from ..core.actions import get_action_registry
 
-from .styles import apply_theme, DARK_THEME
+from .styles import apply_theme, DARK_THEME, LIGHT_THEME
 from .widgets import (
     StepIndicator, DiagnosticsPanel, LogConsole, ProgressPanel, ProfileCard
 )
@@ -127,15 +127,41 @@ class MainWindow(QMainWindow):
         self.worker: WorkerThread = None
         self._selected_file_path: str = None
         
+        self._current_theme = "dark"
+        
         self.setWindowTitle("MeshPrep - STL Cleanup Pipeline")
         self.setMinimumSize(1200, 800)
         
+        self._setup_toolbar()
         self._setup_ui()
-        apply_theme(self, "dark")
+        apply_theme(self, self._current_theme)
         
         # Start at environment check
         self._go_to_step(0)
         self._simulate_env_check()
+    
+    def _setup_toolbar(self):
+        """Set up the toolbar."""
+        self.toolbar = QToolBar("Main Toolbar")
+        self.toolbar.setMovable(False)
+        self.addToolBar(Qt.TopToolBarArea, self.toolbar)
+        
+        # Theme toggle action
+        self.theme_action = QAction("🌙 Dark Mode", self)
+        self.theme_action.setToolTip("Toggle between dark and light mode")
+        self.theme_action.triggered.connect(self._toggle_theme)
+        self.toolbar.addAction(self.theme_action)
+    
+    def _toggle_theme(self):
+        """Toggle between dark and light theme."""
+        if self._current_theme == "dark":
+            self._current_theme = "light"
+            self.theme_action.setText("☀️ Light Mode")
+        else:
+            self._current_theme = "dark"
+            self.theme_action.setText("🌙 Dark Mode")
+        
+        apply_theme(self, self._current_theme)
     
     def _setup_ui(self):
         """Set up the main UI."""
