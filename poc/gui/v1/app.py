@@ -1,140 +1,394 @@
+"""
+Improved MeshPrep v1 GUI prototype
+- Applies clearer layout and UX
+- Simulates full high-level flow: environment check, model selection, profile detection, suggested filter generation,
+  review/dry-run, execution with logs, and results/reporting.
+- Uses PySide6. This is a simulation — no real mesh work performed.
+"""
 import sys
-from PySide6 import QtWidgets, QtCore
+import json
+import datetime
+import random
+from PySide6 import QtWidgets, QtCore, QtGui
 
-class CheckEnvPage(QtWidgets.QWidget):
+# Colors / styles
+BG = "#0f1720"
+PANEL = "#111822"
+ACCENT = "#4fe8c4"
+TEXT = "#dff6fb"
+BTN = "#1b2b33"
+
+class EnvWidget(QtWidgets.QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.setStyleSheet(f"background:{BG}; color:{TEXT}")
         layout = QtWidgets.QVBoxLayout(self)
-        self.status_label = QtWidgets.QLabel("Environment check not run")
-        self.auto_setup_btn = QtWidgets.QPushButton("Auto-setup environment")
-        self.instructions_btn = QtWidgets.QPushButton("Show manual setup instructions")
-        layout.addWidget(self.status_label)
-        layout.addWidget(self.auto_setup_btn)
-        layout.addWidget(self.instructions_btn)
+        title = QtWidgets.QLabel("Environment Check")
+        title.setStyleSheet("font: 14pt 'Segoe UI'; color: %s" % ACCENT)
+        layout.addWidget(title)
 
-class ModelSelectionPage(QtWidgets.QWidget):
+        self.status_view = QtWidgets.QPlainTextEdit()
+        self.status_view.setReadOnly(True)
+        self.status_view.setFixedHeight(220)
+        self.status_view.setFont(QtGui.QFont('Consolas', 10))
+        self.status_view.setPlainText("Environment check not run. Click 'Auto-setup' to simulate.")
+        layout.addWidget(self.status_view)
+
+        btn_row = QtWidgets.QHBoxLayout()
+        self.auto_setup_btn = QtWidgets.QPushButton("Auto-setup")
+        self.auto_setup_btn.setStyleSheet("padding:8px; background:%s; color:%s" % (BTN, TEXT))
+        self.manual_btn = QtWidgets.QPushButton("Show manual instructions")
+        # keep backward-compatible attribute name
+        self.instructions_btn = self.manual_btn
+        btn_row.addWidget(self.auto_setup_btn)
+        btn_row.addWidget(self.manual_btn)
+        layout.addLayout(btn_row)
+
+        layout.addStretch()
+
+class SelectionWidget(QtWidgets.QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.setStyleSheet(f"background:{BG}; color:{TEXT}")
         layout = QtWidgets.QVBoxLayout(self)
-        self.file_picker = QtWidgets.QPushButton("Select STL file...")
+        title = QtWidgets.QLabel("Model selection & filter source")
+        title.setStyleSheet("font: 14pt 'Segoe UI'; color: %s" % ACCENT)
+        layout.addWidget(title)
+
+        file_row = QtWidgets.QHBoxLayout()
+        self.file_label = QtWidgets.QLabel("No model selected")
+        self.file_btn = QtWidgets.QPushButton("Select STL...")
+        file_row.addWidget(self.file_label)
+        file_row.addWidget(self.file_btn)
+        layout.addLayout(file_row)
+
+        layout.addSpacing(8)
         self.radio_auto = QtWidgets.QRadioButton("Auto-detect profile and suggest filter")
         self.radio_manual = QtWidgets.QRadioButton("Use my filter script (file or URL)")
         self.radio_auto.setChecked(True)
-        layout.addWidget(self.file_picker)
         layout.addWidget(self.radio_auto)
         layout.addWidget(self.radio_manual)
 
-class SuggestedFilterPage(QtWidgets.QWidget):
+        self.load_filter_btn = QtWidgets.QPushButton("Load filter script")
+        layout.addWidget(self.load_filter_btn)
+        layout.addStretch()
+
+class SuggestWidget(QtWidgets.QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.setStyleSheet(f"background:{BG}; color:{TEXT}")
         layout = QtWidgets.QHBoxLayout(self)
-        # Left: diagnostics
+
         left = QtWidgets.QVBoxLayout()
-        self.diagnostics = QtWidgets.QTextEdit()
-        self.diagnostics.setReadOnly(True)
         left.addWidget(QtWidgets.QLabel("Diagnostics"))
-        left.addWidget(self.diagnostics)
-        # Right: actions list
+        self.diag = QtWidgets.QTextEdit()
+        self.diag.setReadOnly(True)
+        self.diag.setFixedHeight(200)
+        left.addWidget(self.diag)
+
+        left.addWidget(QtWidgets.QLabel("Profile suggestion"))
+        self.profile_lbl = QtWidgets.QLabel("<none>")
+        left.addWidget(self.profile_lbl)
+
+        layout.addLayout(left, 2)
+
         right = QtWidgets.QVBoxLayout()
-        self.actions_list = QtWidgets.QListWidget()
-        btns = QtWidgets.QHBoxLayout()
-        self.add_btn = QtWidgets.QPushButton("Add")
-        self.edit_btn = QtWidgets.QPushButton("Edit")
-        self.remove_btn = QtWidgets.QPushButton("Remove")
-        btns.addWidget(self.add_btn)
-        btns.addWidget(self.edit_btn)
-        btns.addWidget(self.remove_btn)
         right.addWidget(QtWidgets.QLabel("Suggested filter script (editable)"))
-        right.addWidget(self.actions_list)
-        right.addLayout(btns)
-        layout.addLayout(left)
-        layout.addLayout(right)
+        self.actions = QtWidgets.QListWidget()
+        right.addWidget(self.actions)
+        ah = QtWidgets.QHBoxLayout()
+        self.add_act = QtWidgets.QPushButton("Add")
+        self.edit_act = QtWidgets.QPushButton("Edit")
+        self.del_act = QtWidgets.QPushButton("Remove")
+        ah.addWidget(self.add_act)
+        ah.addWidget(self.edit_act)
+        ah.addWidget(self.del_act)
+        right.addLayout(ah)
 
-class DryRunPage(QtWidgets.QWidget):
+        self.save_preset_btn = QtWidgets.QPushButton("Save preset")
+        right.addWidget(self.save_preset_btn)
+        right.addStretch()
+
+        layout.addLayout(right, 1)
+
+        # wire simple actions
+        self.add_act.clicked.connect(self._add)
+        self.edit_act.clicked.connect(self._edit)
+        self.del_act.clicked.connect(self._del)
+        self.save_preset_btn.clicked.connect(self._save)
+
+    def _add(self):
+        text, ok = QtWidgets.QInputDialog.getText(self, "Action name", "Action:")
+        if ok and text:
+            self.actions.addItem(text)
+
+    def _edit(self):
+        item = self.actions.currentItem()
+        if not item:
+            return
+        text, ok = QtWidgets.QInputDialog.getText(self, "Edit action", "Action:", text=item.text())
+        if ok and text:
+            item.setText(text)
+
+    def _del(self):
+        r = self.actions.currentRow()
+        if r >= 0:
+            self.actions.takeItem(r)
+
+    def _save(self):
+        preset = {
+            "name": "preset-1",
+            "meta": {"generated_by": "ui-save", "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat()},
+            "actions": [self.actions.item(i).text() for i in range(self.actions.count())]
+        }
+        fname, _ = QtWidgets.QFileDialog.getSaveFileName(self, "Save preset", "preset.json", "JSON (*.json)")
+        if fname:
+            with open(fname, 'w') as f:
+                json.dump(preset, f, indent=2)
+            QtWidgets.QMessageBox.information(self, "Saved", f"Preset saved to {fname}")
+
+class DryRunWidget(QtWidgets.QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.setStyleSheet(f"background:{BG}; color:{TEXT}")
         layout = QtWidgets.QVBoxLayout(self)
-        self.steps_table = QtWidgets.QTableWidget(0,3)
-        self.steps_table.setHorizontalHeaderLabels(["Step", "Status", "Notes"])
-        layout.addWidget(self.steps_table)
-        self.run_dry_btn = QtWidgets.QPushButton("Run dry-run")
-        layout.addWidget(self.run_dry_btn)
+        layout.addWidget(QtWidgets.QLabel("Dry-run preview"))
+        self.table = QtWidgets.QTableWidget(0,3)
+        self.table.setHorizontalHeaderLabels(["Step","Status","Notes"])
+        layout.addWidget(self.table)
+        self.run_btn = QtWidgets.QPushButton("Run dry-run")
+        layout.addWidget(self.run_btn)
+        layout.addStretch()
+        self.run_btn.clicked.connect(self.run)
+        self._timer = None
+        self._idx = 0
 
-class ExecutePage(QtWidgets.QWidget):
+    def run(self):
+        # gather actions from SuggestWidget
+        main = self.parent()
+        while main and not hasattr(main, 'suggest_widget'):
+            main = main.parent()
+        actions = []
+        try:
+            actions = [main.suggest_widget.actions.item(i).text() for i in range(main.suggest_widget.actions.count())]
+        except Exception:
+            pass
+        if not actions:
+            actions = ["trimesh_basic","fill_holes","validate"]
+        self.table.setRowCount(0)
+        for a in actions:
+            r = self.table.rowCount()
+            self.table.insertRow(r)
+            self.table.setItem(r,0, QtWidgets.QTableWidgetItem(a))
+            self.table.setItem(r,1, QtWidgets.QTableWidgetItem("pending"))
+            self.table.setItem(r,2, QtWidgets.QTableWidgetItem(""))
+        self._idx = 0
+        if self._timer:
+            self._timer.stop()
+        self._timer = QtCore.QTimer(self)
+        self._timer.timeout.connect(self._advance)
+        self._timer.start(500)
+
+    def _advance(self):
+        if self._idx >= self.table.rowCount():
+            if self._timer:
+                self._timer.stop()
+            return
+        status = random.choice(["ok","ok","warn"])
+        self.table.setItem(self._idx,1, QtWidgets.QTableWidgetItem(status))
+        self.table.setItem(self._idx,2, QtWidgets.QTableWidgetItem("simulated"))
+        self._idx += 1
+
+class ExecuteWidget(QtWidgets.QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.setStyleSheet(f"background:{BG}; color:{TEXT}")
         layout = QtWidgets.QVBoxLayout(self)
+        layout.addWidget(QtWidgets.QLabel("Execute"))
         self.progress = QtWidgets.QProgressBar()
-        self.log_view = QtWidgets.QPlainTextEdit()
-        self.log_view.setReadOnly(True)
         layout.addWidget(self.progress)
-        layout.addWidget(QtWidgets.QLabel("Run log"))
-        layout.addWidget(self.log_view)
-        self.start_btn = QtWidgets.QPushButton("Start")
+        self.terminal = QtWidgets.QPlainTextEdit()
+        self.terminal.setReadOnly(True)
+        self.terminal.setFixedHeight(220)
+        layout.addWidget(self.terminal)
+        h = QtWidgets.QHBoxLayout()
+        self.start_btn = QtWidgets.QPushButton("Start run")
         self.stop_btn = QtWidgets.QPushButton("Stop")
-        btns = QtWidgets.QHBoxLayout()
-        btns.addWidget(self.start_btn)
-        btns.addWidget(self.stop_btn)
-        layout.addLayout(btns)
+        h.addWidget(self.start_btn)
+        h.addWidget(self.stop_btn)
+        layout.addLayout(h)
+        layout.addStretch()
+        self._timer = None
+        self._step = 0
+        self.start_btn.clicked.connect(self.start)
+        self.stop_btn.clicked.connect(self.stop)
 
-class ResultsPage(QtWidgets.QWidget):
+    def start(self):
+        self.terminal.clear()
+        self.progress.setValue(0)
+        self._step = 0
+        lines = [
+            "[INFO] Loading model...",
+            "[DEBUG] trimesh_basic...",
+            "[INFO] fill_holes applied",
+            "[INFO] pymeshfix repair complete",
+            "[INFO] validation: watertight=True",
+            "[INFO] exporting output"
+        ]
+        self._lines = lines
+        if self._timer:
+            self._timer.stop()
+        self._timer = QtCore.QTimer(self)
+        self._timer.timeout.connect(self._tick)
+        self._timer.start(400)
+
+    def _tick(self):
+        if self._step < len(self._lines):
+            self.terminal.appendPlainText(self._lines[self._step])
+            self._step += 1
+            self.progress.setValue(int((self._step/len(self._lines))*100))
+        else:
+            self.terminal.appendPlainText("[SUCCESS] Run complete")
+            self.progress.setValue(100)
+            self._timer.stop()
+
+    def stop(self):
+        if self._timer:
+            self._timer.stop()
+        self.terminal.appendPlainText("[INFO] Run stopped by user")
+
+class ResultsWidget(QtWidgets.QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.setStyleSheet(f"background:{BG}; color:{TEXT}")
         layout = QtWidgets.QVBoxLayout(self)
-        self.summary = QtWidgets.QTextEdit()
-        self.summary.setReadOnly(True)
-        self.export_btn = QtWidgets.QPushButton("Export run package")
-        layout.addWidget(QtWidgets.QLabel("Run summary"))
-        layout.addWidget(self.summary)
+        layout.addWidget(QtWidgets.QLabel("Results & Export"))
+        self.report_view = QtWidgets.QTextEdit()
+        self.report_view.setReadOnly(True)
+        layout.addWidget(self.report_view)
+        self.export_btn = QtWidgets.QPushButton("Export run package (simulate)")
         layout.addWidget(self.export_btn)
+        layout.addStretch()
+        self.export_btn.clicked.connect(self._export)
+
+    def _export(self):
+        # simulate report
+        report = {"status":"success","timestamp":datetime.datetime.now(datetime.timezone.utc).isoformat(),"notes":"Simulated run"}
+        self.report_view.setPlainText(json.dumps(report, indent=2))
+        QtWidgets.QMessageBox.information(self, "Export", "Simulated run package created (not really).")
 
 class MainWindow(QtWidgets.QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("MeshPrep - Prototype GUI")
-        self.resize(1000, 700)
-
-        # Central widget with stacked pages
+        self.setWindowTitle("MeshPrep - Improved v1 Prototype")
+        self.resize(1100, 700)
         central = QtWidgets.QWidget()
+        central.setStyleSheet(f"background:{BG};")
         self.setCentralWidget(central)
-        layout = QtWidgets.QVBoxLayout(central)
+        layout = QtWidgets.QHBoxLayout(central)
 
+        # Left: step list
+        self.steps_list = QtWidgets.QListWidget()
+        self.steps_list.addItems(["1. Environment","2. Select Model","3. Suggest Filter","4. Dry-Run","5. Execute","6. Results"])
+        self.steps_list.setFixedWidth(180)
+        self.steps_list.setStyleSheet("QListWidget{background:%s;color:%s;} QListWidget::item:selected{background:#22333b;}" % (PANEL, TEXT))
+        layout.addWidget(self.steps_list)
+
+        # Center: stacked pages
         self.stack = QtWidgets.QStackedWidget()
-        self.pages = {}
-        self.pages['checkenv'] = CheckEnvPage()
-        self.pages['select'] = ModelSelectionPage()
-        self.pages['suggest'] = SuggestedFilterPage()
-        self.pages['dryrun'] = DryRunPage()
-        self.pages['execute'] = ExecutePage()
-        self.pages['results'] = ResultsPage()
-        for p in ['checkenv','select','suggest','dryrun','execute','results']:
-            self.stack.addWidget(self.pages[p])
+        self.env_widget = EnvWidget()
+        self.select_widget = SelectionWidget()
+        self.suggest_widget = SuggestWidget()
+        self.dry_widget = DryRunWidget()
+        self.exec_widget = ExecuteWidget()
+        self.results_widget = ResultsWidget()
+        for w in [self.env_widget, self.select_widget, self.suggest_widget, self.dry_widget, self.exec_widget, self.results_widget]:
+            self.stack.addWidget(w)
+        layout.addWidget(self.stack, 1)
 
-        # Navigation
-        nav = QtWidgets.QHBoxLayout()
-        self.prev_btn = QtWidgets.QPushButton("Previous")
-        self.next_btn = QtWidgets.QPushButton("Next")
-        nav.addWidget(self.prev_btn)
-        nav.addWidget(self.next_btn)
+        # Right: global log
+        right = QtWidgets.QVBoxLayout()
+        right.addWidget(QtWidgets.QLabel("Global Log"))
+        self.global_log = QtWidgets.QPlainTextEdit()
+        self.global_log.setReadOnly(True)
+        self.global_log.setFixedWidth(300)
+        right.addWidget(self.global_log)
+        layout.addLayout(right)
 
-        layout.addWidget(self.stack)
-        layout.addLayout(nav)
+        # wiring
+        self.steps_list.currentRowChanged.connect(self.stack.setCurrentIndex)
+        self.steps_list.setCurrentRow(0)
+        self.env_widget.auto_setup_btn.clicked.connect(self._auto_setup)
+        self.env_widget.instructions_btn.clicked.connect(self._show_instructions)
+        self.select_widget.file_btn.clicked.connect(self._select_file)
+        self.select_widget.load_filter_btn.clicked.connect(self._load_filter)
+        # when suggested page saved/edited, update global log
+        self.suggest_widget.save_preset_btn.clicked.connect(lambda: self.global_log.appendPlainText("Preset saved by user"))
+        self.dry_widget.run_btn.clicked.connect(lambda: self.global_log.appendPlainText("Dry-run started"))
+        self.exec_widget.start_btn.clicked.connect(lambda: self.global_log.appendPlainText("Run started"))
+        self.exec_widget.stop_btn.clicked.connect(lambda: self.global_log.appendPlainText("Run stopped"))
 
-        self.current_index = 0
-        self.stack.setCurrentIndex(self.current_index)
+    # simulated behaviors
+    def _auto_setup(self):
+        self.global_log.appendPlainText("Auto-setup initiated")
+        self.env_widget.status_view.clear()
+        steps = ["Checking Python","Checking trimesh","Checking pymeshfix","Checking meshio","Checking Blender (optional)","Finalizing"]
+        self._env_idx = 0
+        self._env_timer = QtCore.QTimer(self)
+        self._env_timer.timeout.connect(lambda: self._env_step(steps))
+        self._env_timer.start(500)
 
-        self.prev_btn.clicked.connect(self.go_prev)
-        self.next_btn.clicked.connect(self.go_next)
+    def _env_step(self, steps):
+        if self._env_idx < len(steps):
+            s = steps[self._env_idx]
+            # use appendPlainText for QPlainTextEdit
+            self.env_widget.status_view.appendPlainText(f"[INFO] {s}... OK")
+            self.global_log.appendPlainText(f"{s}: OK")
+            self._env_idx += 1
+        else:
+            self._env_timer.stop()
+            self.env_widget.status_view.appendPlainText("[SUCCESS] Environment ready (simulated)")
+            self.global_log.appendPlainText("Environment setup complete")
+            self.steps_list.setCurrentRow(1)
 
-    def go_prev(self):
-        if self.current_index>0:
-            self.current_index -= 1
-            self.stack.setCurrentIndex(self.current_index)
+    def _show_instructions(self):
+        QtWidgets.QMessageBox.information(self, "Manual setup",
+                                          "See docs/INSTALL.md or gui/README.md for manual steps to prepare the environment.")
 
-    def go_next(self):
-        if self.current_index < self.stack.count()-1:
-            self.current_index += 1
-            self.stack.setCurrentIndex(self.current_index)
+    def _select_file(self):
+        fname, _ = QtWidgets.QFileDialog.getOpenFileName(self, "Select STL", "", "STL Files (*.stl);;All Files (*)")
+        if fname:
+            self.select_widget.file_label.setText(fname)
+            self.global_log.appendPlainText(f"Selected model: {fname}")
+            # simulate profile detection
+            self.suggest_widget.diag.setPlainText("Analyzing model...\ncomputing diagnostics...")
+            QtCore.QTimer.singleShot(800, self._populate_suggest)
+            self.steps_list.setCurrentRow(2)
+
+    def _populate_suggest(self):
+        # fake diagnostics and suggested actions
+        diag = "watertight=False\nholes=3\ncomponents=1\nnormal_consistency=0.6\nprofile=holes-only\nconfidence=0.82"
+        self.suggest_widget.diag.setPlainText(diag)
+        self.suggest_widget.profile_lbl.setText("holes-only (confidence 0.82)")
+        self.suggest_widget.actions.clear()
+        for a in ["trimesh_basic","fill_holes(max_size=500)","recalculate_normals","validate"]:
+            self.suggest_widget.actions.addItem(a)
+        self.global_log.appendPlainText("Suggested filter generated")
+
+    def _load_filter(self):
+        fname, _ = QtWidgets.QFileDialog.getOpenFileName(self, "Load filter", "", "JSON/YAML (*.json *.yaml *.yml);;All Files (*)")
+        if fname:
+            self.global_log.appendPlainText(f"Loaded filter script: {fname}")
+            try:
+                with open(fname, 'r') as f:
+                    data = json.load(f)
+                self.suggest_widget.actions.clear()
+                for a in data.get('actions', []):
+                    self.suggest_widget.actions.addItem(a)
+                self.suggest_widget.diag.setPlainText(f"Loaded preset: {data.get('name','<unnamed>')}")
+            except Exception:
+                QtWidgets.QMessageBox.warning(self, "Load failed", "Could not load as JSON; showing filename only")
+                self.suggest_widget.diag.setPlainText(f"Loaded filter: {fname}")
 
 if __name__ == '__main__':
     app = QtWidgets.QApplication(sys.argv)
