@@ -11,7 +11,8 @@ from PySide6.QtWidgets import (
     QSpinBox, QDoubleSpinBox, QCheckBox, QComboBox, QLineEdit,
 )
 from PySide6.QtCore import Qt, Signal, QSize
-from PySide6.QtGui import QFont, QColor
+from PySide6.QtGui import QFont, QColor, QPixmap
+from PySide6.QtSvgWidgets import QSvgWidget
 
 from typing import Optional, Any
 
@@ -43,7 +44,17 @@ class StepIndicator(QWidget):
             layout.addWidget(btn)
         
         layout.addStretch()
+        
+        # Logo at the bottom
+        self.logo_widget = QSvgWidget()
+        self.logo_widget.setFixedSize(160, 80)
+        layout.addWidget(self.logo_widget, alignment=Qt.AlignCenter)
+        
         self._update_buttons()
+    
+    def set_logo(self, path: str):
+        """Set the logo from an SVG file path."""
+        self.logo_widget.load(path)
     
     def _on_step_clicked(self, index: int):
         if index <= max(self.completed_steps, default=-1) + 1:

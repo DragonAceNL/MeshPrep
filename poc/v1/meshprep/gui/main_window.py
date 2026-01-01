@@ -28,6 +28,7 @@ from .widgets import (
     StepIndicator, DiagnosticsPanel, LogConsole, ProgressPanel, ProfileCard
 )
 from .filter_editor import FilterScriptEditor
+from ..resources import get_logo_path
 
 
 class WorkerThread(QThread):
@@ -149,6 +150,12 @@ class MainWindow(QMainWindow):
         self.step_indicator.step_clicked.connect(self._go_to_step)
         self.step_indicator.setMaximumWidth(200)
         self.step_indicator.setMinimumWidth(180)
+        
+        # Load logo
+        logo_path = get_logo_path()
+        if logo_path.exists():
+            self.step_indicator.set_logo(str(logo_path))
+        
         main_layout.addWidget(self.step_indicator)
         
         # Main content area
