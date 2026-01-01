@@ -14,13 +14,13 @@ Goal
 - Automatically detect a model's profile (see `docs/model_profiles.md`) and generate a suggested filter script tailored to that profile; present the suggested filter script for review and editing before execution.
 
 Scope
-- Input: a single STL file (ASCII or binary) per run. The tool will scan the selected model to produce a suggested, generic filter script that fits the model's profile; users can review and tweak the suggested filter script before applying it. The software will not accept a directory of files as the primary workflow � each model is treated individually to allow per-model tuning and reproducible presets.
+- Input: a single STL file (ASCII or binary) per run. The tool will scan the selected model to produce a suggested, generic filter script that fits the model's profile; users can review and tweak the suggested filter script before applying it. The software will not accept a directory of files as the primary workflow — each model is treated individually to allow per-model tuning and reproducible presets.
 - Output: cleaned STL files suitable for slicing and a CSV/JSON report with diagnostics and the chosen filter script for the model.
 - Tools: Python-based stack using `trimesh`, `pymeshfix`, `meshio`. Optional escalation uses Blender headless if needed.
 
 Non-Goals
 - Provide a full-featured cloud service, hosted web app, or serverless execution model (deployment to cloud is out of scope for the initial version).
-- Implement exhaustive manufacturability, structural simulation, or advanced slicing optimization � only basic geometry validations (watertightness, manifoldness, component sanity) are required.
+- Implement exhaustive manufacturability, structural simulation, or advanced slicing optimization — only basic geometry validations (watertightness, manifoldness, component sanity) are required.
 - Target mobile platforms or provide a native macOS/Linux GUI as the primary interface in the initial release (desktop Windows GUI is required; cross-platform CLI/automation support remains a goal).
 - Guarantee that every possible corrupt mesh can be fixed; extremely damaged meshes may still require manual intervention and will be reported as failures with diagnostics.
 
@@ -81,17 +81,17 @@ High-level flow
    - If validation still fails and Blender is available (or `--use-blender` set), run the Blender escalation pipeline for advanced remeshing/boolean cleanup and re-validate.
    - If escalation is disabled or fails, mark the model as failed and include detailed diagnostics and suggested manual remediation steps in the report.
 8. Output, reporting, and reproducibility:
-   - Export cleaned STL with deterministic filename pattern: `<origname>__<presetname>__<timestamp>.stl`.
+   - Export cleaned STL with deterministic filename pattern: `<origname>__<filtername>__<timestamp>.stl`.
    - Produce `report.json` (detailed per-step diagnostics, tool versions, commands, model fingerprint) and `report.csv` summary row for the run.
    - Offer `--export-run <dir>` to bundle input sample, filter script used, `report.json`, small before/after thumbnails, and `checkenv` output for sharing/reproducibility.
 9. Logging and UI feedback:
    - Stream progress logs to the GUI console and save to a rotating logfile. Display clear error/warning messages and suggested next actions.
    - Provide a run summary UI showing success/failure, key diagnostics, runtime, and links to artifacts.
 10. Iterate and contribute:
-   - Allow users to save tuned presets and optionally contribute them (with metadata and tests) to the community presets repository (with PR workflow outlined in `CONTRIBUTING.md`).
+    - Allow users to save tuned presets and optionally contribute them (with metadata and tests) to the community presets repository (with PR workflow outlined in `CONTRIBUTING.md`).
 
 Filter script representation
-- Filter scripts are first-class JSON or YAML documents that describe an ordered list of actions to run against a single model. They are the primary user-editable unit (created, imported, exported, shared).
+- Filter scripts are first-class JSON or YAML documents that describe an ordered list of filters (actions) to run against a single model. They are the primary user-editable unit (created, imported, exported, shared). The tool runs filters in a specific order using available repair tools to produce a 3D-printable result.
 
 - Top-level structure (JSON example):
   {
@@ -103,7 +103,7 @@ Filter script representation
       "generator_version": "0.1.0",
       "timestamp": "2025-01-01T12:00:00Z",
       "author": "auto",
-      "description": "Suggested hole-filling preset from model scan",
+      "description": "Suggested hole-filling filter script from model scan",
       "source": "local|url|community"
     },
     "actions": [
@@ -122,7 +122,7 @@ Filter script representation
   - `on_error` (optional): policy for the action: `abort` (default), `skip`, or `continue`.
 
 - Action registry
-  - The driver maintains an action registry mapping `name` ? implementation, documentation, supported params, and a stable version string. Implementations must declare whether they are "destructive" or safe for `dry-run` simulation.
+  - The driver maintains an action registry mapping `name` → implementation, documentation, supported params, and a stable version string. Implementations must declare whether they are "destructive" or safe for `dry-run` simulation.
   - New actions are added by registering them in the registry; filter scripts reference actions by `name` only.
 
 - Metadata and provenance
@@ -163,7 +163,8 @@ Filter script representation
   - Presets contributed to an official presets repo should follow a minimal review checklist (metadata, test fixture, compatibility notes) described in `CONTRIBUTING.md`.
 
 - Storage and naming
-  - Local presets stored in `filters/` (or `pipelines/`) directory; suggested presets written with `meta.source = "local"` and user templates may be saved with `author` and `tags`.
+  - Local filter scripts and presets are stored in the `filters/` directory.
+  - Suggested filter scripts are written with `meta.source = "local"` and user templates may be saved with `author` and `tags`.
 
 - Interoperability
   - Filter script format is intentionally simple JSON/YAML so third parties can generate presets (e.g., Reddit posts, bots). The driver provides an import helper to fetch a preset from a URL and validate it automatically.
@@ -171,4 +172,132 @@ Filter script representation
 - Backward-compatibility
   - Future driver versions must support older preset versions where reasonable; the driver emits warnings when using deprecated actions and suggests replacements.
 
+Validation criteria
+- `is_watertight` true
+- No non-manifold edges
+- Single large component (components below volume threshold removed)
+- No self-intersections (best-effort check)
 
+CLI
+
+Command-line interface specification for `auto_fix_stl.py`:
+
+| Argument | Type | Required | Default | Description |
+|----------|------|----------|---------|-------------|
+| `--input` | path | yes | — | Path to input STL file |
+| `--output` | path | no | `./output/` | Directory for cleaned STL output |
+| `--filter` | path | no | — | Path to a filter script (JSON/YAML) to use instead of auto-detection |
+| `--preset` | string | no | — | Name of a preset from `filters/` to use |
+| `--report` | path | no | `./report.json` | Path for JSON report output |
+| `--csv` | path | no | `./report.csv` | Path for CSV report output |
+| `--export-run` | path | no | — | Export reproducible run package to specified directory |
+| `--use-blender` | choice | no | `on-failure` | When to use Blender escalation: `always`, `on-failure`, `never` |
+| `--dry-run` | flag | no | false | Simulate filter actions without writing output |
+| `--overwrite` | flag | no | false | Overwrite existing output files |
+| `--verbose` | flag | no | false | Enable verbose logging |
+| `--workers` | int | no | 1 | Number of parallel workers (reserved for future batch mode) |
+
+Examples:
+```bash
+# Auto-detect profile and repair
+python auto_fix_stl.py --input model.stl --output ./clean/
+
+# Use a specific filter script
+python auto_fix_stl.py --input model.stl --filter my_filter.json
+
+# Use a named preset
+python auto_fix_stl.py --input model.stl --preset holes-only
+
+# Dry-run with verbose output
+python auto_fix_stl.py --input model.stl --dry-run --verbose
+
+# Export run package for sharing
+python auto_fix_stl.py --input model.stl --export-run ./share/run1/
+```
+
+Artifacts
+- Cleaned STL outputs
+- `report.csv` with columns: filename, status, filter_script, attempts, time_ms, watertight_before, watertight_after, notes
+- `report.json` detailed diagnostics per model and the generated/suggested filter script
+
+Acceptance criteria
+- For a curated set of difficult models, produce watertight outputs for >= 90% when using suggested and tuned presets.
+- Produce logs and reports for all processed models.
+- Preset sharing: at least two community-contributed presets with reproduce packages and pinned dependencies.
+
+Testing
+- Unit tests for helper functions (loading, basic cleanup, validation checks).
+- Integration tests with sample STLs in `tests/fixtures/`.
+- Each model profile should have at least one fixture for testing detection and filter script generation.
+
+Implementation Plan (milestones)
+1. Create GUI and CLI driver and basic `trimesh` + `pymeshfix` pipeline with model scanning and suggested filter script generation.
+2. Add filter script config support and reporting.
+3. Add Blender escalation script and detection.
+4. Add unit and integration tests.
+5. Document installation and usage in `docs/`.
+
+Open issues / risks
+- `pymeshfix` binary builds may be hard to install on some platforms.
+- Very corrupted meshes may still fail and require manual intervention.
+- Blender scripting can be complex to maintain across versions.
+
+Next steps
+- Confirm functional spec and tweak acceptance criteria.
+- Start implementation: create `scripts/auto_fix_stl.py`, `filters/` directory with example presets, and test fixtures.
+
+Model profiles
+- We will include an initial set of model profiles (more than 10). The first release includes the ten core profiles listed in `docs/model_profiles.md`, and an expanded list of additional detectable profiles is documented there as well.
+
+A new document `docs/model_profiles.md` explains each profile and how the system selects them automatically based on model diagnostics.
+
+Collaborative & Sharing
+
+Purpose
+- Make it easy for the community to experiment with different filter scripts and share successful repair workflows (e.g. on Reddit).
+
+Features
+- Shareable filter scripts: store JSON/YAML presets in the `filters/` directory with metadata (author, description, tags, version).
+- Reproducible run packages: an `--export-run <dir>` option bundles the input sample, filter script, `report.json`, and small before/after thumbnails so others can reproduce the run.
+- Preset discovery: GUI and CLI support preset naming and metadata so presets can be associated with specific models and found externally.
+- Standardized reports: include a short "how to reproduce" block with filter script name, pinned package versions (or Dockerfile), and commands used.
+- Contribution workflow: require a `CONTRIBUTING.md` and PR template for adding presets (author, test case, and verification notes).
+
+Why Blender remains optional
+- Performance: Blender operations (remesh, booleans) are time-consuming; running Blender for every file would slow experimentation.
+- Stability and portability: Blender scripting (`bpy`) can be brittle across versions and is heavier to install on CI or contributor machines.
+- Fidelity: aggressive remeshing may change model detail; best used only when conservative repairs fail or when a preset explicitly requests it.
+
+Recommended approach
+- Keep Blender as an escalation step or as part of named aggressive presets (e.g. `aggressive-blender`) so contributors can opt-in when sharing presets.
+- Provide pinned Blender versions in preset metadata or a Dockerfile to improve reproducibility.
+
+Installation & Versioning
+
+Purpose
+- Provide an easy, up-to-date installation guide so new contributors and users can get started quickly.
+- Maintain a clear, versioned environment for reproducibility and to help debug regressions as the tool evolves.
+
+What to include in `docs/INSTALL.md` (summary)
+- Quickstart: create virtualenv, `pip install -r requirements.txt`, example run command.
+- Alternate install: `conda` environment instructions with exported `environment.yml` optional.
+- Platform notes: Windows, macOS, Linux caveats and troubleshooting hints (e.g. common `pymeshfix` wheel issues).
+- Optional tools: Blender install instructions, recommended Blender version(s), and how to verify `blender --version`.
+- Docker: optional `Dockerfile` usage and how to run a reproducible containerized run.
+- Troubleshooting: how to collect logs, attach `report.json`, `checkenv` output, and minimal repro files when reporting issues.
+
+Versioning rules
+- Maintain a `VERSION` file at repo root using Semantic Versioning (MAJOR.MINOR.PATCH), e.g. `0.1.0`.
+- When dependencies or install steps change, update `requirements.txt`, bump `VERSION`, and add a short entry in `CHANGELOG.md`.
+- Filter scripts must include a `preset_version` and either pinned dependencies or a Docker image tag to allow exact reproduction.
+
+Environment validation tool
+- Provide `scripts/checkenv.py` that prints installed package versions and checks for optional external tools (Blender). Include its output in exported run packages and CI logs.
+
+Documentation hygiene & process
+- Require PRs that change dependencies or install steps to update `docs/INSTALL.md`, `requirements.txt`, and bump `VERSION`.
+- Add PR checklist in `CONTRIBUTING.md` to remind contributors to update installation docs and versioning when relevant.
+
+Release process (brief)
+- Tag releases (`vMAJOR.MINOR.PATCH`) and publish a release that includes `CHANGELOG.md` entries and the updated `VERSION` file.
+- Optionally publish a Docker image with the same tag for reproducible environments.
