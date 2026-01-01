@@ -1,0 +1,19 @@
+{
+  "name": "full-repair",
+  "version": "1.0.0",
+  "meta": {
+    "generated_by": "preset",
+    "author": "MeshPrep",
+    "description": "Comprehensive repair: pymeshfix + hole filling + normal fixes",
+    "source": "local",
+    "tags": ["repair", "comprehensive", "non-manifold"]
+  },
+  "actions": [
+    { "name": "trimesh_basic", "params": {} },
+    { "name": "remove_degenerate_faces", "params": {} },
+    { "name": "pymeshfix_repair", "params": {} },
+    { "name": "fill_holes", "params": { "max_hole_size": 2000 } },
+    { "name": "fix_normals", "params": {} },
+    { "name": "validate", "params": {} }
+  ]
+}

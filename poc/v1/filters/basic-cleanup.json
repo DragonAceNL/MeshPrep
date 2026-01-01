@@ -1,0 +1,17 @@
+{
+  "name": "basic-cleanup",
+  "version": "1.0.0",
+  "meta": {
+    "generated_by": "preset",
+    "author": "MeshPrep",
+    "description": "Basic cleanup: merge vertices, remove degenerate faces, validate",
+    "source": "local",
+    "tags": ["basic", "cleanup", "quick"]
+  },
+  "actions": [
+    { "name": "trimesh_basic", "params": {} },
+    { "name": "merge_vertices", "params": { "eps": 1e-8 } },
+    { "name": "remove_degenerate_faces", "params": {} },
+    { "name": "validate", "params": {} }
+  ]
+}
