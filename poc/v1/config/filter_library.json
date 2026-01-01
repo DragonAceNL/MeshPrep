@@ -256,7 +256,7 @@
             {
               "name": "path",
               "type": "path",
-              "default": null,
+              "default": "./output/cleaned_model.stl",
               "description": "Output path"
             },
             {

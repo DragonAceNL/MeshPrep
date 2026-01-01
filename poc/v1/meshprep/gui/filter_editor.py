@@ -202,8 +202,10 @@ class ActionListPanel(QFrame):
         self.list.setCurrentRow(len(self.actions) - 1)
         self.actions_changed.emit()
     
-    def _refresh_list(self):
+    def _refresh_list(self, preserve_selection: bool = False):
         """Refresh the list widget."""
+        current_row = self.list.currentRow() if preserve_selection else -1
+        
         self.list.clear()
         for i, action in enumerate(self.actions):
             item = QListWidgetItem(f"{i + 1}. {action.name}")
@@ -211,6 +213,10 @@ class ActionListPanel(QFrame):
                 params_str = ", ".join(f"{k}={v}" for k, v in action.params.items())
                 item.setToolTip(params_str)
             self.list.addItem(item)
+        
+        # Restore selection if requested
+        if preserve_selection and 0 <= current_row < len(self.actions):
+            self.list.setCurrentRow(current_row)
     
     def _move_up(self):
         row = self.list.currentRow()
@@ -478,7 +484,8 @@ class FilterScriptEditor(QDialog):
     
     def _on_params_changed(self):
         """Handle parameter changes."""
-        self.action_list_panel._refresh_list()
+        # Preserve selection when refreshing due to parameter changes
+        self.action_list_panel._refresh_list(preserve_selection=True)
     
     def _apply_template(self, action_names: list[str]):
         """Apply a template to the script."""

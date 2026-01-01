@@ -317,7 +317,7 @@ class ActionRegistry:
                 tool="trimesh",
                 description="Export mesh to STL file.",
                 parameters=[
-                    ActionParameter("path", "path", None, "Output path", required=True),
+                    ActionParameter("path", "path", "./output/cleaned_model.stl", "Output path"),
                     ActionParameter("ascii", "bool", False, "Use ASCII format"),
                 ],
             ),
