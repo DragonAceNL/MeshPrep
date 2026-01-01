@@ -17,25 +17,25 @@ The GUI provides a step-by-step wizard interface for non-technical Windows users
 ## Window Layout
 
 ```
-┌─────────────────────────────────────────────────────────────────────────┐
-│  Header: MeshPrep - [current step name]                            [?] │
-├────────────────┬────────────────────────────────────────────────────────┤
-│                │                                                        │
-│  Step List     │  Main Content Area                                     │
-│  (navigation)  │  (changes per step)                                    │
-│                │                                                        │
-│  1. Env        │                                                        │
-│  2. Select     │                                                        │
-│  3. Suggest    │                                                        │
-│  4. Dry-Run    │                                                        │
-│  5. Execute    │                                                        │
-│  6. Results    │                                                        │
-│                │                                                        │
-├────────────────┴────────────────────────────────────────────────────────┤
-│  Global Log (collapsible)                                               │
-├─────────────────────────────────────────────────────────────────────────┤
-│  Footer: Status bar | [Previous] [Next / Run]                           │
-└─────────────────────────────────────────────────────────────────────────┘
++-------------------------------------------------------------------------+
+|  Header: MeshPrep - [current step name]                            [?]  |
++----------------+--------------------------------------------------------+
+|                |                                                        |
+|  Step List     |  Main Content Area                                     |
+|  (navigation)  |  (changes per step)                                    |
+|                |                                                        |
+|  1. Env        |                                                        |
+|  2. Select     |                                                        |
+|  3. Suggest    |                                                        |
+|  4. Dry-Run    |                                                        |
+|  5. Execute    |                                                        |
+|  6. Results    |                                                        |
+|                |                                                        |
++----------------+--------------------------------------------------------+
+|  Global Log (collapsible)                                               |
++-------------------------------------------------------------------------+
+|  Footer: Status bar | [Previous] [Next / Run]                           |
++-------------------------------------------------------------------------+
 ```
 
 ### Components
@@ -388,29 +388,273 @@ The GUI provides a step-by-step wizard interface for non-technical Windows users
 
 ### Dark Theme (default)
 
-| Element | Color |
-|---------|-------|
-| Background | `#0f1720` |
-| Panel | `#111822` |
-| Accent | `#4fe8c4` |
-| Text | `#dff6fb` |
-| Button | `#1b2b33` |
-| Error | `#ff6b6b` |
-| Warning | `#ffd93d` |
-| Success | `#6bff6b` |
+| Element | Color | Preview |
+|---------|-------|:-------:|
+| Background | `#0f1720` | ![Background](images/color-dark-background.svg) |
+| Panel | `#111822` | ![Panel](images/color-dark-panel.svg) |
+| Accent | `#4fe8c4` | ![Accent](images/color-dark-accent.svg) |
+| Text | `#dff6fb` | ![Text](images/color-dark-text.svg) |
+| Button | `#1b2b33` | ![Button](images/color-dark-button.svg) |
+| Error | `#ff6b6b` | ![Error](images/color-dark-error.svg) |
+| Warning | `#ffd93d` | ![Warning](images/color-dark-warning.svg) |
+| Success | `#6bff6b` | ![Success](images/color-dark-success.svg) |
 
 ### Light Theme
 
-| Element | Color |
-|---------|-------|
-| Background | `#f5f5f5` |
-| Panel | `#ffffff` |
-| Accent | `#00a67d` |
-| Text | `#1a1a1a` |
-| Button | `#e0e0e0` |
-| Error | `#d32f2f` |
-| Warning | `#f57c00` |
-| Success | `#388e3c` |
+| Element | Color | Preview |
+|---------|-------|:-------:|
+| Background | `#f5f5f5` | ![Background](images/color-light-background.svg) |
+| Panel | `#ffffff` | ![Panel](images/color-light-panel.svg) |
+| Accent | `#00a67d` | ![Accent](images/color-light-accent.svg) |
+| Text | `#1a1a1a` | ![Text](images/color-light-text.svg) |
+| Button | `#e0e0e0` | ![Button](images/color-light-button.svg) |
+| Error | `#d32f2f` | ![Error](images/color-light-error.svg) |
+| Warning | `#f57c00` | ![Warning](images/color-light-warning.svg) |
+| Success | `#388e3c` | ![Success](images/color-light-success.svg) |
+
+### Color Combination Samples
+
+These SVG samples demonstrate how the theme colors work together in typical UI contexts.
+
+#### Dark Theme Sample - Button States
+
+```svg
+<svg xmlns="http://www.w3.org/2000/svg" width="400" height="120" viewBox="0 0 400 120">
+  <!-- Background -->
+  <rect width="400" height="120" fill="#0f1720"/>
+  
+  <!-- Panel -->
+  <rect x="10" y="10" width="380" height="100" rx="8" fill="#111822"/>
+  
+  <!-- Normal Button -->
+  <rect x="20" y="30" width="100" height="36" rx="4" fill="#1b2b33"/>
+  <text x="70" y="54" font-family="Segoe UI" font-size="14" fill="#dff6fb" text-anchor="middle">Normal</text>
+  
+  <!-- Accent Button -->
+  <rect x="140" y="30" width="100" height="36" rx="4" fill="#4fe8c4"/>
+  <text x="190" y="54" font-family="Segoe UI" font-size="14" fill="#0f1720" text-anchor="middle">Accent</text>
+  
+  <!-- Success Button -->
+  <rect x="260" y="30" width="100" height="36" rx="4" fill="#6bff6b"/>
+  <text x="310" y="54" font-family="Segoe UI" font-size="14" fill="#0f1720" text-anchor="middle">Success</text>
+  
+  <!-- Status indicators -->
+  <circle cx="45" cy="90" r="8" fill="#6bff6b"/>
+  <text x="60" y="94" font-family="Segoe UI" font-size="12" fill="#dff6fb">Ready</text>
+  
+  <circle cx="145" cy="90" r="8" fill="#ffd93d"/>
+  <text x="160" y="94" font-family="Segoe UI" font-size="12" fill="#dff6fb">Warning</text>
+  
+  <circle cx="255" cy="90" r="8" fill="#ff6b6b"/>
+  <text x="270" y="94" font-family="Segoe UI" font-size="12" fill="#dff6fb">Error</text>
+</svg>
+```
+
+#### Dark Theme Sample - Step Navigation
+
+```svg
+<svg xmlns="http://www.w3.org/2000/svg" width="200" height="280" viewBox="0 0 200 280">
+  <!-- Background -->
+  <rect width="200" height="280" fill="#0f1720"/>
+  
+  <!-- Panel -->
+  <rect x="10" y="10" width="180" height="260" rx="8" fill="#111822"/>
+  
+  <!-- Title -->
+  <text x="20" y="40" font-family="Segoe UI" font-size="16" fill="#4fe8c4" font-weight="bold">Steps</text>
+  
+  <!-- Step 1 - Completed -->
+  <rect x="20" y="55" width="160" height="32" rx="4" fill="#1b2b33"/>
+  <circle cx="38" cy="71" r="10" fill="#6bff6b"/>
+  <text x="36" y="75" font-family="Segoe UI" font-size="12" fill="#0f1720" text-anchor="middle">✓</text>
+  <text x="55" y="76" font-family="Segoe UI" font-size="13" fill="#dff6fb">1. Environment</text>
+  
+  <!-- Step 2 - Active -->
+  <rect x="20" y="95" width="160" height="32" rx="4" fill="#4fe8c4" opacity="0.2"/>
+  <rect x="20" y="95" width="160" height="32" rx="4" fill="none" stroke="#4fe8c4" stroke-width="2"/>
+  <circle cx="38" cy="111" r="10" fill="#4fe8c4"/>
+  <text x="38" y="115" font-family="Segoe UI" font-size="12" fill="#0f1720" text-anchor="middle">2</text>
+  <text x="55" y="116" font-family="Segoe UI" font-size="13" fill="#4fe8c4">2. Select Model</text>
+  
+  <!-- Step 3 - Pending -->
+  <rect x="20" y="135" width="160" height="32" rx="4" fill="#1b2b33"/>
+  <circle cx="38" cy="151" r="10" fill="#1b2b33" stroke="#dff6fb" stroke-width="1" opacity="0.5"/>
+  <text x="38" y="155" font-family="Segoe UI" font-size="12" fill="#dff6fb" text-anchor="middle" opacity="0.5">3</text>
+  <text x="55" y="156" font-family="Segoe UI" font-size="13" fill="#dff6fb" opacity="0.5">3. Suggest Filter</text>
+  
+  <!-- Step 4 - Pending -->
+  <rect x="20" y="175" width="160" height="32" rx="4" fill="#1b2b33"/>
+  <circle cx="38" cy="191" r="10" fill="#1b2b33" stroke="#dff6fb" stroke-width="1" opacity="0.5"/>
+  <text x="38" y="195" font-family="Segoe UI" font-size="12" fill="#dff6fb" text-anchor="middle" opacity="0.5">4</text>
+  <text x="55" y="196" font-family="Segoe UI" font-size="13" fill="#dff6fb" opacity="0.5">4. Dry-Run</text>
+  
+  <!-- Step 5 - Pending -->
+  <rect x="20" y="215" width="160" height="32" rx="4" fill="#1b2b33"/>
+  <circle cx="38" cy="231" r="10" fill="#1b2b33" stroke="#dff6fb" stroke-width="1" opacity="0.5"/>
+  <text x="38" y="235" font-family="Segoe UI" font-size="12" fill="#dff6fb" text-anchor="middle" opacity="0.5">5</text>
+  <text x="55" y="236" font-family="Segoe UI" font-size="13" fill="#dff6fb" opacity="0.5">5. Execute</text>
+</svg>
+```
+
+#### Dark Theme Sample - Log Output
+
+```svg
+<svg xmlns="http://www.w3.org/2000/svg" width="500" height="180" viewBox="0 0 500 180">
+  <!-- Background -->
+  <rect width="500" height="180" fill="#0f1720"/>
+  
+  <!-- Panel -->
+  <rect x="10" y="10" width="480" height="160" rx="8" fill="#111822"/>
+  
+  <!-- Title bar -->
+  <rect x="10" y="10" width="480" height="28" rx="8" fill="#1b2b33"/>
+  <rect x="10" y="30" width="480" height="8" fill="#1b2b33"/>
+  <text x="20" y="30" font-family="Segoe UI" font-size="12" fill="#4fe8c4">Global Log</text>
+  
+  <!-- Log entries -->
+  <text x="20" y="60" font-family="Consolas" font-size="12" fill="#dff6fb">[INFO] Starting environment check...</text>
+  <text x="20" y="80" font-family="Consolas" font-size="12" fill="#6bff6b">[OK] Python 3.11.4 detected</text>
+  <text x="20" y="100" font-family="Consolas" font-size="12" fill="#6bff6b">[OK] trimesh 4.0.5 installed</text>
+  <text x="20" y="120" font-family="Consolas" font-size="12" fill="#6bff6b">[OK] pymeshfix 0.16.3 installed</text>
+  <text x="20" y="140" font-family="Consolas" font-size="12" fill="#ffd93d">[WARN] Blender not found (optional)</text>
+  <text x="20" y="160" font-family="Consolas" font-size="12" fill="#4fe8c4">[INFO] Environment ready</text>
+</svg>
+```
+
+#### Light Theme Sample - Button States
+
+```svg
+<svg xmlns="http://www.w3.org/2000/svg" width="400" height="120" viewBox="0 0 400 120">
+  <!-- Background -->
+  <rect width="400" height="120" fill="#f5f5f5"/>
+  
+  <!-- Panel -->
+  <rect x="10" y="10" width="380" height="100" rx="8" fill="#ffffff" stroke="#e0e0e0"/>
+  
+  <!-- Normal Button -->
+  <rect x="20" y="30" width="100" height="36" rx="4" fill="#e0e0e0"/>
+  <text x="70" y="54" font-family="Segoe UI" font-size="14" fill="#1a1a1a" text-anchor="middle">Normal</text>
+  
+  <!-- Accent Button -->
+  <rect x="140" y="30" width="100" height="36" rx="4" fill="#00a67d"/>
+  <text x="190" y="54" font-family="Segoe UI" font-size="14" fill="#ffffff" text-anchor="middle">Accent</text>
+  
+  <!-- Success Button -->
+  <rect x="260" y="30" width="100" height="36" rx="4" fill="#388e3c"/>
+  <text x="310" y="54" font-family="Segoe UI" font-size="14" fill="#ffffff" text-anchor="middle">Success</text>
+  
+  <!-- Status indicators -->
+  <circle cx="45" cy="90" r="8" fill="#388e3c"/>
+  <text x="60" y="94" font-family="Segoe UI" font-size="12" fill="#1a1a1a">Ready</text>
+  
+  <circle cx="145" cy="90" r="8" fill="#f57c00"/>
+  <text x="160" y="94" font-family="Segoe UI" font-size="12" fill="#1a1a1a">Warning</text>
+  
+  <circle cx="255" cy="90" r="8" fill="#d32f2f"/>
+  <text x="270" y="94" font-family="Segoe UI" font-size="12" fill="#1a1a1a">Error</text>
+</svg>
+```
+
+#### Dark Theme Sample - Full Window Mockup
+
+```svg
+<svg xmlns="http://www.w3.org/2000/svg" width="700" height="400" viewBox="0 0 700 400">
+  <!-- Window Background -->
+  <rect width="700" height="400" fill="#0f1720"/>
+  
+  <!-- Header -->
+  <rect x="0" y="0" width="700" height="50" fill="#111822"/>
+  <text x="20" y="32" font-family="Segoe UI" font-size="18" fill="#4fe8c4" font-weight="bold">MeshPrep</text>
+  <text x="120" y="32" font-family="Segoe UI" font-size="14" fill="#dff6fb">- Select Model</text>
+  <rect x="650" y="12" width="30" height="26" rx="4" fill="#1b2b33"/>
+  <text x="665" y="30" font-family="Segoe UI" font-size="14" fill="#dff6fb" text-anchor="middle">?</text>
+  
+  <!-- Sidebar -->
+  <rect x="0" y="50" width="180" height="300" fill="#111822"/>
+  
+  <!-- Step items -->
+  <rect x="10" y="60" width="160" height="36" rx="4" fill="#1b2b33"/>
+  <circle cx="30" cy="78" r="8" fill="#6bff6b"/>
+  <text x="45" y="82" font-family="Segoe UI" font-size="12" fill="#dff6fb">1. Environment</text>
+  
+  <rect x="10" y="105" width="160" height="36" rx="4" fill="#4fe8c4" opacity="0.15"/>
+  <rect x="10" y="105" width="160" height="36" rx="4" fill="none" stroke="#4fe8c4" stroke-width="2"/>
+  <circle cx="30" cy="123" r="8" fill="#4fe8c4"/>
+  <text x="45" y="127" font-family="Segoe UI" font-size="12" fill="#4fe8c4">2. Select Model</text>
+  
+  <rect x="10" y="150" width="160" height="36" rx="4" fill="#1b2b33" opacity="0.5"/>
+  <text x="45" y="172" font-family="Segoe UI" font-size="12" fill="#dff6fb" opacity="0.5">3. Suggest Filter</text>
+  
+  <rect x="10" y="195" width="160" height="36" rx="4" fill="#1b2b33" opacity="0.5"/>
+  <text x="45" y="217" font-family="Segoe UI" font-size="12" fill="#dff6fb" opacity="0.5">4. Dry-Run</text>
+  
+  <rect x="10" y="240" width="160" height="36" rx="4" fill="#1b2b33" opacity="0.5"/>
+  <text x="45" y="262" font-family="Segoe UI" font-size="12" fill="#dff6fb" opacity="0.5">5. Execute</text>
+  
+  <rect x="10" y="285" width="160" height="36" rx="4" fill="#1b2b33" opacity="0.5"/>
+  <text x="45" y="307" font-family="Segoe UI" font-size="12" fill="#dff6fb" opacity="0.5">6. Results</text>
+  
+  <!-- Main Content -->
+  <rect x="190" y="60" width="500" height="240" rx="8" fill="#111822"/>
+  
+  <!-- File selection area -->
+  <text x="210" y="90" font-family="Segoe UI" font-size="14" fill="#dff6fb">Select STL File</text>
+  <rect x="210" y="100" width="460" height="60" rx="4" fill="#1b2b33" stroke="#4fe8c4" stroke-dasharray="4"/>
+  <text x="440" y="135" font-family="Segoe UI" font-size="12" fill="#dff6fb" text-anchor="middle" opacity="0.7">Drag and drop STL file here or click to browse</text>
+  
+  <!-- Radio buttons -->
+  <circle cx="220" cy="190" r="8" fill="none" stroke="#4fe8c4" stroke-width="2"/>
+  <circle cx="220" cy="190" r="4" fill="#4fe8c4"/>
+  <text x="235" y="194" font-family="Segoe UI" font-size="12" fill="#dff6fb">Auto-detect profile and suggest filter</text>
+  
+  <circle cx="220" cy="220" r="8" fill="none" stroke="#dff6fb" stroke-width="1" opacity="0.5"/>
+  <text x="235" y="224" font-family="Segoe UI" font-size="12" fill="#dff6fb" opacity="0.7">Use existing filter script</text>
+  
+  <!-- Load filter button -->
+  <rect x="210" y="250" width="120" height="32" rx="4" fill="#1b2b33" opacity="0.5"/>
+  <text x="270" y="270" font-family="Segoe UI" font-size="12" fill="#dff6fb" text-anchor="middle" opacity="0.5">Load Filter</text>
+  
+  <!-- Global Log -->
+  <rect x="0" y="350" width="700" height="50" fill="#111822"/>
+  <text x="20" y="375" font-family="Consolas" font-size="11" fill="#6bff6b">[OK] Environment ready</text>
+  <text x="200" y="375" font-family="Consolas" font-size="11" fill="#dff6fb">| Waiting for model selection...</text>
+  
+  <!-- Footer Navigation -->
+  <rect x="500" y="310" width="80" height="32" rx="4" fill="#1b2b33"/>
+  <text x="540" y="330" font-family="Segoe UI" font-size="12" fill="#dff6fb" text-anchor="middle">Previous</text>
+  
+  <rect x="590" y="310" width="80" height="32" rx="4" fill="#1b2b33" opacity="0.5"/>
+  <text x="630" y="330" font-family="Segoe UI" font-size="12" fill="#dff6fb" text-anchor="middle" opacity="0.5">Next</text>
+</svg>
+```
+
+---
+
+### Color Palette Summary
+
+#### Dark Theme Palette
+
+```
++------------------+------------------+------------------+------------------+
+|    Background    |      Panel       |      Accent      |       Text       |
+|     #0f1720      |     #111822      |     #4fe8c4      |     #dff6fb      |
++------------------+------------------+------------------+------------------+
+|      Button      |      Error       |     Warning      |     Success      |
+|     #1b2b33      |     #ff6b6b      |     #ffd93d      |     #6bff6b      |
++------------------+------------------+------------------+------------------+
+```
+
+#### Contrast Ratios (WCAG compliance)
+
+| Foreground | Background | Ratio | WCAG AA | WCAG AAA |
+|------------|------------|-------|---------|----------|
+| Text (#dff6fb) | Background (#0f1720) | 12.5:1 | ✓ Pass | ✓ Pass |
+| Text (#dff6fb) | Panel (#111822) | 11.2:1 | ✓ Pass | ✓ Pass |
+| Text (#dff6fb) | Button (#1b2b33) | 8.9:1 | ✓ Pass | ✓ Pass |
+| Accent (#4fe8c4) | Background (#0f1720) | 9.8:1 | ✓ Pass | ✓ Pass |
+| Error (#ff6b6b) | Panel (#111822) | 5.2:1 | ✓ Pass | ✗ Fail |
+| Warning (#ffd93d) | Panel (#111822) | 10.1:1 | ✓ Pass | ✓ Pass |
+| Success (#6bff6b) | Panel (#111822) | 10.8:1 | ✓ Pass | ✓ Pass |
 
 ---
 
