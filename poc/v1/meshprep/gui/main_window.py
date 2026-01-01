@@ -144,6 +144,7 @@ class MainWindow(QMainWindow):
         self.script: FilterScript = None
         self.output_path: Path = None
         self.worker: WorkerThread = None
+        self._selected_file_path: str = None
         
         self.setWindowTitle("MeshPrep - STL Cleanup Pipeline")
         self.setMinimumSize(1200, 800)
@@ -538,12 +539,28 @@ class MainWindow(QMainWindow):
         
         # Validate current step before proceeding
         if current == 1:  # Select Model
-            if not self.mesh:
+            # Check if a file has been selected
+            if not hasattr(self, "_selected_file_path") or not self._selected_file_path:
                 QMessageBox.warning(self, "Warning", "Please select an STL file first.")
                 return
             # Run scan if auto-detect
             if self.source_buttons.checkedId() == 0:
                 self._run_scan()
+                return
+            # If using existing script, need both file and script
+            elif self.source_buttons.checkedId() == 1:
+                if not self.script:
+                    QMessageBox.warning(self, "Warning", "Please load a filter script first.")
+                    return
+                # Load mesh and go to profile page
+                from ..core.mock_mesh import load_mock_stl
+                self.mesh = load_mock_stl(Path(self._selected_file_path))
+                from ..core.diagnostics import compute_diagnostics
+                self.diagnostics = compute_diagnostics(self.mesh)
+                self.diagnostics_panel.set_diagnostics(self.diagnostics)
+                self._update_script_preview()
+                self.step_indicator.mark_completed(1)
+                self._go_to_step(2)
                 return
         
         if current < len(self.STEPS) - 1:
@@ -840,8 +857,10 @@ class MainWindow(QMainWindow):
         self.profile_matches = []
         self.script = None
         self.output_path = None
+        self._selected_file_path = None
         
         self.file_path_label.setText("No file selected")
+        self.loaded_script_label.setText("")
         self.diagnostics_panel.clear()
         self.script_preview.clear()
         
