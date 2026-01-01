@@ -7,6 +7,7 @@ Goal
 - Make the conversion workflow easy to use for non-technical Windows users via a lightweight GUI while retaining a powerful CLI for advanced users and automation.
 - Make the tool extremely easy to set up and use: avoid requiring complex manual environment commands. If manual setup steps are required, present clear, step-by-step instructions in the GUI/CLI and logs. Where feasible implement automatic environment setup (virtualenv creation, dependency installation, basic tool detection) so users can get started with a single action.
 - Support creation, editing, importing, exporting, and sharing of filter scripts and filter script presets so users can iterate and reuse successful repair strategies.
+- Provide an extensive, intuitive filter script editor that makes it easy to build, modify, and understand repair workflows. The editor must include a comprehensive filter library containing all available filter actions from supported tools (`trimesh`, `pymeshfix`, `meshio`, and Blender) with clear descriptions of what each filter does, its parameters, and how it can be used to correct 3D models for printing.
 - Ensure the system can handle hard-to-fix models by escalating to advanced steps (e.g., Blender-based remeshing) when conservative repairs fail.
 - Surface errors, warnings, and important diagnostics clearly to the user (both on-screen and in log files) so runs are debuggable and reproducible.
 - Prioritize conversion quality and reproducibility over raw speed; long-running but deterministic repairs are acceptable.
@@ -171,6 +172,201 @@ Filter script representation
 
 - Backward-compatibility
   - Future driver versions must support older preset versions where reasonable; the driver emits warnings when using deprecated actions and suggests replacements.
+
+Filter Script Editor
+--------------------
+The filter script editor is a core component of the GUI that enables users to build, modify, and understand repair workflows intuitively.
+
+### Editor Features
+
+- **Visual action list**: Display actions as draggable cards or list items with clear icons, names, and parameter summaries.
+- **Drag-and-drop reordering**: Reorder actions by dragging; visual feedback shows where the action will be inserted.
+- **Inline parameter editing**: Click an action to expand and edit its parameters with appropriate input controls (sliders, dropdowns, number fields).
+- **Real-time validation**: Highlight invalid parameters or incompatible action sequences immediately.
+- **Action search and filter**: Search the filter library by name, category, or keyword; filter by tool source (trimesh, pymeshfix, meshio, Blender).
+- **Tooltips and documentation**: Hover over any action or parameter to see a tooltip with description; link to full documentation.
+- **Undo/redo**: Support undo/redo for all editor operations.
+- **Duplicate and delete**: Quickly duplicate or remove actions.
+- **Collapse/expand**: Collapse actions to show only names for a compact overview; expand to edit.
+
+### Filter Library
+
+The filter library is a comprehensive catalog of all available filter actions, organized by category and tool source. Each entry includes:
+
+- **Name**: The action key used in filter scripts (e.g., `fill_holes`).
+- **Display name**: Human-readable name (e.g., "Fill Holes").
+- **Category**: Grouping for organization (e.g., Cleanup, Repair, Validation, Export).
+- **Tool source**: Which tool provides this action (`trimesh`, `pymeshfix`, `meshio`, `blender`, or `internal`).
+- **Description**: What the action does and when to use it.
+- **Parameters**: List of parameters with types, defaults, and descriptions.
+- **Use cases**: Common scenarios where this action is helpful.
+- **Dry-run support**: Whether the action supports non-destructive simulation.
+- **Destructive**: Whether the action modifies the mesh irreversibly.
+
+### Filter Library — Action Catalog
+
+The following is the initial catalog of filter actions available in MeshPrep, grouped by category.
+
+#### Category: Loading & Basic Cleanup
+
+| Action | Tool | Description | Parameters |
+|--------|------|-------------|------------|
+| `load_stl` | trimesh | Load an STL file (ASCII or binary) into memory. | `path` (string) |
+| `trimesh_basic` | trimesh | Load and apply basic cleanup: merge duplicate vertices, remove degenerate faces, remove infinite values. | `merge_tex` (bool), `merge_norm` (bool) |
+| `merge_vertices` | trimesh | Weld duplicate vertices within a tolerance. Reduces vertex count and fixes small gaps. | `eps` (float, default 1e-8) |
+| `remove_degenerate_faces` | trimesh | Remove faces with zero area or invalid topology. | `height` (float, threshold) |
+| `remove_duplicate_faces` | trimesh | Remove faces that are exact duplicates. | — |
+| `remove_infinite_values` | trimesh | Remove vertices or faces containing NaN or Inf values. | — |
+| `remove_unreferenced_vertices` | trimesh | Remove vertices not referenced by any face. | — |
+
+#### Category: Hole Filling
+
+| Action | Tool | Description | Parameters |
+|--------|------|-------------|------------|
+| `fill_holes` | trimesh | Fill holes in the mesh up to a maximum size. Useful for closing small gaps. | `max_hole_size` (int, max edges), `method` (string: "fan", "ear") |
+| `fill_holes_pymeshfix` | pymeshfix | Use pymeshfix's hole-filling algorithm for more robust repairs. | — |
+| `cap_holes` | trimesh | Cap open boundaries with flat faces. Best for planar openings. | — |
+
+#### Category: Normal Correction
+
+| Action | Tool | Description | Parameters |
+|--------|------|-------------|------------|
+| `recalculate_normals` | trimesh | Recompute face normals from vertex winding order. | — |
+| `reorient_normals` | trimesh | Attempt to make all face normals point outward consistently. | — |
+| `unify_normals` | trimesh | Unify normals so adjacent faces have consistent orientation. | — |
+| `fix_normals` | trimesh | Combine recalculate and reorient for a single-step fix. | — |
+| `flip_normals` | trimesh | Invert all face normals (useful if model is inside-out). | — |
+
+#### Category: Component Management
+
+| Action | Tool | Description | Parameters |
+|--------|------|-------------|------------|
+| `remove_small_components` | trimesh | Remove disconnected components below a volume or face-count threshold. | `min_volume` (float), `min_faces` (int) |
+| `keep_largest_component` | trimesh | Keep only the largest connected component; remove all others. | — |
+| `separate_shells` | trimesh | Split mesh into separate shell components. | — |
+| `boolean_union` | trimesh/blender | Merge overlapping shells into a single watertight mesh. | `engine` (string: "blender", "manifold") |
+| `remove_internal_geometry` | trimesh | Remove components fully enclosed by the outer shell. | — |
+
+#### Category: Repair & Manifold Fixes
+
+| Action | Tool | Description | Parameters |
+|--------|------|-------------|------------|
+| `pymeshfix_repair` | pymeshfix | Run pymeshfix's automatic repair pass. Fixes many non-manifold issues. | — |
+| `fix_non_manifold_edges` | trimesh | Attempt to fix non-manifold edges by splitting or removing. | — |
+| `fix_non_manifold_vertices` | trimesh | Fix vertices shared by non-adjacent faces. | — |
+| `stitch_boundaries` | trimesh | Stitch open boundaries where edges nearly match. | `tolerance` (float) |
+| `close_cracks` | trimesh | Close small cracks by merging nearby vertices along boundaries. | `tolerance` (float) |
+
+#### Category: Simplification & Remeshing
+
+| Action | Tool | Description | Parameters |
+|--------|------|-------------|------------|
+| `decimate` | trimesh | Reduce face count while preserving shape. | `target_faces` (int), `target_ratio` (float) |
+| `simplify_quadric` | trimesh | Quadric error decimation for high-quality simplification. | `target_faces` (int), `agg` (float) |
+| `subdivide` | trimesh | Subdivide faces to increase mesh resolution. | `iterations` (int) |
+| `remesh_blender` | blender | Use Blender's remesh modifier for uniform triangle distribution. | `voxel_size` (float), `mode` (string: "voxel", "quad") |
+| `smooth_laplacian` | trimesh | Apply Laplacian smoothing to reduce noise. | `iterations` (int), `lamb` (float) |
+| `smooth_taubin` | trimesh | Taubin smoothing (reduces shrinkage compared to Laplacian). | `iterations` (int), `lamb` (float), `mu` (float) |
+
+#### Category: Geometry Analysis & Thin Features
+
+| Action | Tool | Description | Parameters |
+|--------|------|-------------|------------|
+| `identify_thin_regions` | trimesh | Detect regions thinner than a threshold; report but do not modify. | `min_thickness` (float) |
+| `thicken_regions` | blender | Thicken thin walls to meet a minimum printable thickness. | `target_thickness` (float) |
+| `offset_surface` | trimesh | Offset the mesh surface inward or outward. | `distance` (float) |
+| `hollow` | blender | Create a hollow shell with specified wall thickness. | `wall_thickness` (float) |
+
+#### Category: Boolean & Intersection Fixes
+
+| Action | Tool | Description | Parameters |
+|--------|------|-------------|------------|
+| `detect_self_intersections` | trimesh | Check for self-intersecting faces; report but do not modify. | — |
+| `fix_self_intersections` | blender | Attempt to resolve self-intersections using boolean operations. | — |
+| `boolean_difference` | blender | Subtract one mesh from another. | `tool_mesh` (path) |
+| `boolean_intersect` | blender | Keep only the intersection of two meshes. | `tool_mesh` (path) |
+
+#### Category: Validation & Diagnostics
+
+| Action | Tool | Description | Parameters |
+|--------|------|-------------|------------|
+| `validate` | internal | Run all validation checks and produce a diagnostics report. | — |
+| `check_watertight` | trimesh | Check if mesh is watertight (closed, no holes). | — |
+| `check_manifold` | trimesh | Check for non-manifold edges and vertices. | — |
+| `check_normals` | trimesh | Check for inconsistent or inverted normals. | — |
+| `check_volume` | trimesh | Compute and report mesh volume. | — |
+| `check_bounding_box` | trimesh | Report bounding box dimensions. | — |
+| `compute_diagnostics` | internal | Compute full diagnostics vector for profile detection. | — |
+
+#### Category: Export
+
+| Action | Tool | Description | Parameters |
+|--------|------|-------------|------------|
+| `export_stl` | trimesh | Export mesh to STL file (binary by default). | `path` (string), `ascii` (bool) |
+| `export_stl_ascii` | trimesh | Export mesh to ASCII STL file. | `path` (string) |
+| `export_obj` | trimesh | Export mesh to OBJ format. | `path` (string) |
+| `export_ply` | trimesh | Export mesh to PLY format. | `path` (string) |
+| `export_3mf` | meshio | Export mesh to 3MF format (preferred for 3D printing). | `path` (string) |
+
+#### Category: Blender-Specific (Escalation)
+
+| Action | Tool | Description | Parameters |
+|--------|------|-------------|------------|
+| `blender_remesh` | blender | Apply Blender's voxel remesh for aggressive topology repair. | `voxel_size` (float), `adaptivity` (float) |
+| `blender_decimate` | blender | Blender's decimate modifier. | `ratio` (float), `use_collapse` (bool) |
+| `blender_boolean_union` | blender | Merge all mesh parts using Blender's boolean solver. | — |
+| `blender_solidify` | blender | Add thickness to thin surfaces using the solidify modifier. | `thickness` (float) |
+| `blender_smooth` | blender | Apply Blender's smooth modifier. | `iterations` (int), `factor` (float) |
+| `blender_triangulate` | blender | Triangulate all faces (ensure STL compatibility). | — |
+
+### Editor UX Guidelines
+
+1. **Category sidebar**: Show filter library categories in a collapsible sidebar; clicking a category shows available actions.
+2. **Drag from library**: Drag an action from the library directly into the action list at the desired position.
+3. **Quick add**: Double-click an action in the library to append it to the end of the list.
+4. **Parameter forms**: When an action is selected, show a parameter form with:
+   - Input type matching the parameter type (slider for floats with range, checkbox for bools, dropdown for enums).
+   - Default value pre-filled; reset button to restore defaults.
+   - Validation feedback (red border for invalid values).
+5. **Dry-run preview**: For actions that support dry-run, show a "Preview" button that runs the action in simulation mode and displays resulting diagnostics.
+6. **Dependency hints**: If an action depends on another (e.g., `export_stl` requires a loaded mesh), show a hint or auto-insert the dependency.
+7. **Template presets**: Offer one-click insertion of common action sequences (e.g., "Basic Cleanup", "Hole Fill + Normals", "Aggressive Repair").
+
+### Filter Library Data File
+
+The filter library is stored as a JSON file at `config/filter_library.json` with the following structure:
+
+```json
+{
+  "version": "1.0.0",
+  "categories": [
+    {
+      "id": "cleanup",
+      "name": "Loading & Basic Cleanup",
+      "actions": [
+        {
+          "name": "merge_vertices",
+          "display_name": "Merge Vertices",
+          "tool": "trimesh",
+          "description": "Weld duplicate vertices within a tolerance.",
+          "parameters": [
+            {
+              "name": "eps",
+              "type": "float",
+              "default": 1e-8,
+              "description": "Distance threshold for merging."
+            }
+          ],
+          "dry_run_supported": true,
+          "destructive": true
+        }
+      ]
+    }
+  ]
+}
+```
+
+This file is loaded at startup and used to populate the editor's filter library UI and validate filter scripts.
 
 Validation criteria
 - `is_watertight` true
