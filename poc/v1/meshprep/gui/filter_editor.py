@@ -28,11 +28,17 @@ class FilterLibraryPanel(QFrame):
         super().__init__(parent)
         self.registry = registry
         self.setObjectName("panel")
+        self._selected_action: str = None
         self._setup_ui()
     
     def _setup_ui(self):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(8, 8, 8, 8)
+        
+        # Header
+        header = QLabel("Filter Library")
+        header.setObjectName("header")
+        layout.addWidget(header)
         
         # Search
         self.search = QLineEdit()
@@ -46,6 +52,13 @@ class FilterLibraryPanel(QFrame):
         self.tree.itemClicked.connect(self._on_item_clicked)
         self.tree.itemDoubleClicked.connect(self._on_item_double_clicked)
         layout.addWidget(self.tree)
+        
+        # Add button
+        self.add_btn = QPushButton("+ Add Selected Action")
+        self.add_btn.setObjectName("primary")
+        self.add_btn.setEnabled(False)
+        self.add_btn.clicked.connect(self._on_add_clicked)
+        layout.addWidget(self.add_btn)
         
         self._populate_tree()
     
@@ -106,12 +119,23 @@ class FilterLibraryPanel(QFrame):
     def _on_item_clicked(self, item: QTreeWidgetItem, column: int):
         action_name = item.data(0, Qt.UserRole)
         if action_name:
+            self._selected_action = action_name
+            self.add_btn.setEnabled(True)
             self.action_selected.emit(action_name)
+        else:
+            # Category item clicked
+            self._selected_action = None
+            self.add_btn.setEnabled(False)
     
     def _on_item_double_clicked(self, item: QTreeWidgetItem, column: int):
         action_name = item.data(0, Qt.UserRole)
         if action_name:
             self.action_double_clicked.emit(action_name)
+    
+    def _on_add_clicked(self):
+        """Handle Add button click."""
+        if self._selected_action:
+            self.action_double_clicked.emit(self._selected_action)
 
 
 class ActionListPanel(QFrame):
