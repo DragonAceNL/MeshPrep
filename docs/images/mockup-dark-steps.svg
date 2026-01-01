@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="200" height="280" viewBox="0 0 200 280">
+  <!-- Background -->
+  <rect width="200" height="280" fill="#0f1720"/>
+  
+  <!-- Panel -->
+  <rect x="10" y="10" width="180" height="260" rx="8" fill="#111822"/>
+  
+  <!-- Title -->
+  <text x="20" y="40" font-family="Segoe UI, Arial, sans-serif" font-size="16" fill="#4fe8c4" font-weight="bold">Steps</text>
+  
+  <!-- Step 1 - Completed -->
+  <rect x="20" y="55" width="160" height="32" rx="4" fill="#1b2b33"/>
+  <circle cx="38" cy="71" r="10" fill="#6bff6b"/>
+  <text x="38" y="75" font-family="Segoe UI, Arial, sans-serif" font-size="12" fill="#0f1720" text-anchor="middle">✓</text>
+  <text x="55" y="76" font-family="Segoe UI, Arial, sans-serif" font-size="13" fill="#dff6fb">1. Environment</text>
+  
+  <!-- Step 2 - Active -->
+  <rect x="20" y="95" width="160" height="32" rx="4" fill="#4fe8c4" opacity="0.2"/>
+  <rect x="20" y="95" width="160" height="32" rx="4" fill="none" stroke="#4fe8c4" stroke-width="2"/>
+  <circle cx="38" cy="111" r="10" fill="#4fe8c4"/>
+  <text x="38" y="115" font-family="Segoe UI, Arial, sans-serif" font-size="12" fill="#0f1720" text-anchor="middle">2</text>
+  <text x="55" y="116" font-family="Segoe UI, Arial, sans-serif" font-size="13" fill="#4fe8c4">2. Select Model</text>
+  
+  <!-- Step 3 - Pending -->
+  <rect x="20" y="135" width="160" height="32" rx="4" fill="#1b2b33"/>
+  <circle cx="38" cy="151" r="10" fill="#1b2b33" stroke="#dff6fb" stroke-width="1" opacity="0.5"/>
+  <text x="38" y="155" font-family="Segoe UI, Arial, sans-serif" font-size="12" fill="#dff6fb" text-anchor="middle" opacity="0.5">3</text>
+  <text x="55" y="156" font-family="Segoe UI, Arial, sans-serif" font-size="13" fill="#dff6fb" opacity="0.5">3. Suggest Filter</text>
+  
+  <!-- Step 4 - Pending -->
+  <rect x="20" y="175" width="160" height="32" rx="4" fill="#1b2b33"/>
+  <circle cx="38" cy="191" r="10" fill="#1b2b33" stroke="#dff6fb" stroke-width="1" opacity="0.5"/>
+  <text x="38" y="195" font-family="Segoe UI, Arial, sans-serif" font-size="12" fill="#dff6fb" text-anchor="middle" opacity="0.5">4</text>
+  <text x="55" y="196" font-family="Segoe UI, Arial, sans-serif" font-size="13" fill="#dff6fb" opacity="0.5">4. Dry-Run</text>
+  
+  <!-- Step 5 - Pending -->
+  <rect x="20" y="215" width="160" height="32" rx="4" fill="#1b2b33"/>
+  <circle cx="38" cy="231" r="10" fill="#1b2b33" stroke="#dff6fb" stroke-width="1" opacity="0.5"/>
+  <text x="38" y="235" font-family="Segoe UI, Arial, sans-serif" font-size="12" fill="#dff6fb" text-anchor="middle" opacity="0.5">5</text>
+  <text x="55" y="236" font-family="Segoe UI, Arial, sans-serif" font-size="13" fill="#dff6fb" opacity="0.5">5. Execute</text>
+  
+  <!-- Step 6 - Pending -->
+  <rect x="20" y="255" width="160" height="32" rx="4" fill="#1b2b33"/>
+  <circle cx="38" cy="271" r="10" fill="#1b2b33" stroke="#dff6fb" stroke-width="1" opacity="0.5"/>
+  <text x="38" y="275" font-family="Segoe UI, Arial, sans-serif" font-size="12" fill="#dff6fb" text-anchor="middle" opacity="0.5">6</text>
+  <text x="55" y="276" font-family="Segoe UI, Arial, sans-serif" font-size="13" fill="#dff6fb" opacity="0.5">6. Results</text>
+</svg>

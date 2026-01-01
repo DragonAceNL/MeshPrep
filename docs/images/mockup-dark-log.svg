@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="500" height="180" viewBox="0 0 500 180">
+  <!-- Background -->
+  <rect width="500" height="180" fill="#0f1720"/>
+  
+  <!-- Panel -->
+  <rect x="10" y="10" width="480" height="160" rx="8" fill="#111822"/>
+  
+  <!-- Title bar -->
+  <rect x="10" y="10" width="480" height="28" rx="8" fill="#1b2b33"/>
+  <rect x="10" y="30" width="480" height="8" fill="#1b2b33"/>
+  <text x="20" y="30" font-family="Segoe UI, Arial, sans-serif" font-size="12" fill="#4fe8c4">Global Log</text>
+  
+  <!-- Log entries -->
+  <text x="20" y="60" font-family="Consolas, monospace" font-size="12" fill="#dff6fb">[INFO] Starting environment check...</text>
+  <text x="20" y="80" font-family="Consolas, monospace" font-size="12" fill="#6bff6b">[OK] Python 3.11.4 detected</text>
+  <text x="20" y="100" font-family="Consolas, monospace" font-size="12" fill="#6bff6b">[OK] trimesh 4.0.5 installed</text>
+  <text x="20" y="120" font-family="Consolas, monospace" font-size="12" fill="#6bff6b">[OK] pymeshfix 0.16.3 installed</text>
+  <text x="20" y="140" font-family="Consolas, monospace" font-size="12" fill="#ffd93d">[WARN] Blender not found (optional)</text>
+  <text x="20" y="160" font-family="Consolas, monospace" font-size="12" fill="#4fe8c4">[INFO] Environment ready</text>
+</svg>
