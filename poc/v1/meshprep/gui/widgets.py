@@ -43,12 +43,15 @@ class StepIndicator(QWidget):
             self.step_buttons.append(btn)
             layout.addWidget(btn)
         
-        layout.addStretch()
+        layout.addStretch(1)
         
-        # Logo at the bottom
+        # Logo at the bottom - aligned with log console area
         self.logo_widget = QSvgWidget()
-        self.logo_widget.setFixedSize(160, 80)
-        layout.addWidget(self.logo_widget, alignment=Qt.AlignCenter)
+        self.logo_widget.setFixedSize(120, 135)  # Maintain aspect ratio (~122:137)
+        layout.addWidget(self.logo_widget, alignment=Qt.AlignCenter | Qt.AlignBottom)
+        
+        # Add spacing at bottom to align with navigation buttons
+        layout.addSpacing(55)
         
         self._update_buttons()
     

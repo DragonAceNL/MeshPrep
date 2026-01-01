@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Qt, QThread, Signal, Slot
 from PySide6.QtGui import QFont
+from PySide6.QtSvgWidgets import QSvgWidget
 
 from ..core.mock_mesh import MockMesh, load_mock_stl, save_mock_stl
 from ..core.diagnostics import Diagnostics, compute_diagnostics
@@ -28,7 +29,7 @@ from .widgets import (
     StepIndicator, DiagnosticsPanel, LogConsole, ProgressPanel, ProfileCard
 )
 from .filter_editor import FilterScriptEditor
-from ..resources import get_logo_path
+from ..resources import get_logo_path, get_resource_path
 
 
 class WorkerThread(QThread):
@@ -172,8 +173,24 @@ class MainWindow(QMainWindow):
         self.log_console.setMaximumHeight(150)
         content_layout.addWidget(self.log_console)
         
-        # Navigation buttons
+        # Navigation buttons row with MeshPrep text logo
         nav_layout = QHBoxLayout()
+        
+        # MeshPrep text logo on the left (with container for positioning)
+        text_logo_container = QWidget()
+        text_logo_layout = QVBoxLayout(text_logo_container)
+        text_logo_layout.setContentsMargins(0, 10, 0, 0)  # Add 3px top margin
+        text_logo_layout.setSpacing(0)
+        
+        self.text_logo = QSvgWidget()
+        text_logo_path = get_resource_path("images/MeshPrepText.svg")
+        if text_logo_path.exists():
+            self.text_logo.load(str(text_logo_path))
+        self.text_logo.setFixedSize(225, 54)  # Adjust size as needed
+        text_logo_layout.addWidget(self.text_logo)
+        
+        nav_layout.addWidget(text_logo_container, alignment=Qt.AlignVCenter)
+        
         nav_layout.addStretch()
         
         self.prev_btn = QPushButton("← Previous")
