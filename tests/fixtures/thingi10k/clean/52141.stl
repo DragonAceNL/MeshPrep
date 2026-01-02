@@ -1,0 +1,72 @@
+solid OpenSCAD_Model
+  facet normal -0.707107 -0.707107 0.000000
+    outer loop
+      vertex 18.750000 18.750000 37.442884
+      vertex 18.750000 18.750000 0.000000
+      vertex 37.500000 0.000000 0.000000
+    endloop
+  endfacet
+  facet normal -0.000000 0.000000 -1.000000
+    outer loop
+      vertex 18.750000 18.750000 0.000000
+      vertex 37.500000 37.500000 0.000000
+      vertex 37.500000 0.000000 0.000000
+    endloop
+  endfacet
+  facet normal 0.000000 -0.000000 -1.000000
+    outer loop
+      vertex 37.500000 0.000000 0.000000
+      vertex 37.500000 37.500000 0.000000
+      vertex 56.250000 18.750000 0.000000
+    endloop
+  endfacet
+  facet normal -0.707107 0.707107 0.000000
+    outer loop
+      vertex 18.750000 18.750000 0.000000
+      vertex 18.750000 18.750000 37.442884
+      vertex 37.500000 37.500000 0.000000
+    endloop
+  endfacet
+  facet normal -0.707107 0.707107 0.000000
+    outer loop
+      vertex 37.500000 37.500000 0.000000
+      vertex 18.750000 18.750000 37.442884
+      vertex 37.500000 37.500000 74.885769
+    endloop
+  endfacet
+  facet normal 0.000000 -0.894154 0.447759
+    outer loop
+      vertex 37.500000 0.000000 0.000000
+      vertex 56.250000 18.750000 37.442884
+      vertex 37.500000 37.500000 74.885769
+    endloop
+  endfacet
+  facet normal 0.000000 -0.894154 0.447759
+    outer loop
+      vertex 18.750000 18.750000 37.442884
+      vertex 37.500000 0.000000 0.000000
+      vertex 37.500000 37.500000 74.885769
+    endloop
+  endfacet
+  facet normal 0.707107 -0.707107 0.000000
+    outer loop
+      vertex 56.250000 18.750000 37.442884
+      vertex 37.500000 0.000000 0.000000
+      vertex 56.250000 18.750000 0.000000
+    endloop
+  endfacet
+  facet normal 0.707107 0.707107 0.000000
+    outer loop
+      vertex 56.250000 18.750000 0.000000
+      vertex 37.500000 37.500000 0.000000
+      vertex 37.500000 37.500000 74.885769
+    endloop
+  endfacet
+  facet normal 0.707107 0.707107 -0.000000
+    outer loop
+      vertex 56.250000 18.750000 37.442884
+      vertex 56.250000 18.750000 0.000000
+      vertex 37.500000 37.500000 74.885769
+    endloop
+  endfacet
+endsolid OpenSCAD_Model

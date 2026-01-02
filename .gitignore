@@ -58,6 +58,15 @@ Thumbs.db
 
 # Project specific
 *.stl
-!tests/fixtures/*.stl
+!tests/fixtures/**/*.stl
 report.json
 report.csv
+
+# Thingi10K test fixtures - NOW SAFE TO COMMIT
+# All fixtures have permissive licenses (CC-BY, CC-BY-SA, Public Domain, GPL, BSD)
+# See scripts/manage_fixtures.py for how these are selected
+# tests/fixtures/thingi10k/  # Uncomment to exclude if fixtures get too large
+
+# Data files (can be rebuilt)
+data/thingi10k/thingi10k.db
+data/thingi10k/thingi10k_metadata.json

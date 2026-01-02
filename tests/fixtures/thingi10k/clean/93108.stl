@@ -1,0 +1,30 @@
+solid OBJECT
+  facet normal 0.000000e+000 0.000000e+000 -1.000000e+000
+    outer loop
+      vertex 9.426415e-001 0.000000e+000 -3.338068e-001
+      vertex -4.713207e-001 -8.163515e-001 -3.338068e-001
+      vertex -4.713207e-001 8.163515e-001 -3.338068e-001
+    endloop
+  endfacet
+  facet normal -9.428648e-001 0.000000e+000 3.331755e-001
+    outer loop
+      vertex -4.713207e-001 8.163515e-001 -3.338068e-001
+      vertex -4.713207e-001 -8.163515e-001 -3.338068e-001
+      vertex 0.000000e+000 0.000000e+000 1.000000e+000
+    endloop
+  endfacet
+  facet normal 4.714324e-001 8.165449e-001 3.331755e-001
+    outer loop
+      vertex 0.000000e+000 0.000000e+000 1.000000e+000
+      vertex 9.426415e-001 0.000000e+000 -3.338068e-001
+      vertex -4.713207e-001 8.163515e-001 -3.338068e-001
+    endloop
+  endfacet
+  facet normal 4.714324e-001 -8.165449e-001 3.331755e-001
+    outer loop
+      vertex 9.426415e-001 0.000000e+000 -3.338068e-001
+      vertex 0.000000e+000 0.000000e+000 1.000000e+000
+      vertex -4.713207e-001 -8.163515e-001 -3.338068e-001
+    endloop
+  endfacet
+endsolid OBJECT
