@@ -70,3 +70,4 @@ report.csv
 # Data files (can be rebuilt)
 data/thingi10k/thingi10k.db
 data/thingi10k/thingi10k_metadata.json
+/poc/v2/.venv312
