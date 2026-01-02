@@ -48,6 +48,13 @@ from meshprep_poc.filter_script import (
     list_presets
 )
 from meshprep_poc.actions import ActionRegistry
+from meshprep_poc.report import (
+    RepairReport,
+    create_repair_report,
+    generate_markdown_report,
+    generate_json_report,
+    generate_report_index,
+)
 
 
 # Path to test fixtures (relative to MeshPrep root)
@@ -121,7 +128,9 @@ def test_single_model(
     category: str,
     filter_script: FilterScript,
     output_dir: Optional[Path] = None,
-    use_blender_escalation: bool = False
+    use_blender_escalation: bool = False,
+    generate_report: bool = False,
+    report_dir: Optional[Path] = None,
 ) -> TestResult:
     """
     Test a single model with a filter script.
@@ -132,11 +141,16 @@ def test_single_model(
         filter_script: Filter script to apply
         output_dir: Optional directory to save repaired model
         use_blender_escalation: If True, try Blender repair when primary fails
+        generate_report: If True, generate a detailed Markdown report
+        report_dir: Directory for report files (required if generate_report=True)
         
     Returns:
         TestResult with all metrics
     """
     file_id = stl_path.stem
+    escalation_used = False
+    escalation_filter_name = None
+    action_names = [a.name for a in filter_script.actions if a.enabled]
     
     try:
         # Load mesh
@@ -148,6 +162,25 @@ def test_single_model(
         result = runner.run(filter_script, original)
         
         if not result.success or result.final_mesh is None:
+            # Generate failure report if requested
+            if generate_report and report_dir:
+                model_report_dir = report_dir / category / file_id
+                repair_report = create_repair_report(
+                    original_mesh=original,
+                    repaired_mesh=None,
+                    input_path=stl_path,
+                    output_path=None,
+                    filter_script_name=filter_script.name,
+                    filter_script_actions=action_names,
+                    duration_ms=result.total_duration_ms,
+                    success=False,
+                    error_message=result.error,
+                    report_dir=model_report_dir,
+                    render_images=True,
+                )
+                generate_markdown_report(repair_report, model_report_dir / "report.md")
+                generate_json_report(repair_report, model_report_dir / "report.json")
+            
             return TestResult(
                 file_id=file_id,
                 category=category,
@@ -194,14 +227,39 @@ def test_single_model(
                             result = escalation_result
                             validation = validate_repair(original, result.final_mesh)
                             filter_script = escalation_script
+                            escalation_used = True
+                            escalation_filter_name = escalation_script.name
+                            action_names = [a.name for a in escalation_script.actions if a.enabled]
                             logger.info(f"  Blender escalation successful")
             else:
                 logger.warning(f"  Blender not available for escalation")
         
         # Save repaired model if requested
+        output_path = None
         if output_dir and validation.geometric.is_printable:
             output_path = output_dir / category / f"{file_id}_repaired.stl"
             save_mesh(result.final_mesh, output_path)
+        
+        # Generate report if requested
+        if generate_report and report_dir:
+            model_report_dir = report_dir / category / file_id
+            repair_report = create_repair_report(
+                original_mesh=original,
+                repaired_mesh=result.final_mesh,
+                input_path=stl_path,
+                output_path=output_path,
+                filter_script_name=filter_script.name,
+                filter_script_actions=action_names,
+                duration_ms=result.total_duration_ms,
+                success=validation.geometric.is_printable,
+                error_message=None,
+                escalation_used=escalation_used,
+                escalation_filter=escalation_filter_name,
+                report_dir=model_report_dir,
+                render_images=True,
+            )
+            generate_markdown_report(repair_report, model_report_dir / "report.md")
+            generate_json_report(repair_report, model_report_dir / "report.json")
         
         final_diag = validation.repaired_diagnostics
         
@@ -251,7 +309,9 @@ def test_category(
     limit: Optional[int] = None,
     output_dir: Optional[Path] = None,
     filter_script: Optional[FilterScript] = None,
-    use_blender_escalation: bool = False
+    use_blender_escalation: bool = False,
+    generate_reports: bool = False,
+    report_dir: Optional[Path] = None,
 ) -> list[TestResult]:
     """
     Test all models in a category.
@@ -262,6 +322,8 @@ def test_category(
         output_dir: Optional directory for repaired models
         filter_script: Optional specific filter script (auto-select if None)
         use_blender_escalation: If True, try Blender when primary repair fails
+        generate_reports: If True, generate Markdown reports for each model
+        report_dir: Directory for report files
         
     Returns:
         List of TestResult objects
@@ -290,6 +352,8 @@ def test_category(
     logger.info(f"  Filter: {filter_script.name}")
     if use_blender_escalation:
         logger.info(f"  Blender escalation: enabled")
+    if generate_reports:
+        logger.info(f"  Report generation: enabled")
     
     results = []
     
@@ -298,7 +362,9 @@ def test_category(
         
         result = test_single_model(
             stl_path, category, filter_script, output_dir,
-            use_blender_escalation=use_blender_escalation
+            use_blender_escalation=use_blender_escalation,
+            generate_report=generate_reports,
+            report_dir=report_dir,
         )
         
         status = "OK" if result.overall_success else "FAIL"
@@ -435,6 +501,11 @@ def main():
         action="store_true",
         help="Enable Blender escalation for failed repairs"
     )
+    parser.add_argument(
+        "--report-dir",
+        type=Path,
+        help="Directory to generate Markdown reports with before/after images"
+    )
     
     args = parser.parse_args()
     
@@ -483,13 +554,18 @@ def main():
     # Run tests
     all_results = []
     
+    # Determine if we should generate reports
+    generate_reports = args.report_dir is not None
+    
     for category in categories:
         results = test_category(
             category,
             limit=args.limit,
             output_dir=args.save_repaired,
             filter_script=filter_script,
-            use_blender_escalation=args.use_blender
+            use_blender_escalation=args.use_blender,
+            generate_reports=generate_reports,
+            report_dir=args.report_dir,
         )
         all_results.extend(results)
     
@@ -497,6 +573,11 @@ def main():
     if all_results:
         summary = compute_summary(all_results)
         print_summary(summary)
+        
+        # Generate report index if reports were generated
+        if generate_reports and args.report_dir:
+            generate_report_index(args.report_dir)
+            logger.info(f"\nReport index generated at: {args.report_dir / 'index.md'}")
         
         # Save results
         if args.output:

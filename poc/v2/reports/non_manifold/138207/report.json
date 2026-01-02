@@ -1,0 +1,62 @@
+{
+  "version": "1.0.0",
+  "timestamp": "2026-01-02T12:04:44.046190",
+  "input_file": "C:\\Users\\Dragon Ace\\Source\\repos\\MeshPrep\\tests\\fixtures\\thingi10k\\non_manifold\\138207.stl",
+  "output_file": null,
+  "filter_script": "manifold-repair",
+  "actions": [
+    "trimesh_basic",
+    "make_manifold",
+    "fix_normals",
+    "validate"
+  ],
+  "duration_ms": 5.084799995529465,
+  "success": true,
+  "error_message": null,
+  "escalation_used": false,
+  "escalation_filter": null,
+  "images": {
+    "before": "images/before.png",
+    "after": "images/after.png"
+  },
+  "models": {
+    "before": "models/before.stl",
+    "after": "models/after.stl"
+  },
+  "original_diagnostics": {
+    "vertex_count": 26,
+    "face_count": 156,
+    "edge_count": 78,
+    "volume": 0.0,
+    "surface_area": 9204.733972410917,
+    "bbox_diagonal": 75.30586207090045,
+    "is_watertight": false,
+    "is_volume": false,
+    "is_winding_consistent": true,
+    "hole_count": 1,
+    "boundary_edge_count": 3,
+    "component_count": 156,
+    "degenerate_face_count": 0,
+    "has_holes": true,
+    "has_multiple_components": true,
+    "euler_characteristic": 104
+  },
+  "repaired_diagnostics": {
+    "vertex_count": 26,
+    "face_count": 52,
+    "edge_count": 78,
+    "volume": 2236.953278423905,
+    "surface_area": 3068.244657470306,
+    "bbox_diagonal": 75.30586207090045,
+    "is_watertight": true,
+    "is_volume": true,
+    "is_winding_consistent": true,
+    "hole_count": 1,
+    "boundary_edge_count": 3,
+    "component_count": 1,
+    "degenerate_face_count": 0,
+    "has_holes": true,
+    "has_multiple_components": false,
+    "euler_characteristic": 0
+  }
+}

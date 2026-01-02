@@ -59,7 +59,9 @@ Thumbs.db
 # Project specific
 *.stl
 !tests/fixtures/**/*.stl
+!poc/v2/reports/**/*.stl
 report.json
+!poc/v2/reports/**/report.json
 report.csv
 
 # Thingi10K test fixtures - NOW SAFE TO COMMIT
