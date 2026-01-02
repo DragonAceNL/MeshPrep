@@ -492,10 +492,10 @@ PRESET_BASIC_CLEANUP = create_filter_script(
 
 PRESET_FILL_HOLES = create_filter_script(
     name="fill-holes",
-    description="Fill holes and fix normals",
+    description="Fill holes using pymeshfix for robust repairs (falls back to trimesh)",
     actions=[
         ("trimesh_basic", {}),
-        ("fill_holes", {}),
+        ("fill_holes_pymeshfix", {}),
         ("fix_normals", {}),
         ("validate", {}),
     ]

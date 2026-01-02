@@ -1,0 +1,175 @@
+{
+  "timestamp": "2026-01-02T11:10:06.613561",
+  "summary": {
+    "total_models": 40,
+    "repair_success": 40,
+    "repair_success_rate": 100.0,
+    "geometrically_valid": 38,
+    "geometrically_valid_rate": 95.0,
+    "visually_unchanged": 2,
+    "visually_unchanged_rate": 5.0,
+    "overall_success": 38,
+    "overall_success_rate": 95.0,
+    "avg_duration_ms": 10.920667499158299,
+    "avg_volume_change_pct": 14.218061299344367,
+    "by_category": {
+      "multiple_components": {
+        "total": 5,
+        "successful": 4,
+        "success_rate": 80.0
+      },
+      "complex": {
+        "total": 5,
+        "successful": 4,
+        "success_rate": 80.0
+      },
+      "clean": {
+        "total": 5,
+        "successful": 5,
+        "success_rate": 100.0
+      },
+      "non_manifold": {
+        "total": 5,
+        "successful": 5,
+        "success_rate": 100.0
+      },
+      "fragmented": {
+        "total": 5,
+        "successful": 5,
+        "success_rate": 100.0
+      },
+      "self_intersecting": {
+        "total": 5,
+        "successful": 5,
+        "success_rate": 100.0
+      },
+      "many_small_holes": {
+        "total": 5,
+        "successful": 5,
+        "success_rate": 100.0
+      },
+      "holes": {
+        "total": 5,
+        "successful": 5,
+        "success_rate": 100.0
+      }
+    }
+  },
+  "results": [
+    {
+      "file_id": "37620",
+      "category": "clean",
+      "filter_script": "basic-cleanup",
+      "repair_success": true,
+      "repair_error": null,
+      "repair_duration_ms": 3.944800002500415,
+      "is_geometrically_valid": true,
+      "is_visually_unchanged": false,
+      "volume_change_pct": 0.0,
+      "hausdorff_relative": 0.022383812267573088,
+      "original_watertight": true,
+      "original_volume": true,
+      "original_faces": 12,
+      "final_watertight": true,
+      "final_volume": true,
+      "final_faces": 12
+    },
+    {
+      "file_id": "43858",
+      "category": "clean",
+      "filter_script": "basic-cleanup",
+      "repair_success": true,
+      "repair_error": null,
+      "repair_duration_ms": 3.312300003017299,
+      "is_geometrically_valid": true,
+      "is_visually_unchanged": false,
+      "volume_change_pct": 0.0,
+      "hausdorff_relative": 0.013850047732391011,
+      "original_watertight": true,
+      "original_volume": true,
+      "original_faces": 12,
+      "final_watertight": true,
+      "final_volume": true,
+      "final_faces": 12
+    },
+    {
+      "file_id": "43860",
+      "category": "clean",
+      "filter_script": "basic-cleanup",
+      "repair_success": true,
+      "repair_error": null,
+      "repair_duration_ms": 2.8781000000890344,
+      "is_geometrically_valid": true,
+      "is_visually_unchanged": false,
+      "volume_change_pct": 0.0,
+      "hausdorff_relative": 0.015080508199110523,
+      "original_watertight": true,
+      "original_volume": true,
+      "original_faces": 12,
+      "final_watertight": true,
+      "final_volume": true,
+      "final_faces": 12
+    },
+    {
+      "file_id": "43959",
+      "category": "clean",
+      "filter_script": "basic-cleanup",
+      "repair_success": true,
+      "repair_error": null,
+      "repair_duration_ms": 3.139799999189563,
+      "is_geometrically_valid": true,
+      "is_visually_unchanged": false,
+      "volume_change_pct": 0.0,
+      "hausdorff_relative": 0.017212980965164538,
+      "original_watertight": true,
+      "original_volume": true,
+      "original_faces": 8,
+      "final_watertight": true,
+      "final_volume": true,
+      "final_faces": 8
+    },
+    {
+      "file_id": "43960",
+      "category": "clean",
+      "filter_script": "basic-cleanup",
+      "repair_success": true,
+      "repair_error": null,
+      "repair_duration_ms": 3.023899989784695,
+      "is_geometrically_valid": true,
+      "is_visually_unchanged": false,
+      "volume_change_pct": 0.0,
+      "hausdorff_relative": 0.014079398809116708,
+      "original_watertight": true,
+      "original_volume": true,
+      "original_faces": 8,
+      "final_watertight": true,
+      "final_volume": true,
+      "final_faces": 8
+    },
+    {
+      "file_id": "100728",
+      "category": "complex",
+      "filter_script": "full-repair",
+      "repair_success": true,
+      "repair_error": null,
+      "repair_duration_ms": 8.841999995638616,
+      "is_geometrically_valid": true,
+      "is_visually_unchanged": false,
+      "volume_change_pct": 0.0,
+      "hausdorff_relative": 0.010698324366785132,
+      "original_watertight": true,
+      "original_volume": true,
+      "original_faces": 108,
+      "final_watertight": true,
+      "final_volume": true,
+      "final_faces": 108
+    },
+    {
+      "file_id": "100827",
+      "category": "complex",
+      "filter_script": "full-repair",
+      "repair_success": true,
+      "repair_error": null,
+      "repair_duration_ms": 11.126099998364225,
+      "is_geometrically_valid": true,
+      "is_visually_unchanged": 

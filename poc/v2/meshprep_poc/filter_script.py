@@ -272,10 +272,10 @@ PRESET_BASIC_CLEANUP = create_filter_script(
 
 PRESET_FILL_HOLES = create_filter_script(
     name="fill-holes",
-    description="Fill holes and fix normals",
+    description="Fill holes using pymeshfix for robust repairs (falls back to trimesh)",
     actions=[
         ("trimesh_basic", {}),
-        ("fill_holes", {}),
+        ("fill_holes_pymeshfix", {}),
         ("fix_normals", {}),
         ("validate", {}),
     ]
@@ -303,12 +303,50 @@ PRESET_MANIFOLD_REPAIR = create_filter_script(
     ]
 )
 
+# Blender escalation presets
+PRESET_BLENDER_REMESH = create_filter_script(
+    name="blender-remesh",
+    description="Aggressive repair using Blender's voxel remesh (requires Blender)",
+    actions=[
+        ("trimesh_basic", {}),
+        ("blender_remesh", {"voxel_size": 0.05, "mode": "VOXEL"}),
+        ("fix_normals", {}),
+        ("validate", {}),
+    ]
+)
+
+PRESET_BLENDER_MANIFOLD = create_filter_script(
+    name="blender-manifold",
+    description="Make mesh manifold using Blender (requires Blender)",
+    actions=[
+        ("trimesh_basic", {}),
+        ("blender_make_manifold", {}),
+        ("fix_normals", {}),
+        ("validate", {}),
+    ]
+)
+
+PRESET_FULL_REPAIR_WITH_ESCALATION = create_filter_script(
+    name="full-repair-escalation",
+    description="Full repair with Blender escalation if pymeshfix fails",
+    actions=[
+        ("trimesh_basic", {}),
+        ("pymeshfix_repair", {"joincomp": True}),
+        ("blender_make_manifold", {}),  # Escalation step
+        ("fix_normals", {}),
+        ("validate", {}),
+    ]
+)
+
 # All presets
 PRESETS = {
     "basic-cleanup": PRESET_BASIC_CLEANUP,
     "fill-holes": PRESET_FILL_HOLES,
     "full-repair": PRESET_FULL_REPAIR,
     "manifold-repair": PRESET_MANIFOLD_REPAIR,
+    "blender-remesh": PRESET_BLENDER_REMESH,
+    "blender-manifold": PRESET_BLENDER_MANIFOLD,
+    "full-repair-escalation": PRESET_FULL_REPAIR_WITH_ESCALATION,
 }
 
 

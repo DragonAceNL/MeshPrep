@@ -1,7 +1,7 @@
 {
   "name": "fill-holes",
-  "version": "1.0.0",
-  "description": "Fill holes and fix normals using trimesh",
+  "version": "1.1.0",
+  "description": "Fill holes using pymeshfix for robust repairs (falls back to trimesh if unavailable)",
   "actions": [
     {
       "name": "trimesh_basic",
@@ -9,7 +9,7 @@
       "enabled": true
     },
     {
-      "name": "fill_holes",
+      "name": "fill_holes_pymeshfix",
       "params": {},
       "enabled": true
     },
@@ -27,6 +27,7 @@
   "metadata": {
     "author": "MeshPrep",
     "risk_level": "medium",
-    "suitable_for": ["holes", "many_small_holes"]
+    "suitable_for": ["holes", "many_small_holes"],
+    "notes": "Uses pymeshfix for robust hole filling. Falls back to trimesh if pymeshfix not available."
   }
 }

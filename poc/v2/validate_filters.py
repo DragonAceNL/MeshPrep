@@ -97,10 +97,14 @@ def get_best_filter_for_category(category: str) -> FilterScript:
     Get the best filter script for a defect category.
     
     This maps defect categories to appropriate repair strategies.
+    
+    Note: We use full-repair (pymeshfix) for holes because trimesh's
+    fill_holes is limited. pymeshfix achieves much better results.
     """
     category_to_filter = {
         "clean": get_preset("basic-cleanup"),
-        "holes": get_preset("fill-holes"),
+        # Use full-repair for holes - pymeshfix is much better than trimesh fill_holes
+        "holes": get_preset("full-repair"),
         "many_small_holes": get_preset("full-repair"),
         "non_manifold": get_preset("manifold-repair"),
         "self_intersecting": get_preset("full-repair"),
@@ -116,7 +120,8 @@ def test_single_model(
     stl_path: Path,
     category: str,
     filter_script: FilterScript,
-    output_dir: Optional[Path] = None
+    output_dir: Optional[Path] = None,
+    use_blender_escalation: bool = False
 ) -> TestResult:
     """
     Test a single model with a filter script.
@@ -126,6 +131,7 @@ def test_single_model(
         category: Defect category
         filter_script: Filter script to apply
         output_dir: Optional directory to save repaired model
+        use_blender_escalation: If True, try Blender repair when primary fails
         
     Returns:
         TestResult with all metrics
@@ -163,6 +169,34 @@ def test_single_model(
         
         # Validate result
         validation = validate_repair(original, result.final_mesh)
+        
+        # Check if we need Blender escalation
+        needs_escalation = (
+            use_blender_escalation and 
+            not validation.geometric.is_printable and
+            (result.final_mesh is None or len(result.final_mesh.faces) == 0 or
+             not result.final_mesh.is_watertight)
+        )
+        
+        if needs_escalation:
+            logger.info(f"  Attempting Blender escalation for {file_id}...")
+            
+            # Try Blender remesh as escalation
+            from meshprep_poc.actions.blender_actions import is_blender_available
+            
+            if is_blender_available():
+                escalation_script = get_preset("blender-remesh")
+                if escalation_script:
+                    escalation_result = runner.run(escalation_script, original)
+                    
+                    if escalation_result.success and escalation_result.final_mesh is not None:
+                        if len(escalation_result.final_mesh.faces) > 0:
+                            result = escalation_result
+                            validation = validate_repair(original, result.final_mesh)
+                            filter_script = escalation_script
+                            logger.info(f"  Blender escalation successful")
+            else:
+                logger.warning(f"  Blender not available for escalation")
         
         # Save repaired model if requested
         if output_dir and validation.geometric.is_printable:
@@ -216,7 +250,8 @@ def test_category(
     category: str,
     limit: Optional[int] = None,
     output_dir: Optional[Path] = None,
-    filter_script: Optional[FilterScript] = None
+    filter_script: Optional[FilterScript] = None,
+    use_blender_escalation: bool = False
 ) -> list[TestResult]:
     """
     Test all models in a category.
@@ -226,6 +261,7 @@ def test_category(
         limit: Maximum number of models to test
         output_dir: Optional directory for repaired models
         filter_script: Optional specific filter script (auto-select if None)
+        use_blender_escalation: If True, try Blender when primary repair fails
         
     Returns:
         List of TestResult objects
@@ -252,6 +288,8 @@ def test_category(
     logger.info(f"\nTesting category: {category}")
     logger.info(f"  Models: {len(stl_files)}")
     logger.info(f"  Filter: {filter_script.name}")
+    if use_blender_escalation:
+        logger.info(f"  Blender escalation: enabled")
     
     results = []
     
@@ -259,7 +297,8 @@ def test_category(
         logger.info(f"  [{i+1}/{len(stl_files)}] {stl_path.name}...")
         
         result = test_single_model(
-            stl_path, category, filter_script, output_dir
+            stl_path, category, filter_script, output_dir,
+            use_blender_escalation=use_blender_escalation
         )
         
         status = "OK" if result.overall_success else "FAIL"
@@ -391,6 +430,11 @@ def main():
         action="store_true",
         help="List available actions"
     )
+    parser.add_argument(
+        "--use-blender",
+        action="store_true",
+        help="Enable Blender escalation for failed repairs"
+    )
     
     args = parser.parse_args()
     
@@ -444,7 +488,8 @@ def main():
             category,
             limit=args.limit,
             output_dir=args.save_repaired,
-            filter_script=filter_script
+            filter_script=filter_script,
+            use_blender_escalation=args.use_blender
         )
         all_results.extend(results)
     
