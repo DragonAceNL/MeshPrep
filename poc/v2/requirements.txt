@@ -1,39 +1,33 @@
+# MeshPrep POC v2 - Real Mesh Operations
+# These are actual dependencies, not mocked
+
 # ============================================================
-# PYTHON VERSION REQUIREMENT: 3.11 or 3.12
+# PYTHON VERSION REQUIREMENT
 # ============================================================
 # Python 3.11 or 3.12 is REQUIRED for pre-built wheels.
 # Python 3.13+ does not have pre-built pymeshfix wheels yet.
-#
-# Recommended: Python 3.12 (latest with full wheel support)
 #
 # To check your version: python --version
 # To install Python 3.12: https://www.python.org/downloads/
 # ============================================================
 
-# Core dependencies
+# Core mesh processing
 trimesh>=4.0.0
-pymeshfix>=0.16.0
-meshio>=5.0.0
 numpy>=1.24.0
 networkx>=3.0  # Required by trimesh for some operations
-scipy>=1.10.0  # For spatial operations
 
-# GUI
-PySide6>=6.5.0
+# Mesh repair (requires Python 3.11 or 3.12 for pre-built wheels)
+pymeshfix>=0.16.0
 
-# CLI
-click>=8.0.0
+# Spatial operations (for Hausdorff distance)
+scipy>=1.10.0
 
-# YAML support
-PyYAML>=6.0
+# Optional: better STL loading
+meshio>=5.0.0
+
+# Testing and benchmarking
+pytest>=7.0.0
+tqdm>=4.65.0
 
 # Reporting
 tabulate>=0.9.0
-
-# Development
-pytest>=7.0.0
-pytest-cov>=4.0.0
-tqdm>=4.65.0
-
-# Type checking (optional)
-# mypy>=1.0.0

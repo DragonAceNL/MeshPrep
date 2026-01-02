@@ -464,6 +464,12 @@ Purpose
 - Provide an easy, up-to-date installation guide so new contributors and users can get started quickly.
 - Maintain a clear, versioned environment for reproducibility and to help debug regressions as the tool evolves.
 
+Python Version Requirement
+- **Python 3.11 or 3.12 is required** for MeshPrep.
+- Python 3.13+ is not currently supported because `pymeshfix` does not have pre-built wheels for these versions.
+- When pymeshfix releases wheels for newer Python versions, this constraint will be relaxed.
+- The `pyproject.toml` enforces this constraint: `requires-python = ">=3.11,<3.13"`
+
 What to include in `docs/INSTALL.md` (summary)
 - Quickstart: create virtualenv, `pip install -r requirements.txt`, example run command.
 - Alternate install: `conda` environment instructions with exported `environment.yml` optional.

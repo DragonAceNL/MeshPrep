@@ -1,0 +1,32 @@
+{
+  "name": "fill-holes",
+  "version": "1.0.0",
+  "description": "Fill holes and fix normals using trimesh",
+  "actions": [
+    {
+      "name": "trimesh_basic",
+      "params": {},
+      "enabled": true
+    },
+    {
+      "name": "fill_holes",
+      "params": {},
+      "enabled": true
+    },
+    {
+      "name": "fix_normals",
+      "params": {},
+      "enabled": true
+    },
+    {
+      "name": "validate",
+      "params": {},
+      "enabled": true
+    }
+  ],
+  "metadata": {
+    "author": "MeshPrep",
+    "risk_level": "medium",
+    "suitable_for": ["holes", "many_small_holes"]
+  }
+}
