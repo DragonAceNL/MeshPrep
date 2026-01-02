@@ -251,11 +251,20 @@ component_drop = (before > 1 and after == 1)  # Lost components
 
 **Problem:** A mesh can be "watertight" and "manifold" but completely wrong.
 
-**Example:** Model 1004825
+**Example 1 - Model 1004825:**
 - After full-repair: watertight=True, manifold=True
 - Reality: 90% of geometry destroyed, only 1 of 10 components remains
 
-**Solution:** Always compare before/after metrics, not just quality flags.
+**Example 2 - Model 100072 (many_small_holes):**
+- After full-repair: watertight=True, manifold=True
+- Reality: 49% volume loss, model was cut in half!
+- Original: 360 faces, 11,772 volume
+- After: 214 faces, 6,003 volume
+
+**Solution:** Always compare before/after metrics, not just quality flags:
+- Volume change > 30% → escalate to Blender
+- Face loss > 40% → escalate to Blender
+- Bbox change > 30% → escalate to Blender
 
 ### Lesson 5: Blender is the Ultimate Fallback
 
@@ -400,6 +409,24 @@ INPUT: mesh, category (optional)
 if len(result.faces) == 0:
     return original_mesh.copy()
 ```
+
+### Issue: Decimation Breaks Manifold Status
+
+**Symptom:** After decimating a Blender-remeshed model, it loses watertight/manifold status.
+
+**Cause:** `fast_simplification` (and most decimation algorithms) don't guarantee manifold output. Edge collapses can create non-manifold edges.
+
+**Workaround:** 
+1. Check manifold status after decimation
+2. If broken, keep the original large mesh
+3. Accept larger file sizes for models that need Blender escalation
+
+**Example - Model 100027:**
+- Blender output: 4.9M faces, watertight, manifold
+- After decimation: 100k faces, NOT watertight, NOT manifold
+- Solution: Keep 4.9M face mesh (237 MB file)
+
+**Future improvement:** Investigate manifold-preserving decimation algorithms or post-decimation repair.
 
 ### Issue: Blender Creates Massive Files
 

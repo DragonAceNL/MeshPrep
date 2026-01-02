@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>MeshPrep Thingi10K Test Dashboard (Live)</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0f1720;
+            color: #dff6fb;
+            margin: 0;
+            padding: 20px;
+        }
+        .container { max-width: 1400px; margin: 0 auto; }
+        h1 { color: #4fe8c4; margin-bottom: 10px; }
+        .subtitle { color: #888; margin-bottom: 30px; }
+        
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        .stat-card {
+            background: #1b2b33;
+            border-radius: 12px;
+            padding: 20px;
+            text-align: center;
+        }
+        .stat-value {
+            font-size: 36px;
+            font-weight: bold;
+            color: #4fe8c4;
+        }
+        .stat-label { color: #888; margin-top: 5px; }
+        
+        .progress-bar {
+            background: #1b2b33;
+            border-radius: 10px;
+            height: 30px;
+            overflow: hidden;
+            margin-bottom: 30px;
+        }
+        .progress-fill {
+            background: linear-gradient(90deg, #4fe8c4, #2ecc71);
+            height: 100%;
+            transition: width 0.5s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            color: #0f1720;
+        }
+        
+        .current-file {
+            background: #1b2b33;
+            border-radius: 12px;
+            padding: 15px 20px;
+            margin-bottom: 30px;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        .spinner {
+            width: 20px;
+            height: 20px;
+            border: 3px solid #333;
+            border-top-color: #4fe8c4;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        .spinner.stopped {
+            animation: none;
+            border-top-color: #888;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        
+        .success { color: #2ecc71; }
+        .failed { color: #e74c3c; }
+        .escalated { color: #f39c12; }
+        
+        .status-badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: bold;
+        }
+        .status-running { background: #2ecc71; color: #0f1720; }
+        .status-stopped { background: #e74c3c; color: white; }
+        .status-complete { background: #4fe8c4; color: #0f1720; }
+        
+        .error-box {
+            background: #2a1a1a;
+            border: 1px solid #e74c3c;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 30px;
+        }
+        .error-box h3 { color: #e74c3c; margin-top: 0; }
+        
+        .info-box {
+            background: #1a2a2a;
+            border: 1px solid #4fe8c4;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 30px;
+        }
+        .info-box h3 { color: #4fe8c4; margin-top: 0; }
+        code {
+            background: #0f1720;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-family: 'Consolas', monospace;
+        }
+        
+        .refresh-info {
+            margin-top: 30px;
+            color: #666;
+            font-size: 12px;
+        }
+        
+        #lastUpdate { color: #4fe8c4; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔧 MeshPrep Thingi10K Test Dashboard</h1>
+        
+        <div id="errorBox" class="error-box" style="display: none;">
+            <h3>⚠️ Cannot Load Progress</h3>
+            <p>The dashboard cannot read the progress file directly from the browser due to security restrictions.</p>
+            <p><strong>To view live progress, you need to run a local server:</strong></p>
+            <ol>
+                <li>Open PowerShell in <code>C:\Users\Dragon Ace\Source\repos\MeshPrep\poc\v3</code></li>
+                <li>Run: <code>python -m http.server 8080</code></li>
+                <li>Open: <a href="http://localhost:8080/live_dashboard.html" style="color: #4fe8c4;">http://localhost:8080/live_dashboard.html</a></li>
+            </ol>
+            <p>Or check the static dashboard that was generated during the last run.</p>
+        </div>
+        
+        <div id="mainContent" style="display: none;">
+            <p class="subtitle">
+                <span id="statusBadge" class="status-badge status-stopped">STOPPED</span>
+                Started: <span id="startTime">-</span> | 
+                Last Update: <span id="lastUpdate">-</span>
+                <span id="etaSpan" style="color: #888;">| ETA: <span id="eta">-</span></span>
+            </p>
+            
+            <div class="progress-bar">
+                <div id="progressFill" class="progress-fill" style="width: 0%">
+                    <span id="progressText">0% (0 / 0)</span>
+                </div>
+            </div>
+            
+            <div class="current-file">
+                <div id="spinner" class="spinner stopped"></div>
+                <span>Currently processing: <strong id="currentFile">-</strong></span>
+            </div>
+            
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-value" id="totalModels">0</div>
+                    <div class="stat-label">Total Models</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value success" id="successful">0</div>
+                    <div class="stat-label">Successful</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value failed" id="failed">0</div>
+                    <div class="stat-label">Failed</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value escalated" id="escalations">0</div>
+                    <div class="stat-label">Escalations</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="successRate">0%</div>
+                    <div class="stat-label">Success Rate</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="avgDuration">0s</div>
+                    <div class="stat-label">Avg Duration</div>
+                </div>
+            </div>
+            
+            <div class="info-box">
+                <h3>📁 View Reports</h3>
+                <p>Reports are saved in: <code>C:\Users\Dragon Ace\Source\repos\Thingi10K\raw_meshes\</code></p>
+                <p>Each model has a <code>.md</code> file with before/after images and metrics.</p>
+                <p>Fixed models are saved in: <code>...\raw_meshes\fixed\</code></p>
+            </div>
+        </div>
+        
+        <p class="refresh-info">
+            Dashboard refreshes every 5 seconds. Last check: <span id="lastCheck">-</span>
+            <button onclick="loadProgress()" style="margin-left: 10px; padding: 4px 12px; cursor: pointer;">Refresh Now</button>
+        </p>
+    </div>
+    
+    <script>
+        let lastUpdateTime = null;
+        
+        function formatTime(isoString) {
+            if (!isoString) return '-';
+            try {
+                const date = new Date(isoString);
+                return date.toLocaleTimeString();
+            } catch {
+                return isoString.substring(11, 19);
+            }
+        }
+        
+        function formatDuration(seconds) {
+            if (seconds <= 0) return 'Calculating...';
+            const hours = Math.floor(seconds / 3600);
+            const mins = Math.floor((seconds % 3600) / 60);
+            const secs = Math.floor(seconds % 60);
+            if (hours > 0) return `${hours}h ${mins}m`;
+            if (mins > 0) return `${mins}m ${secs}s`;
+            return `${secs}s`;
+        }
+        
+        function updateDashboard(data) {
+            document.getElementById('errorBox').style.display = 'none';
+            document.getElementById('mainContent').style.display = 'block';
+            
+            const p = data;
+            const percentComplete = p.total_files > 0 ? (p.processed / p.total_files * 100) : 0;
+            const successRate = p.processed > 0 ? (p.successful / p.processed * 100) : 0;
+            
+            // Check if running (updated in last 60 seconds)
+            const lastUpdate = new Date(p.last_update);
+            const now = new Date();
+            const isRunning = (now - lastUpdate) < 60000;
+            const isComplete = p.processed >= p.total_files && p.total_files > 0;
+            
+            // Status badge
+            const badge = document.getElementById('statusBadge');
+            if (isComplete) {
+                badge.textContent = 'COMPLETE';
+                badge.className = 'status-badge status-complete';
+            } else if (isRunning) {
+                badge.textContent = 'RUNNING';
+                badge.className = 'status-badge status-running';
+            } else {
+                badge.textContent = 'STOPPED';
+                badge.className = 'status-badge status-stopped';
+            }
+            
+            // Spinner
+            document.getElementById('spinner').className = isRunning ? 'spinner' : 'spinner stopped';
+            
+            // Times
+            document.getElementById('startTime').textContent = formatTime(p.start_time);
+            document.getElementById('lastUpdate').textContent = formatTime(p.last_update);
+            document.getElementById('eta').textContent = formatDuration(p.eta_seconds);
+            
+            // Progress bar
+            document.getElementById('progressFill').style.width = percentComplete + '%';
+            document.getElementById('progressText').textContent = 
+                `${percentComplete.toFixed(1)}% (${p.processed.toLocaleString()} / ${p.total_files.toLocaleString()})`;
+            
+            // Current file
+            document.getElementById('currentFile').textContent = p.current_file || '-';
+            
+            // Stats
+            document.getElementById('totalModels').textContent = p.total_files.toLocaleString();
+            document.getElementById('successful').textContent = p.successful.toLocaleString();
+            document.getElementById('failed').textContent = p.failed.toLocaleString();
+            document.getElementById('escalations').textContent = p.escalations.toLocaleString();
+            document.getElementById('successRate').textContent = successRate.toFixed(1) + '%';
+            document.getElementById('avgDuration').textContent = (p.avg_duration_ms / 1000).toFixed(1) + 's';
+        }
+        
+        async function loadProgress() {
+            document.getElementById('lastCheck').textContent = new Date().toLocaleTimeString();
+            
+            try {
+                const response = await fetch('progress.json?' + Date.now());
+                if (!response.ok) throw new Error('Not found');
+                const data = await response.json();
+                updateDashboard(data);
+            } catch (e) {
+                document.getElementById('errorBox').style.display = 'block';
+                document.getElementById('mainContent').style.display = 'none';
+            }
+        }
+        
+        // Load immediately and then every 5 seconds
+        loadProgress();
+        setInterval(loadProgress, 5000);
+    </script>
+</body>
+</html>

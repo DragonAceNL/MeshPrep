@@ -1,0 +1,14 @@
+{
+  "total_files": 9956,
+  "processed": 11,
+  "successful": 7,
+  "failed": 0,
+  "escalations": 0,
+  "skipped": 4,
+  "start_time": "2026-01-02T21:24:44.839829",
+  "last_update": "2026-01-02T21:24:48.578305",
+  "current_file": "100036",
+  "total_duration_ms": 794.5983409881592,
+  "avg_duration_ms": 113.51404871259417,
+  "eta_seconds": 1218.5567401250203
+}

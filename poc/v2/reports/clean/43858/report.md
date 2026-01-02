@@ -4,7 +4,7 @@
 
 # MeshPrep Repair Report
 
-**Generated:** 2026-01-02T18:30:16.941761
+**Generated:** 2026-01-02T18:47:42.282939
 
 ## Status: ✅ SUCCESS
 
@@ -14,7 +14,7 @@
 |----------|-------|
 | **Input File** | `C:\Users\Dragon Ace\Source\repos\MeshPrep\tests\fixtures\thingi10k\clean\43858.stl` |
 | **Filter Script** | `basic-cleanup` |
-| **Duration** | 3.5 ms |
+| **Duration** | 3.1 ms |
 
 ## Visual Comparison
 

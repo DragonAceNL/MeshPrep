@@ -1,6 +1,6 @@
 # MeshPrep Repair Reports
 
-**Generated:** 2026-01-02T18:32:39.205979
+**Generated:** 2026-01-02T19:12:50.630377
 
 ## Summary
 
@@ -9,7 +9,7 @@
 | **Total Reports** | 16 |
 | **Successful** | 16 (100.0%) |
 | **Failed** | 0 |
-| **Used Escalation** | 1 |
+| **Used Escalation** | 4 |
 | **Categories** | 8 |
 
 ## Categories
@@ -32,7 +32,7 @@
 | Status | Model | Filter | Duration | Watertight | Faces | Report |
 |--------|-------|--------|----------|------------|-------|--------|
 | ✅ | 37620 | basic-cleanup | 3ms | ✅ → ✅ | 12 → 12 | [View](./clean/37620/report.md) |
-| ✅ | 43858 | basic-cleanup | 4ms | ✅ → ✅ | 12 → 12 | [View](./clean/43858/report.md) |
+| ✅ | 43858 | basic-cleanup | 3ms | ✅ → ✅ | 12 → 12 | [View](./clean/43858/report.md) |
 
 ---
 
@@ -43,7 +43,7 @@
 | Status | Model | Filter | Duration | Watertight | Faces | Report |
 |--------|-------|--------|----------|------------|-------|--------|
 | ✅ | 100728 | conservative-repair | 9ms | ✅ → ✅ | 108 → 108 | [View](./complex/100728/report.md) |
-| ✅ | 100827 | conservative-repair | 16ms | ❌ → ✅ | 71 → 100 | [View](./complex/100827/report.md) |
+| ✅ | 100827 | conservative-repair | 17ms | ❌ → ✅ | 71 → 100 | [View](./complex/100827/report.md) |
 
 ---
 
@@ -53,8 +53,8 @@
 
 | Status | Model | Filter | Duration | Watertight | Faces | Report |
 |--------|-------|--------|----------|------------|-------|--------|
-| ✅ | 1004825 | conservative-repair | 27ms | ✅ → ✅ | 620 → 620 | [View](./fragmented/1004825/report.md) |
-| ✅ | 138201 | conservative-repair | 20ms | ❌ → ✅ | 672 → 224 | [View](./fragmented/138201/report.md) |
+| ✅ | 1004825 | conservative-repair | 28ms | ✅ → ✅ | 620 → 620 | [View](./fragmented/1004825/report.md) |
+| ✅ 🚀 | 138201 | blender-remesh | 39071ms | ❌ → ✅ | 672 → 4,638,560 | [View](./fragmented/138201/report.md) |
 
 ---
 
@@ -64,8 +64,8 @@
 
 | Status | Model | Filter | Duration | Watertight | Faces | Report |
 |--------|-------|--------|----------|------------|-------|--------|
-| ✅ | 100036 | conservative-repair | 27ms | ❌ → ✅ | 252 → 242 | [View](./holes/100036/report.md) |
-| ✅ 🚀 | 100037 | blender-remesh | 12913ms | ❌ → ✅ | 375 → 1,976,904 | [View](./holes/100037/report.md) |
+| ✅ | 100036 | conservative-repair | 26ms | ❌ → ✅ | 252 → 242 | [View](./holes/100036/report.md) |
+| ✅ 🚀 | 100037 | blender-remesh | 13068ms | ❌ → ✅ | 375 → 1,976,904 | [View](./holes/100037/report.md) |
 
 ---
 
@@ -75,8 +75,8 @@
 
 | Status | Model | Filter | Duration | Watertight | Faces | Report |
 |--------|-------|--------|----------|------------|-------|--------|
-| ✅ | 100072 | full-repair | 14ms | ✅ → ✅ | 360 → 214 | [View](./many_small_holes/100072/report.md) |
-| ✅ | 100827 | conservative-repair | 15ms | ❌ → ✅ | 71 → 100 | [View](./many_small_holes/100827/report.md) |
+| ✅ 🚀 | 100072 | blender-remesh | 23350ms | ✅ → ✅ | 360 → 3,759,400 | [View](./many_small_holes/100072/report.md) |
+| ✅ | 100827 | conservative-repair | 39ms | ❌ → ✅ | 71 → 100 | [View](./many_small_holes/100827/report.md) |
 
 ---
 
@@ -86,8 +86,8 @@
 
 | Status | Model | Filter | Duration | Watertight | Faces | Report |
 |--------|-------|--------|----------|------------|-------|--------|
-| ✅ | 132444 | conservative-repair | 9ms | ✅ → ✅ | 64 → 64 | [View](./multiple_components/132444/report.md) |
-| ✅ | 239180 | conservative-repair | 10ms | ✅ → ✅ | 100 → 100 | [View](./multiple_components/239180/report.md) |
+| ✅ | 132444 | conservative-repair | 10ms | ✅ → ✅ | 64 → 64 | [View](./multiple_components/132444/report.md) |
+| ✅ | 239180 | conservative-repair | 21ms | ✅ → ✅ | 100 → 100 | [View](./multiple_components/239180/report.md) |
 
 ---
 
@@ -97,8 +97,8 @@
 
 | Status | Model | Filter | Duration | Watertight | Faces | Report |
 |--------|-------|--------|----------|------------|-------|--------|
-| ✅ | 101951 | conservative-repair | 23ms | ✅ → ✅ | 168 → 168 | [View](./non_manifold/101951/report.md) |
-| ✅ | 138207 | conservative-repair | 6ms | ❌ → ✅ | 156 → 52 | [View](./non_manifold/138207/report.md) |
+| ✅ | 101951 | conservative-repair | 70ms | ✅ → ✅ | 168 → 168 | [View](./non_manifold/101951/report.md) |
+| ✅ 🚀 | 138207 | blender-remesh | 30242ms | ❌ → ✅ | 156 → 2,460,208 | [View](./non_manifold/138207/report.md) |
 
 ---
 
@@ -108,8 +108,8 @@
 
 | Status | Model | Filter | Duration | Watertight | Faces | Report |
 |--------|-------|--------|----------|------------|-------|--------|
-| ✅ | 100728 | full-repair | 9ms | ✅ → ✅ | 108 → 108 | [View](./self_intersecting/100728/report.md) |
-| ✅ | 100827 | conservative-repair | 15ms | ❌ → ✅ | 71 → 100 | [View](./self_intersecting/100827/report.md) |
+| ✅ | 100728 | full-repair | 19ms | ✅ → ✅ | 108 → 108 | [View](./self_intersecting/100728/report.md) |
+| ✅ | 100827 | conservative-repair | 44ms | ❌ → ✅ | 71 → 100 | [View](./self_intersecting/100827/report.md) |
 
 ---
 

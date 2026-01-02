@@ -230,19 +230,41 @@ def test_single_model(
         # Validate result
         validation = validate_repair(original, result.final_mesh)
         
+        # Compute geometry loss metrics
+        import numpy as np
+        original_volume = original_diag.volume if original_diag.volume > 0 else 0
+        result_volume = result.final_mesh.volume if result.final_mesh.is_volume else 0
+        volume_loss_pct = abs(original_volume - result_volume) / original_volume * 100 if original_volume > 0 else 0
+        
+        original_faces = original_diag.face_count
+        result_faces = len(result.final_mesh.faces)
+        face_loss_pct = (original_faces - result_faces) / original_faces * 100 if original_faces > 0 else 0
+        
+        # Detect significant geometry loss (even if result is "printable")
+        significant_geometry_loss = (
+            volume_loss_pct > 30 or  # Lost more than 30% volume
+            face_loss_pct > 40  # Lost more than 40% faces
+        )
+        
+        if significant_geometry_loss:
+            logger.warning(f"  Significant geometry loss detected: volume={volume_loss_pct:.1f}%, faces={face_loss_pct:.1f}%")
+        
         # Automatic Blender escalation when:
         # 1. Blender is available
         # 2. Not disabled
-        # 3. Result is not printable (not watertight/manifold)
+        # 3. Result is not printable (not watertight/manifold) OR significant geometry loss
         from meshprep_poc.actions.blender_actions import is_blender_available
         
         blender_available = is_blender_available()
         needs_escalation = (
             not disable_blender_escalation and
             blender_available and
-            not validation.geometric.is_printable and
+            (
+                not validation.geometric.is_printable or
+                significant_geometry_loss
+            ) and
             (result.final_mesh is None or len(result.final_mesh.faces) == 0 or
-             not result.final_mesh.is_watertight)
+             not result.final_mesh.is_watertight or significant_geometry_loss)
         )
         
         if needs_escalation:

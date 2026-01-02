@@ -4,7 +4,7 @@
 
 # MeshPrep Repair Report
 
-**Generated:** 2026-01-02T18:32:38.432456
+**Generated:** 2026-01-02T19:05:04.391695
 
 ## Status: ✅ SUCCESS
 
@@ -14,7 +14,7 @@
 |----------|-------|
 | **Input File** | `C:\Users\Dragon Ace\Source\repos\MeshPrep\tests\fixtures\thingi10k\non_manifold\101951.stl` |
 | **Filter Script** | `conservative-repair` |
-| **Duration** | 22.6 ms |
+| **Duration** | 70.4 ms |
 
 ## Visual Comparison
 

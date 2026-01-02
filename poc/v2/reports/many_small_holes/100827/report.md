@@ -4,7 +4,7 @@
 
 # MeshPrep Repair Report
 
-**Generated:** 2026-01-02T18:32:37.874204
+**Generated:** 2026-01-02T19:05:02.778965
 
 ## Status: ✅ SUCCESS
 
@@ -14,7 +14,7 @@
 |----------|-------|
 | **Input File** | `C:\Users\Dragon Ace\Source\repos\MeshPrep\tests\fixtures\thingi10k\many_small_holes\100827.stl` |
 | **Filter Script** | `conservative-repair` |
-| **Duration** | 15.2 ms |
+| **Duration** | 39.0 ms |
 
 ## Visual Comparison
 

@@ -4,7 +4,7 @@
 
 # MeshPrep Repair Report
 
-**Generated:** 2026-01-02T18:32:39.059481
+**Generated:** 2026-01-02T19:12:50.277623
 
 ## Status: ✅ SUCCESS
 
@@ -14,7 +14,7 @@
 |----------|-------|
 | **Input File** | `C:\Users\Dragon Ace\Source\repos\MeshPrep\tests\fixtures\thingi10k\self_intersecting\100827.stl` |
 | **Filter Script** | `conservative-repair` |
-| **Duration** | 15.3 ms |
+| **Duration** | 43.5 ms |
 
 ## Visual Comparison
 

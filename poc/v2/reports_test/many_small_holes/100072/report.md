@@ -1,6 +1,10 @@
+[← Back to Index](../../index.md)
+
+---
+
 # MeshPrep Repair Report
 
-**Generated:** 2026-01-02T11:30:24.926045
+**Generated:** 2026-01-02T18:43:14.139645
 
 ## Status: ✅ SUCCESS
 
@@ -8,9 +12,10 @@
 
 | Property | Value |
 |----------|-------|
-| **Input File** | `C:\Users\Dragon Ace\Source\repos\MeshPrep\tests\fixtures\thingi10k\holes\100036.stl` |
-| **Filter Script** | `full-repair` |
-| **Duration** | 23.9 ms |
+| **Input File** | `C:\Users\Dragon Ace\Source\repos\MeshPrep\tests\fixtures\thingi10k\many_small_holes\100072.stl` |
+| **Filter Script** | `blender-remesh` |
+| **Duration** | 23045.0 ms |
+| **Escalation** | Yes (`blender-remesh`) |
 
 ## Visual Comparison
 
@@ -28,25 +33,34 @@
 
 **After:** ![After - Repaired Model](./images/after.png)
 
+## 3D Model Files
+
+Download the STL files to compare in your favorite 3D viewer:
+
+| Model | File | Size Info |
+|-------|------|-----------|
+| **Before (Original)** | [📥 Download](./models/before.stl) | 180 vertices, 360 faces |
+| **After (Repaired)** | [📥 Download](./models/after.stl) | 1,879,700 vertices, 3,759,400 faces |
+
 ## Diagnostics Comparison
 
 ### Geometry
 
 | Metric | Before | After | Change |
 |--------|--------|-------|--------|
-| Vertices | 123 | 123 | ➖ +0 (+0.0%) |
-| Faces | 252 | 242 | 🔻 -10 (-4.0%) |
-| Volume | 0.0000 | 3179.1987 | +0.0% |
-| Surface Area | 3711.8835 | 3533.6513 | -4.8% |
-| Bbox Diagonal | 57.3446 | 57.3446 | — |
+| Vertices | 180 | 1,879,700 | 🔺 +1,879,520 (+1044177.8%) |
+| Faces | 360 | 3,759,400 | 🔺 +3,759,040 (+1044177.8%) |
+| Volume | 11772.6232 | 11772.6693 | +0.0% |
+| Surface Area | 4460.7043 | 4456.1252 | -0.1% |
+| Bbox Diagonal | 45.8039 | 45.8039 | — |
 
 ### Quality Flags
 
 | Flag | Before | After |
 |------|--------|-------|
-| Watertight | ❌ | ✅ |
-| Manifold (is_volume) | ❌ | ✅ |
-| Winding Consistent | ❌ | ✅ |
+| Watertight | ✅ | ✅ |
+| Manifold (is_volume) | ✅ | ✅ |
+| Winding Consistent | ✅ | ✅ |
 
 ### Defects
 
@@ -54,14 +68,14 @@
 |--------|--------|-------|
 | Boundary Edges | 3 | ❌ 3 |
 | Estimated Holes | 1 | ❌ 1 |
-| Components | 16 | 1 |
-| Degenerate Faces | 1 | ✅ Fixed |
-| Euler Characteristic | 9 | 2 |
+| Components | 1 | 1 |
+| Degenerate Faces | 0 | ✅ None |
+| Euler Characteristic | 0 | 0 |
 
 ## Actions Performed
 
 1. `trimesh_basic`
-2. `pymeshfix_repair`
+2. `blender_remesh`
 3. `fix_normals`
 4. `validate`
 

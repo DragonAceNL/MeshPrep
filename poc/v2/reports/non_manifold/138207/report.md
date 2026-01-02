@@ -4,7 +4,7 @@
 
 # MeshPrep Repair Report
 
-**Generated:** 2026-01-02T18:32:38.695453
+**Generated:** 2026-01-02T19:05:50.904466
 
 ## Status: ✅ SUCCESS
 
@@ -13,8 +13,9 @@
 | Property | Value |
 |----------|-------|
 | **Input File** | `C:\Users\Dragon Ace\Source\repos\MeshPrep\tests\fixtures\thingi10k\non_manifold\138207.stl` |
-| **Filter Script** | `conservative-repair` |
-| **Duration** | 6.2 ms |
+| **Filter Script** | `blender-remesh` |
+| **Duration** | 30241.9 ms |
+| **Escalation** | Yes (`blender-remesh`) |
 
 ## Visual Comparison
 
@@ -39,7 +40,7 @@ Download the STL files to compare in your favorite 3D viewer:
 | Model | File | Size Info |
 |-------|------|-----------|
 | **Before (Original)** | [📥 Download](./models/before.stl) | 26 vertices, 156 faces |
-| **After (Repaired)** | [📥 Download](./models/after.stl) | 26 vertices, 52 faces |
+| **After (Repaired)** | [📥 Download](./models/after.stl) | 1,230,104 vertices, 2,460,208 faces |
 
 ## Diagnostics Comparison
 
@@ -47,10 +48,10 @@ Download the STL files to compare in your favorite 3D viewer:
 
 | Metric | Before | After | Change |
 |--------|--------|-------|--------|
-| Vertices | 26 | 26 | ➖ +0 (+0.0%) |
-| Faces | 156 | 52 | 🔻 -104 (-66.7%) |
-| Volume | 0.0000 | 2236.9533 | +0.0% |
-| Surface Area | 9204.7340 | 3068.2447 | -66.7% |
+| Vertices | 26 | 1,230,104 | 🔺 +1,230,078 (+4731069.2%) |
+| Faces | 156 | 2,460,208 | 🔺 +2,460,052 (+1576956.4%) |
+| Volume | 0.0000 | 2237.2999 | +0.0% |
+| Surface Area | 9204.7340 | 3045.2668 | -66.9% |
 | Bbox Diagonal | 75.3059 | 75.3059 | — |
 
 ### Quality Flags
@@ -74,7 +75,7 @@ Download the STL files to compare in your favorite 3D viewer:
 ## Actions Performed
 
 1. `trimesh_basic`
-2. `pymeshfix_repair_conservative`
+2. `blender_remesh`
 3. `fix_normals`
 4. `validate`
 

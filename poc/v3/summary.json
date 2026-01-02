@@ -1,0 +1,40 @@
+{
+  "progress": {
+    "total_files": 3,
+    "processed": 3,
+    "successful": 1,
+    "failed": 0,
+    "escalations": 0,
+    "skipped": 2,
+    "start_time": "2026-01-02T21:23:00.907377",
+    "last_update": "2026-01-02T21:23:01.475704",
+    "current_file": "100028",
+    "total_duration_ms": 40.039777755737305,
+    "avg_duration_ms": 40.039777755737305,
+    "eta_seconds": 0
+  },
+  "results": [
+    {
+      "file_id": "100028",
+      "file_path": "C:\\Users\\Dragon Ace\\Source\\repos\\Thingi10K\\raw_meshes\\100028.stl",
+      "success": true,
+      "error": null,
+      "filter_used": "conservative-repair",
+      "escalation_used": false,
+      "duration_ms": 40.039777755737305,
+      "original_vertices": 120,
+      "original_faces": 228,
+      "original_volume": 1112.6238664362947,
+      "original_watertight": true,
+      "original_manifold": true,
+      "result_vertices": 120,
+      "result_faces": 228,
+      "result_volume": 1112.62386643629,
+      "result_watertight": true,
+      "result_manifold": true,
+      "volume_change_pct": 4.2915196485956967e-13,
+      "face_change_pct": 0.0,
+      "timestamp": "2026-01-02T21:23:00.907879"
+    }
+  ]
+}

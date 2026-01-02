@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "timestamp": "2026-01-02T18:32:38.432456",
+  "timestamp": "2026-01-02T19:05:04.391695",
   "input_file": "C:\\Users\\Dragon Ace\\Source\\repos\\MeshPrep\\tests\\fixtures\\thingi10k\\non_manifold\\101951.stl",
   "output_file": null,
   "filter_script": "conservative-repair",
@@ -10,7 +10,7 @@
     "fix_normals",
     "validate"
   ],
-  "duration_ms": 22.603999997954816,
+  "duration_ms": 70.44870000027004,
   "success": true,
   "error_message": null,
   "escalation_used": false,

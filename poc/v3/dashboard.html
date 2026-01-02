@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>MeshPrep Thingi10K Test Dashboard</title>
+    <meta http-equiv="refresh" content="30">
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0f1720;
+            color: #dff6fb;
+            margin: 0;
+            padding: 20px;
+        }
+        .container { max-width: 1400px; margin: 0 auto; }
+        h1 { color: #4fe8c4; margin-bottom: 10px; }
+        .subtitle { color: #888; margin-bottom: 30px; }
+        
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        .stat-card {
+            background: #1b2b33;
+            border-radius: 12px;
+            padding: 20px;
+            text-align: center;
+        }
+        .stat-value {
+            font-size: 36px;
+            font-weight: bold;
+            color: #4fe8c4;
+        }
+        .stat-label { color: #888; margin-top: 5px; }
+        
+        .progress-bar {
+            background: #1b2b33;
+            border-radius: 10px;
+            height: 30px;
+            overflow: hidden;
+            margin-bottom: 30px;
+        }
+        .progress-fill {
+            background: linear-gradient(90deg, #4fe8c4, #2ecc71);
+            height: 100%;
+            transition: width 0.5s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+        }
+        
+        .current-file {
+            background: #1b2b33;
+            border-radius: 12px;
+            padding: 15px 20px;
+            margin-bottom: 30px;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        .spinner {
+            width: 20px;
+            height: 20px;
+            border: 3px solid #333;
+            border-top-color: #4fe8c4;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background: #1b2b33;
+            border-radius: 12px;
+            overflow: hidden;
+        }
+        th, td {
+            padding: 12px 15px;
+            text-align: left;
+            border-bottom: 1px solid #2a3a43;
+        }
+        th { background: #0f1720; color: #4fe8c4; }
+        tr:hover { background: #2a3a43; }
+        
+        .success { color: #2ecc71; }
+        .failed { color: #e74c3c; }
+        .escalated { color: #f39c12; }
+        
+        a { color: #4fe8c4; text-decoration: none; }
+        a:hover { text-decoration: underline; }
+        
+        .eta { font-size: 14px; color: #888; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔧 MeshPrep Thingi10K Test Dashboard</h1>
+        <p class="subtitle">
+            Started: 2026-01-02T21:24:44 | 
+            Last Update: 2026-01-02T21:24:48
+            <span class="eta">| ETA: 0:20:18</span>
+        </p>
+        
+        <div class="progress-bar">
+            <div class="progress-fill" style="width: 0.1%">
+                0.1% (11 / 9,956)
+            </div>
+        </div>
+        
+        <div class="current-file">
+            <div class="spinner"></div>
+            <span>Currently processing: <strong>100036</strong></span>
+        </div>
+        
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-value">9,956</div>
+                <div class="stat-label">Total Models</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value success">7</div>
+                <div class="stat-label">Successful</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value failed">0</div>
+                <div class="stat-label">Failed</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value escalated">0</div>
+                <div class="stat-label">Escalations</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value">63.6%</div>
+                <div class="stat-label">Success Rate</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value">0.1s</div>
+                <div class="stat-label">Avg Duration</div>
+            </div>
+        </div>
+        
+        <h2>Recent Results</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Model</th>
+                    <th>Status</th>
+                    <th>Filter</th>
+                    <th>Duration</th>
+                    <th>Faces</th>
+                    <th>Report</th>
+                </tr>
+            </thead>
+            <tbody>
+
+                <tr>
+                    <td>100036</td>
+                    <td class="success">✅</td>
+                    <td>conservative-repair</td>
+                    <td>0.1s</td>
+                    <td>252 → 242</td>
+                    <td><a href="file:///C:\Users\Dragon Ace\Source\repos\Thingi10K\raw_meshes\reports/100036.md">View</a></td>
+                </tr>
+
+                <tr>
+                    <td>100035</td>
+                    <td class="success">✅</td>
+                    <td>conservative-repair</td>
+                    <td>0.1s</td>
+                    <td>670 → 670</td>
+                    <td><a href="file:///C:\Users\Dragon Ace\Source\repos\Thingi10K\raw_meshes\reports/100035.md">View</a></td>
+                </tr>
+
+                <tr>
+                    <td>100034</td>
+                    <td class="success">✅</td>
+                    <td>conservative-repair</td>
+                    <td>0.0s</td>
+                    <td>188 → 188</td>
+                    <td><a href="file:///C:\Users\Dragon Ace\Source\repos\Thingi10K\raw_meshes\reports/100034.md">View</a></td>
+                </tr>
+
+                <tr>
+                    <td>100033</td>
+                    <td class="success">✅</td>
+                    <td>conservative-repair</td>
+                    <td>0.1s</td>
+                    <td>420 → 420</td>
+                    <td><a href="file:///C:\Users\Dragon Ace\Source\repos\Thingi10K\raw_meshes\reports/100033.md">View</a></td>
+                </tr>
+
+                <tr>
+                    <td>100032</td>
+                    <td class="success">✅</td>
+                    <td>conservative-repair</td>
+                    <td>0.4s</td>
+                    <td>3,128 → 3,128</td>
+                    <td><a href="file:///C:\Users\Dragon Ace\Source\repos\Thingi10K\raw_meshes\reports/100032.md">View</a></td>
+                </tr>
+
+                <tr>
+                    <td>100031</td>
+                    <td class="success">✅</td>
+                    <td>conservative-repair</td>
+                    <td>0.1s</td>
+                    <td>640 → 640</td>
+                    <td><a href="file:///C:\Users\Dragon Ace\Source\repos\Thingi10K\raw_meshes\reports/100031.md">View</a></td>
+                </tr>
+
+                <tr>
+                    <td>100029</td>
+                    <td class="success">✅</td>
+                    <td>conservative-repair</td>
+                    <td>0.1s</td>
+                    <td>452 → 460</td>
+                    <td><a href="file:///C:\Users\Dragon Ace\Source\repos\Thingi10K\raw_meshes\reports/100029.md">View</a></td>
+                </tr>
+
+            </tbody>
+        </table>
+        
+        <p style="margin-top: 30px; color: #666; font-size: 12px;">
+            Dashboard auto-refreshes every 30 seconds. 
+            <a href="javascript:location.reload()">Refresh now</a>
+        </p>
+    </div>
+</body>
+</html>
