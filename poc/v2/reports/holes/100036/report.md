@@ -4,7 +4,7 @@
 
 # MeshPrep Repair Report
 
-**Generated:** 2026-01-02T12:04:42.582880
+**Generated:** 2026-01-02T18:30:18.417679
 
 ## Status: ✅ SUCCESS
 
@@ -13,8 +13,8 @@
 | Property | Value |
 |----------|-------|
 | **Input File** | `C:\Users\Dragon Ace\Source\repos\MeshPrep\tests\fixtures\thingi10k\holes\100036.stl` |
-| **Filter Script** | `full-repair` |
-| **Duration** | 24.5 ms |
+| **Filter Script** | `conservative-repair` |
+| **Duration** | 26.7 ms |
 
 ## Visual Comparison
 
@@ -74,7 +74,7 @@ Download the STL files to compare in your favorite 3D viewer:
 ## Actions Performed
 
 1. `trimesh_basic`
-2. `pymeshfix_repair`
+2. `pymeshfix_repair_conservative`
 3. `fix_normals`
 4. `validate`
 

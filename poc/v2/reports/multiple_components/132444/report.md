@@ -4,7 +4,7 @@
 
 # MeshPrep Repair Report
 
-**Generated:** 2026-01-02T12:04:43.417878
+**Generated:** 2026-01-02T18:32:38.042704
 
 ## Status: ✅ SUCCESS
 
@@ -13,8 +13,8 @@
 | Property | Value |
 |----------|-------|
 | **Input File** | `C:\Users\Dragon Ace\Source\repos\MeshPrep\tests\fixtures\thingi10k\multiple_components\132444.stl` |
-| **Filter Script** | `full-repair` |
-| **Duration** | 6.6 ms |
+| **Filter Script** | `conservative-repair` |
+| **Duration** | 9.0 ms |
 
 ## Visual Comparison
 
@@ -39,7 +39,7 @@ Download the STL files to compare in your favorite 3D viewer:
 | Model | File | Size Info |
 |-------|------|-----------|
 | **Before (Original)** | [📥 Download](./models/before.stl) | 32 vertices, 64 faces |
-| **After (Repaired)** | [📥 Download](./models/after.stl) | 16 vertices, 32 faces |
+| **After (Repaired)** | [📥 Download](./models/after.stl) | 32 vertices, 64 faces |
 
 ## Diagnostics Comparison
 
@@ -47,11 +47,11 @@ Download the STL files to compare in your favorite 3D viewer:
 
 | Metric | Before | After | Change |
 |--------|--------|-------|--------|
-| Vertices | 32 | 16 | 🔻 -16 (-50.0%) |
-| Faces | 64 | 32 | 🔻 -32 (-50.0%) |
-| Volume | 68.6802 | 34.3401 | -50.0% |
-| Surface Area | 368.6899 | 184.3449 | -50.0% |
-| Bbox Diagonal | 16.9059 | 8.4708 | — |
+| Vertices | 32 | 32 | ➖ +0 (+0.0%) |
+| Faces | 64 | 64 | ➖ +0 (+0.0%) |
+| Volume | 68.6802 | 68.6802 | +0.0% |
+| Surface Area | 368.6899 | 368.6899 | -0.0% |
+| Bbox Diagonal | 16.9059 | 16.9059 | — |
 
 ### Quality Flags
 
@@ -67,25 +67,22 @@ Download the STL files to compare in your favorite 3D viewer:
 |--------|--------|-------|
 | Boundary Edges | 3 | ❌ 3 |
 | Estimated Holes | 1 | ❌ 1 |
-| Components | 2 | 1 |
+| Components | 2 | 2 |
 | Degenerate Faces | 0 | ✅ None |
 | Euler Characteristic | 0 | 0 |
 
 ## Actions Performed
 
 1. `trimesh_basic`
-2. `pymeshfix_repair`
+2. `pymeshfix_repair_conservative`
 3. `fix_normals`
 4. `validate`
 
 ## Printability Assessment
 
-✅ **Model appears ready for 3D printing!**
+⚠️ **Model may have issues for 3D printing:**
 
-The mesh is:
-- Watertight (no holes)
-- Manifold (valid topology)
-- Single component
+- ⚠️ Mesh has 2 separate components
 
 ---
 

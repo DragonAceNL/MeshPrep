@@ -4,7 +4,7 @@
 
 # MeshPrep Repair Report
 
-**Generated:** 2026-01-02T12:04:43.257879
+**Generated:** 2026-01-02T18:32:37.874204
 
 ## Status: ✅ SUCCESS
 
@@ -13,8 +13,8 @@
 | Property | Value |
 |----------|-------|
 | **Input File** | `C:\Users\Dragon Ace\Source\repos\MeshPrep\tests\fixtures\thingi10k\many_small_holes\100827.stl` |
-| **Filter Script** | `full-repair` |
-| **Duration** | 12.2 ms |
+| **Filter Script** | `conservative-repair` |
+| **Duration** | 15.2 ms |
 
 ## Visual Comparison
 
@@ -39,7 +39,7 @@ Download the STL files to compare in your favorite 3D viewer:
 | Model | File | Size Info |
 |-------|------|-----------|
 | **Before (Original)** | [📥 Download](./models/before.stl) | 47 vertices, 71 faces |
-| **After (Repaired)** | [📥 Download](./models/after.stl) | 27 vertices, 50 faces |
+| **After (Repaired)** | [📥 Download](./models/after.stl) | 56 vertices, 100 faces |
 
 ## Diagnostics Comparison
 
@@ -47,11 +47,11 @@ Download the STL files to compare in your favorite 3D viewer:
 
 | Metric | Before | After | Change |
 |--------|--------|-------|--------|
-| Vertices | 47 | 27 | 🔻 -20 (-42.6%) |
-| Faces | 71 | 50 | 🔻 -21 (-29.6%) |
-| Volume | 0.0000 | 1274.3799 | +0.0% |
-| Surface Area | 878.1906 | 774.3255 | -11.8% |
-| Bbox Diagonal | 37.3397 | 33.4963 | — |
+| Vertices | 47 | 56 | 🔺 +9 (+19.1%) |
+| Faces | 71 | 100 | 🔺 +29 (+40.8%) |
+| Volume | 0.0000 | 1507.5280 | +0.0% |
+| Surface Area | 878.1906 | 1172.1454 | +33.5% |
+| Bbox Diagonal | 37.3397 | 37.3397 | — |
 
 ### Quality Flags
 
@@ -67,25 +67,22 @@ Download the STL files to compare in your favorite 3D viewer:
 |--------|--------|-------|
 | Boundary Edges | 3 | ❌ 3 |
 | Estimated Holes | 1 | ❌ 1 |
-| Components | 3 | 1 |
+| Components | 3 | 3 |
 | Degenerate Faces | 0 | ✅ None |
-| Euler Characteristic | -14 | 2 |
+| Euler Characteristic | -14 | 6 |
 
 ## Actions Performed
 
 1. `trimesh_basic`
-2. `pymeshfix_repair`
+2. `pymeshfix_repair_conservative`
 3. `fix_normals`
 4. `validate`
 
 ## Printability Assessment
 
-✅ **Model appears ready for 3D printing!**
+⚠️ **Model may have issues for 3D printing:**
 
-The mesh is:
-- Watertight (no holes)
-- Manifold (valid topology)
-- Single component
+- ⚠️ Mesh has 3 separate components
 
 ---
 

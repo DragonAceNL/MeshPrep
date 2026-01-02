@@ -62,6 +62,10 @@ def action_pymeshfix_repair(mesh: trimesh.Trimesh, params: dict) -> trimesh.Trim
     - Optionally join components
     
     Note: PyMeshFix may modify the mesh topology significantly.
+    
+    WARNING: With joincomp=True, multi-component models may lose geometry!
+    For models with intentional multiple parts, use joincomp=False or
+    use pymeshfix_repair_conservative instead.
     """
     if not PYMESHFIX_AVAILABLE:
         logger.warning("pymeshfix not available, falling back to trimesh repair")
@@ -74,6 +78,12 @@ def action_pymeshfix_repair(mesh: trimesh.Trimesh, params: dict) -> trimesh.Trim
     verbose = params.get("verbose", False)
     joincomp = params.get("joincomp", True)
     remove_smallest = params.get("remove_smallest_components", True)
+    
+    # Store original metrics for comparison
+    original_faces = len(mesh.faces)
+    original_vertices = len(mesh.vertices)
+    original_bounds = mesh.bounds
+    original_bbox_diagonal = float(np.linalg.norm(original_bounds[1] - original_bounds[0]))
     
     try:
         # Convert to pymeshfix
@@ -96,11 +106,127 @@ def action_pymeshfix_repair(mesh: trimesh.Trimesh, params: dict) -> trimesh.Trim
                 if kept:
                     result = trimesh.util.concatenate(kept)
         
+        # Check for significant data loss
+        result_faces = len(result.faces)
+        result_bounds = result.bounds
+        result_bbox_diagonal = float(np.linalg.norm(result_bounds[1] - result_bounds[0]))
+        
+        face_loss_pct = (original_faces - result_faces) / original_faces * 100 if original_faces > 0 else 0
+        bbox_change_pct = abs(original_bbox_diagonal - result_bbox_diagonal) / original_bbox_diagonal * 100 if original_bbox_diagonal > 0 else 0
+        
+        if face_loss_pct > 50:
+            logger.warning(f"pymeshfix_repair: {face_loss_pct:.1f}% face loss detected! Model may have lost significant geometry.")
+        if bbox_change_pct > 30:
+            logger.warning(f"pymeshfix_repair: Bounding box changed by {bbox_change_pct:.1f}%! Model dimensions significantly altered.")
+        
         return result
         
     except Exception as e:
         logger.error(f"pymeshfix repair failed: {e}")
         # Return original mesh on failure
+        return mesh.copy()
+
+
+@register_action(
+    name="pymeshfix_repair_conservative",
+    description="Conservative mesh repair - preserves geometry when possible",
+    parameters={"verbose": False, "max_face_loss_pct": 50.0},
+    risk_level="low"
+)
+def action_pymeshfix_repair_conservative(mesh: trimesh.Trimesh, params: dict) -> trimesh.Trimesh:
+    """
+    Conservative mesh repair using PyMeshFix.
+    
+    This repairs each component separately, preserving multi-part models.
+    If repair would destroy too much geometry (>50% faces), it keeps the original.
+    
+    Use this for models with intentional multiple components (e.g., assemblies)
+    or when aggressive repair destroys too much geometry.
+    """
+    if not PYMESHFIX_AVAILABLE:
+        logger.warning("pymeshfix not available, falling back to trimesh repair")
+        mesh = mesh.copy()
+        trimesh.repair.fill_holes(mesh)
+        mesh.fix_normals()
+        return mesh
+    
+    verbose = params.get("verbose", False)
+    max_face_loss_pct = params.get("max_face_loss_pct", 50.0)
+    
+    # Store original metrics
+    original_faces = len(mesh.faces)
+    original_vertices = len(mesh.vertices)
+    original_bbox_diagonal = float(np.linalg.norm(mesh.bounds[1] - mesh.bounds[0]))
+    
+    try:
+        # Split into components
+        components = mesh.split(only_watertight=False)
+        
+        if len(components) <= 1:
+            # Single component - try repair but check for destruction
+            meshfix = trimesh_to_pymeshfix(mesh)
+            meshfix.repair(verbose=verbose, joincomp=False)
+            result = pymeshfix_to_trimesh(meshfix)
+            
+            # Check if repair destroyed the mesh
+            result_faces = len(result.faces)
+            result_bbox_diagonal = float(np.linalg.norm(result.bounds[1] - result.bounds[0]))
+            
+            face_loss_pct = (original_faces - result_faces) / original_faces * 100 if original_faces > 0 else 0
+            bbox_change_pct = abs(original_bbox_diagonal - result_bbox_diagonal) / original_bbox_diagonal * 100 if original_bbox_diagonal > 0 else 0
+            
+            if face_loss_pct > max_face_loss_pct or bbox_change_pct > 50:
+                logger.warning(
+                    f"pymeshfix_repair_conservative: Repair would destroy {face_loss_pct:.1f}% faces "
+                    f"(bbox change {bbox_change_pct:.1f}%). Keeping original mesh."
+                )
+                # Return original but with minor fixes
+                result = mesh.copy()
+                result.fix_normals()
+                return result
+            
+            return result
+        
+        logger.info(f"pymeshfix_repair_conservative: Repairing {len(components)} components separately")
+        
+        # Repair each component separately
+        repaired_components = []
+        for i, comp in enumerate(components):
+            if len(comp.faces) < 4:  # Skip tiny fragments (less than a tetrahedron)
+                logger.debug(f"  Skipping tiny component {i} with {len(comp.faces)} faces")
+                continue
+            
+            comp_faces_before = len(comp.faces)
+            comp_bbox_before = float(np.linalg.norm(comp.bounds[1] - comp.bounds[0]))
+            
+            try:
+                meshfix = trimesh_to_pymeshfix(comp)
+                meshfix.repair(verbose=verbose, joincomp=False)
+                repaired = pymeshfix_to_trimesh(meshfix)
+                
+                # Check if repair destroyed this component
+                comp_faces_after = len(repaired.faces)
+                face_loss = (comp_faces_before - comp_faces_after) / comp_faces_before * 100 if comp_faces_before > 0 else 0
+                
+                if face_loss > max_face_loss_pct:
+                    logger.warning(f"  Component {i}: repair lost {face_loss:.1f}% faces, keeping original")
+                    repaired_components.append(comp)
+                else:
+                    repaired_components.append(repaired)
+            except Exception as e:
+                logger.warning(f"  Component {i} repair failed: {e}, keeping original")
+                repaired_components.append(comp)
+        
+        if repaired_components:
+            result = trimesh.util.concatenate(repaired_components)
+            logger.info(f"pymeshfix_repair_conservative: Preserved {len(repaired_components)} components")
+            return result
+        else:
+            logger.warning("pymeshfix_repair_conservative: No components survived, returning original")
+            return mesh.copy()
+        
+    except Exception as e:
+        logger.error(f"pymeshfix_repair_conservative failed: {e}")
         return mesh.copy()
 
 

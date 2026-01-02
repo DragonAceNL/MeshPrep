@@ -4,7 +4,7 @@
 
 # MeshPrep Repair Report
 
-**Generated:** 2026-01-02T12:04:42.837380
+**Generated:** 2026-01-02T18:30:37.873755
 
 ## Status: ✅ SUCCESS
 
@@ -13,8 +13,9 @@
 | Property | Value |
 |----------|-------|
 | **Input File** | `C:\Users\Dragon Ace\Source\repos\MeshPrep\tests\fixtures\thingi10k\holes\100037.stl` |
-| **Filter Script** | `full-repair` |
-| **Duration** | 38.7 ms |
+| **Filter Script** | `blender-remesh` |
+| **Duration** | 12913.2 ms |
+| **Escalation** | Yes (`blender-remesh`) |
 
 ## Visual Comparison
 
@@ -39,7 +40,7 @@ Download the STL files to compare in your favorite 3D viewer:
 | Model | File | Size Info |
 |-------|------|-----------|
 | **Before (Original)** | [📥 Download](./models/before.stl) | 181 vertices, 375 faces |
-| **After (Repaired)** | [📥 Download](./models/after.stl) | 35 vertices, 66 faces |
+| **After (Repaired)** | [📥 Download](./models/after.stl) | 988,446 vertices, 1,976,904 faces |
 
 ## Diagnostics Comparison
 
@@ -47,11 +48,11 @@ Download the STL files to compare in your favorite 3D viewer:
 
 | Metric | Before | After | Change |
 |--------|--------|-------|--------|
-| Vertices | 181 | 35 | 🔻 -146 (-80.7%) |
-| Faces | 375 | 66 | 🔻 -309 (-82.4%) |
-| Volume | 0.0000 | 18.6548 | +0.0% |
-| Surface Area | 2630.0746 | 45.5879 | -98.3% |
-| Bbox Diagonal | 38.8151 | 6.2131 | — |
+| Vertices | 181 | 988,446 | 🔺 +988,265 (+546002.8%) |
+| Faces | 375 | 1,976,904 | 🔺 +1,976,529 (+527074.4%) |
+| Volume | 0.0000 | 2160.7119 | +0.0% |
+| Surface Area | 2630.0746 | 2325.2087 | -11.6% |
+| Bbox Diagonal | 38.8151 | 38.8138 | — |
 
 ### Quality Flags
 
@@ -69,12 +70,12 @@ Download the STL files to compare in your favorite 3D viewer:
 | Estimated Holes | 1 | ❌ 1 |
 | Components | 2 | 1 |
 | Degenerate Faces | 5 | ✅ Fixed |
-| Euler Characteristic | -7 | 2 |
+| Euler Characteristic | -7 | -6 |
 
 ## Actions Performed
 
 1. `trimesh_basic`
-2. `pymeshfix_repair`
+2. `blender_remesh`
 3. `fix_normals`
 4. `validate`
 

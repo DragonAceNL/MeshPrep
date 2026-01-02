@@ -1,16 +1,16 @@
 {
   "version": "1.0.0",
-  "timestamp": "2026-01-02T12:04:41.451941",
+  "timestamp": "2026-01-02T18:30:17.098757",
   "input_file": "C:\\Users\\Dragon Ace\\Source\\repos\\MeshPrep\\tests\\fixtures\\thingi10k\\complex\\100728.stl",
   "output_file": null,
-  "filter_script": "full-repair",
+  "filter_script": "conservative-repair",
   "actions": [
     "trimesh_basic",
-    "pymeshfix_repair",
+    "pymeshfix_repair_conservative",
     "fix_normals",
     "validate"
   ],
-  "duration_ms": 8.76379999681376,
+  "duration_ms": 8.580699999583885,
   "success": true,
   "error_message": null,
   "escalation_used": false,

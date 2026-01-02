@@ -4,7 +4,7 @@
 
 # MeshPrep Repair Report
 
-**Generated:** 2026-01-02T12:04:44.046190
+**Generated:** 2026-01-02T18:32:38.695453
 
 ## Status: ✅ SUCCESS
 
@@ -13,8 +13,8 @@
 | Property | Value |
 |----------|-------|
 | **Input File** | `C:\Users\Dragon Ace\Source\repos\MeshPrep\tests\fixtures\thingi10k\non_manifold\138207.stl` |
-| **Filter Script** | `manifold-repair` |
-| **Duration** | 5.1 ms |
+| **Filter Script** | `conservative-repair` |
+| **Duration** | 6.2 ms |
 
 ## Visual Comparison
 
@@ -74,7 +74,7 @@ Download the STL files to compare in your favorite 3D viewer:
 ## Actions Performed
 
 1. `trimesh_basic`
-2. `make_manifold`
+2. `pymeshfix_repair_conservative`
 3. `fix_normals`
 4. `validate`
 

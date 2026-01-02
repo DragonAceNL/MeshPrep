@@ -1,16 +1,16 @@
 {
   "version": "1.0.0",
-  "timestamp": "2026-01-02T12:04:43.257879",
+  "timestamp": "2026-01-02T18:32:37.874204",
   "input_file": "C:\\Users\\Dragon Ace\\Source\\repos\\MeshPrep\\tests\\fixtures\\thingi10k\\many_small_holes\\100827.stl",
   "output_file": null,
-  "filter_script": "full-repair",
+  "filter_script": "conservative-repair",
   "actions": [
     "trimesh_basic",
-    "pymeshfix_repair",
+    "pymeshfix_repair_conservative",
     "fix_normals",
     "validate"
   ],
-  "duration_ms": 12.208499989355914,
+  "duration_ms": 15.192400001978967,
   "success": true,
   "error_message": null,
   "escalation_used": false,
@@ -42,21 +42,21 @@
     "euler_characteristic": -14
   },
   "repaired_diagnostics": {
-    "vertex_count": 27,
-    "face_count": 50,
-    "edge_count": 75,
-    "volume": 1274.379860423505,
-    "surface_area": 774.3254794943601,
-    "bbox_diagonal": 33.49626844888845,
+    "vertex_count": 56,
+    "face_count": 100,
+    "edge_count": 150,
+    "volume": 1507.5280086754094,
+    "surface_area": 1172.145352021168,
+    "bbox_diagonal": 37.339657202497186,
     "is_watertight": true,
     "is_volume": true,
     "is_winding_consistent": true,
     "hole_count": 1,
     "boundary_edge_count": 3,
-    "component_count": 1,
+    "component_count": 3,
     "degenerate_face_count": 0,
     "has_holes": true,
-    "has_multiple_components": false,
-    "euler_characteristic": 2
+    "has_multiple_components": true,
+    "euler_characteristic": 6
   }
 }

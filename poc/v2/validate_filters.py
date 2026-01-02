@@ -99,25 +99,43 @@ class TestResult:
         )
 
 
-def get_best_filter_for_category(category: str) -> FilterScript:
+def get_best_filter_for_category(category: str, mesh: Optional["trimesh.Trimesh"] = None) -> FilterScript:
     """
     Get the best filter script for a defect category.
     
     This maps defect categories to appropriate repair strategies.
     
-    Note: We use full-repair (pymeshfix) for holes because trimesh's
-    fill_holes is limited. pymeshfix achieves much better results.
+    If a mesh is provided, it will check for multiple components and
+    automatically use conservative repair to preserve them.
+    
+    Args:
+        category: The defect category name
+        mesh: Optional mesh to analyze for component count
+        
+    Returns:
+        The best FilterScript for this category/mesh combination
     """
+    # Check if mesh has multiple components - if so, use conservative repair
+    if mesh is not None:
+        try:
+            components = mesh.split(only_watertight=False)
+            if len(components) > 1:
+                logger.info(f"Model has {len(components)} components - using conservative-repair to preserve them")
+                return get_preset("conservative-repair")
+        except Exception:
+            pass  # Fall through to category-based selection
+    
     category_to_filter = {
         "clean": get_preset("basic-cleanup"),
-        # Use full-repair for holes - pymeshfix is much better than trimesh fill_holes
+        # Use full-repair for holes - but only if single component (checked above)
         "holes": get_preset("full-repair"),
         "many_small_holes": get_preset("full-repair"),
         "non_manifold": get_preset("manifold-repair"),
         "self_intersecting": get_preset("full-repair"),
-        "fragmented": get_preset("full-repair"),
-        "multiple_components": get_preset("full-repair"),
-        "complex": get_preset("full-repair"),
+        # Use conservative repair for multi-component models to preserve parts
+        "fragmented": get_preset("conservative-repair"),
+        "multiple_components": get_preset("conservative-repair"),
+        "complex": get_preset("conservative-repair"),
     }
     
     return category_to_filter.get(category, get_preset("full-repair"))
@@ -126,21 +144,25 @@ def get_best_filter_for_category(category: str) -> FilterScript:
 def test_single_model(
     stl_path: Path,
     category: str,
-    filter_script: FilterScript,
+    filter_script: Optional[FilterScript] = None,
     output_dir: Optional[Path] = None,
-    use_blender_escalation: bool = False,
+    disable_blender_escalation: bool = False,
     generate_report: bool = False,
     report_dir: Optional[Path] = None,
 ) -> TestResult:
     """
     Test a single model with a filter script.
     
+    Blender escalation is AUTOMATIC when:
+    1. Blender is available on the system
+    2. Primary repair fails to produce a printable result
+    
     Args:
         stl_path: Path to STL file
         category: Defect category
-        filter_script: Filter script to apply
+        filter_script: Filter script to apply (if None, auto-selects based on mesh)
         output_dir: Optional directory to save repaired model
-        use_blender_escalation: If True, try Blender repair when primary fails
+        disable_blender_escalation: If True, disable automatic Blender escalation
         generate_report: If True, generate a detailed Markdown report
         report_dir: Directory for report files (required if generate_report=True)
         
@@ -150,12 +172,17 @@ def test_single_model(
     file_id = stl_path.stem
     escalation_used = False
     escalation_filter_name = None
-    action_names = [a.name for a in filter_script.actions if a.enabled]
     
     try:
-        # Load mesh
+        # Load mesh first so we can analyze it
         original = load_mesh(stl_path)
         original_diag = compute_diagnostics(original)
+        
+        # Auto-select filter script if not provided, using mesh analysis
+        if filter_script is None:
+            filter_script = get_best_filter_for_category(category, original)
+        
+        action_names = [a.name for a in filter_script.actions if a.enabled]
         
         # Run filter script
         runner = FilterScriptRunner(stop_on_error=False)
@@ -203,36 +230,41 @@ def test_single_model(
         # Validate result
         validation = validate_repair(original, result.final_mesh)
         
-        # Check if we need Blender escalation
+        # Automatic Blender escalation when:
+        # 1. Blender is available
+        # 2. Not disabled
+        # 3. Result is not printable (not watertight/manifold)
+        from meshprep_poc.actions.blender_actions import is_blender_available
+        
+        blender_available = is_blender_available()
         needs_escalation = (
-            use_blender_escalation and 
+            not disable_blender_escalation and
+            blender_available and
             not validation.geometric.is_printable and
             (result.final_mesh is None or len(result.final_mesh.faces) == 0 or
              not result.final_mesh.is_watertight)
         )
         
         if needs_escalation:
-            logger.info(f"  Attempting Blender escalation for {file_id}...")
+            logger.info(f"  Primary repair insufficient - auto-escalating to Blender for {file_id}...")
             
-            # Try Blender remesh as escalation
-            from meshprep_poc.actions.blender_actions import is_blender_available
-            
-            if is_blender_available():
-                escalation_script = get_preset("blender-remesh")
-                if escalation_script:
-                    escalation_result = runner.run(escalation_script, original)
-                    
-                    if escalation_result.success and escalation_result.final_mesh is not None:
-                        if len(escalation_result.final_mesh.faces) > 0:
-                            result = escalation_result
-                            validation = validate_repair(original, result.final_mesh)
-                            filter_script = escalation_script
-                            escalation_used = True
-                            escalation_filter_name = escalation_script.name
-                            action_names = [a.name for a in escalation_script.actions if a.enabled]
-                            logger.info(f"  Blender escalation successful")
-            else:
-                logger.warning(f"  Blender not available for escalation")
+            escalation_script = get_preset("blender-remesh")
+            if escalation_script:
+                escalation_result = runner.run(escalation_script, original)
+                
+                if escalation_result.success and escalation_result.final_mesh is not None:
+                    if len(escalation_result.final_mesh.faces) > 0:
+                        result = escalation_result
+                        validation = validate_repair(original, result.final_mesh)
+                        filter_script = escalation_script
+                        escalation_used = True
+                        escalation_filter_name = escalation_script.name
+                        action_names = [a.name for a in escalation_script.actions if a.enabled]
+                        logger.info(f"  Blender escalation successful")
+                else:
+                    logger.warning(f"  Blender escalation failed")
+        elif not validation.geometric.is_printable and not blender_available:
+            logger.warning(f"  Primary repair insufficient but Blender not available for escalation")
         
         # Save repaired model if requested
         output_path = None
@@ -309,19 +341,21 @@ def test_category(
     limit: Optional[int] = None,
     output_dir: Optional[Path] = None,
     filter_script: Optional[FilterScript] = None,
-    use_blender_escalation: bool = False,
+    disable_blender_escalation: bool = False,
     generate_reports: bool = False,
     report_dir: Optional[Path] = None,
 ) -> list[TestResult]:
     """
     Test all models in a category.
     
+    Blender escalation is AUTOMATIC when Blender is available and needed.
+    
     Args:
         category: Category name (holes, non_manifold, etc.)
         limit: Maximum number of models to test
         output_dir: Optional directory for repaired models
         filter_script: Optional specific filter script (auto-select if None)
-        use_blender_escalation: If True, try Blender when primary repair fails
+        disable_blender_escalation: If True, disable automatic Blender escalation
         generate_reports: If True, generate Markdown reports for each model
         report_dir: Directory for report files
         
@@ -343,15 +377,26 @@ def test_category(
         logger.warning(f"No STL files found in {category}")
         return []
     
-    # Get filter script
-    if filter_script is None:
-        filter_script = get_best_filter_for_category(category)
+    # Get filter script (for display purposes - actual selection happens per-model)
+    # If user specified a filter, use it for all; otherwise we'll auto-select per model
+    display_filter_name = "auto-select (per-model)"
+    if filter_script is not None:
+        display_filter_name = filter_script.name
+    else:
+        # Get a preview of what category-default would be (without mesh analysis)
+        default_filter = get_best_filter_for_category(category)
+        display_filter_name = f"{default_filter.name} (or conservative if multi-component)"
+    
+    # Check Blender availability for display
+    from meshprep_poc.actions.blender_actions import is_blender_available
+    blender_status = "available (auto-escalation enabled)" if is_blender_available() and not disable_blender_escalation else "not available"
+    if disable_blender_escalation and is_blender_available():
+        blender_status = "available (auto-escalation disabled)"
     
     logger.info(f"\nTesting category: {category}")
     logger.info(f"  Models: {len(stl_files)}")
-    logger.info(f"  Filter: {filter_script.name}")
-    if use_blender_escalation:
-        logger.info(f"  Blender escalation: enabled")
+    logger.info(f"  Filter: {display_filter_name}")
+    logger.info(f"  Blender: {blender_status}")
     if generate_reports:
         logger.info(f"  Report generation: enabled")
     
@@ -360,9 +405,10 @@ def test_category(
     for i, stl_path in enumerate(stl_files):
         logger.info(f"  [{i+1}/{len(stl_files)}] {stl_path.name}...")
         
+        # Pass filter_script (could be None for auto-selection)
         result = test_single_model(
             stl_path, category, filter_script, output_dir,
-            use_blender_escalation=use_blender_escalation,
+            disable_blender_escalation=disable_blender_escalation,
             generate_report=generate_reports,
             report_dir=report_dir,
         )
@@ -497,9 +543,9 @@ def main():
         help="List available actions"
     )
     parser.add_argument(
-        "--use-blender",
+        "--no-blender",
         action="store_true",
-        help="Enable Blender escalation for failed repairs"
+        help="Disable automatic Blender escalation (by default, Blender is used when available and needed)"
     )
     parser.add_argument(
         "--report-dir",
@@ -563,7 +609,7 @@ def main():
             limit=args.limit,
             output_dir=args.save_repaired,
             filter_script=filter_script,
-            use_blender_escalation=args.use_blender,
+            disable_blender_escalation=args.no_blender,
             generate_reports=generate_reports,
             report_dir=args.report_dir,
         )

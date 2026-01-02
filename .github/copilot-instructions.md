@@ -179,6 +179,7 @@ Maintain ONE authoritative document for each topic. Other documents should **ref
 | GUI layout and theming | `docs/gui_spec.md` |
 | Model profiles | `docs/model_profiles.md` |
 | Code style and headers | `docs/CODE_STYLE.md` |
+| **Repair strategies & tool behavior** | `docs/repair_strategy_guide.md` |
 | Third-party licenses | `NOTICE` |
 | Contribution process | `CONTRIBUTING.md` |
 
@@ -215,6 +216,7 @@ When making changes that affect documented behavior:
 - Do not modify third-party library code
 - Do not duplicate information — reference the source-of-truth document instead
 - Do not leave documentation outdated after making changes
+- Do not make assumptions about the situation but also don't over-gather context when you have sufficient information to proceed.
 
 ## Helpful Context
 
@@ -224,6 +226,41 @@ When generating code for MeshPrep:
 2. Check `docs/functional_spec.md` for the action catalog
 3. Check `docs/gui_spec.md` for UI component specifications
 4. Check `docs/model_profiles.md` for profile detection logic
-5. Follow the patterns in existing code
-6. Always add the license header to new files
-7. **Update docs** if your changes affect documented behavior
+5. Check `docs/repair_strategy_guide.md` for repair tool behavior and best practices
+6. Follow the patterns in existing code
+7. Always add the license header to new files
+8. **Update docs** if your changes affect documented behavior
+
+## Repair Strategy Guide Maintenance
+
+The `docs/repair_strategy_guide.md` document captures critical lessons learned about mesh repair. **You MUST update this document** when:
+
+1. **Discovering new tool behavior** — e.g., how a tool handles edge cases
+2. **Finding bugs or limitations** — document workarounds
+3. **Adding new repair actions** — document parameters, risks, and best practices
+4. **Observing unexpected results** — capture the issue and solution
+5. **Changing repair algorithms** — update the optimal algorithm section
+6. **Testing new model categories** — add category-specific guidance
+
+### What to Document
+
+- Tool parameters and their effects
+- When to use / not use each tool
+- Performance characteristics (speed, memory)
+- Known issues and workarounds
+- Detection strategies for problematic meshes
+- Red flags that indicate repair failure
+
+### Example Update
+
+If you discover that `pymeshfix` fails on meshes with > 100 self-intersections:
+
+```markdown
+### Issue: pymeshfix Fails on Heavily Self-Intersecting Meshes
+
+**Symptom:** pymeshfix removes > 80% of geometry on meshes with many self-intersections.
+
+**Threshold:** Observed failure when self-intersections > 100.
+
+**Workaround:** Escalate directly to Blender for meshes with high self-intersection count.
+```

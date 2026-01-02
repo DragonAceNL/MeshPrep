@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "timestamp": "2026-01-02T12:04:41.288940",
+  "timestamp": "2026-01-02T18:30:16.941761",
   "input_file": "C:\\Users\\Dragon Ace\\Source\\repos\\MeshPrep\\tests\\fixtures\\thingi10k\\clean\\43858.stl",
   "output_file": null,
   "filter_script": "basic-cleanup",
@@ -9,7 +9,7 @@
     "fix_normals",
     "validate"
   ],
-  "duration_ms": 3.007499995874241,
+  "duration_ms": 3.5198999976273626,
   "success": true,
   "error_message": null,
   "escalation_used": false,

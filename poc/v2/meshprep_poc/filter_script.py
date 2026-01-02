@@ -283,10 +283,21 @@ PRESET_FILL_HOLES = create_filter_script(
 
 PRESET_FULL_REPAIR = create_filter_script(
     name="full-repair",
-    description="Full repair using PyMeshFix",
+    description="Full repair using PyMeshFix (may merge components)",
     actions=[
         ("trimesh_basic", {}),
         ("pymeshfix_repair", {"joincomp": True}),
+        ("fix_normals", {}),
+        ("validate", {}),
+    ]
+)
+
+PRESET_CONSERVATIVE_REPAIR = create_filter_script(
+    name="conservative-repair",
+    description="Conservative repair - preserves multi-component models",
+    actions=[
+        ("trimesh_basic", {}),
+        ("pymeshfix_repair_conservative", {}),
         ("fix_normals", {}),
         ("validate", {}),
     ]
@@ -343,6 +354,7 @@ PRESETS = {
     "basic-cleanup": PRESET_BASIC_CLEANUP,
     "fill-holes": PRESET_FILL_HOLES,
     "full-repair": PRESET_FULL_REPAIR,
+    "conservative-repair": PRESET_CONSERVATIVE_REPAIR,
     "manifold-repair": PRESET_MANIFOLD_REPAIR,
     "blender-remesh": PRESET_BLENDER_REMESH,
     "blender-manifold": PRESET_BLENDER_MANIFOLD,
