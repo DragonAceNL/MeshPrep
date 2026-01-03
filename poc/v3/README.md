@@ -153,10 +153,23 @@ Learning data is stored in SQLite database: `learning_data/meshprep_learning.db`
 
 ### Future Improvements (Planned)
 
-- [ ] Use learned data to select optimal pipeline order at runtime
+- [x] ~~Use learned data to select optimal pipeline order at runtime~~ **DONE!**
 - [ ] Predict repair success probability before attempting
 - [ ] Auto-generate optimized filter scripts based on learnings
 - [ ] Export learnings as shareable model profiles
+
+### How Learning Improves Over Time
+
+| Run | Learning Data | Expected Improvement |
+|-----|---------------|----------------------|
+| 1st | 0 models | Default pipeline order |
+| 2nd | 50+ models | Pipelines reordered by learned success rates |
+| 3rd+ | 1000+ models | Issue-specific pipeline recommendations |
+
+**After ~50 models**, the learning engine starts reordering pipelines:
+- Pipelines with higher success rates are tried first
+- Issue-specific best pipelines are prioritized
+- Slow pipelines (like Blender) are moved down if faster ones work
 
 ## Output Locations
 

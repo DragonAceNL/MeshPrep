@@ -764,6 +764,7 @@ GENERIC_PIPELINES: List[FilterPipeline] = [
 def get_pipelines_for_issues(
     issues: List[str],
     is_fragmented: bool = False,
+    use_learning: bool = True,
 ) -> List[FilterPipeline]:
     """
     Get recommended pipelines for the given issues.
@@ -774,13 +775,15 @@ def get_pipelines_for_issues(
     3. Adds combined profile pipelines if applicable
     4. Deduplicates and sorts by priority
     5. Filters out dangerous pipelines for fragmented models
+    6. **NEW**: Reorders based on learning engine recommendations
     
     Args:
         issues: List of issue categories (e.g., ["holes", "normals"])
         is_fragmented: If True, skip pipelines that destroy fragmented models
+        use_learning: If True, use learning engine to optimize pipeline order
         
     Returns:
-        List of FilterPipeline objects, ordered by priority
+        List of FilterPipeline objects, ordered by priority/learning
     """
     pipelines = []
     seen_names = set()
@@ -817,8 +820,42 @@ def get_pipelines_for_issues(
             pipelines.append(pipeline)
             seen_names.add(pipeline.name)
     
-    # Sort by priority
-    pipelines.sort(key=lambda p: p.priority)
+    # =========================================================================
+    # NEW: Reorder pipelines based on learning engine recommendations
+    # =========================================================================
+    if use_learning and pipelines:
+        try:
+            from .learning_engine import get_learning_engine
+            engine = get_learning_engine()
+            stats = engine.get_stats_summary()
+            
+            # Only use learning if we have enough data (at least 50 models)
+            if stats.get("total_models_processed", 0) >= 50:
+                # Get recommended order from learning engine
+                recommended_order = engine.get_recommended_pipeline_order(issues)
+                
+                if recommended_order:
+                    # Create lookup for recommended positions
+                    order_lookup = {name: idx for idx, name in enumerate(recommended_order)}
+                    
+                    # Reorder pipelines: learned order first, then by original priority
+                    def sort_key(p):
+                        if p.name in order_lookup:
+                            # Learned pipelines get negative priority (come first)
+                            return (-1000 + order_lookup[p.name], p.priority)
+                        else:
+                            # Unknown pipelines keep original priority
+                            return (0, p.priority)
+                    
+                    pipelines.sort(key=sort_key)
+                    logger.debug(f"Reordered pipelines using learning engine (top: {pipelines[0].name if pipelines else 'none'})")
+        except Exception as e:
+            # Learning engine not available or error - fall back to default order
+            logger.debug(f"Learning engine unavailable for pipeline ordering: {e}")
+            pipelines.sort(key=lambda p: p.priority)
+    else:
+        # Sort by priority (default)
+        pipelines.sort(key=lambda p: p.priority)
     
     return pipelines
 
