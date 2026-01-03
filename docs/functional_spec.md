@@ -936,10 +936,97 @@ Collaborative & Sharing
 Purpose
 - Make it easy for the community to experiment with different filter scripts and share successful repair workflows (e.g. on Reddit).
 
+Model Fingerprints
+------------------
+
+Every model file gets a unique, searchable **fingerprint** that enables community sharing and discovery of filter scripts.
+
+### How It Works
+
+1. **Open a model** in MeshPrep (STL, CTM, OBJ, etc.)
+2. **MeshPrep displays the fingerprint**, e.g., `MP:42f3729aa758`
+3. **Search for the fingerprint** on Reddit/Google to find existing filter scripts
+4. **If you create a working filter script**, share it with the fingerprint so others can find it
+
+### Fingerprint Format
+
+```
+MP:xxxxxxxxxxxx
+```
+
+- `MP:` = MeshPrep prefix (makes it searchable and identifiable)
+- `xxxxxxxxxxxx` = 12 hex characters from SHA256 hash of the original file
+
+### Key Design Decisions
+
+- **Fingerprint is computed from the ORIGINAL FILE BYTES**, not the loaded mesh data
+- **CTM files are fingerprinted as CTM** (compressed bytes), not as decompressed geometry
+- **Same file download = same fingerprint** (exact matching)
+- This ensures that if two people download the same model from CGTrader/Sketchfab, they get the same fingerprint
+
+### Example Workflow
+
+```
+1. Download "spaceship.ctm" from CGTrader
+2. Open in MeshPrep → Fingerprint: MP:42f3729aa758
+3. Search "MP:42f3729aa758" on Reddit
+4. Find post: "[MeshPrep Filter] MP:42f3729aa758 (spaceship.ctm) - fixes holes and normals"
+5. Download and apply the filter script
+6. Model is fixed!
+```
+
+### Sharing on Reddit
+
+When sharing a filter script, use this format:
+
+**Post title:**
+```
+[MeshPrep Filter] MP:42f3729aa758 (spaceship.ctm) - fixes holes and non-manifold edges
+```
+
+**Post body:**
+```json
+{
+  "model_fingerprint": "MP:42f3729aa758",
+  "original_filename": "spaceship.ctm",
+  "filter_name": "slicer-repair-loop",
+  "actions": [...]
+}
+```
+
+### Filter Script Metadata
+
+Every saved filter script includes the fingerprint and MeshPrep URL:
+
+```json
+{
+  "model_id": "spaceship",
+  "model_fingerprint": "MP:42f3729aa758",
+  "original_filename": "spaceship.ctm",
+  "original_format": "ctm",
+  "filter_name": "slicer-repair-loop",
+  "meshprep_version": "0.1.0",
+  "meshprep_url": "https://github.com/DragonAceNL/MeshPrep",
+  "sharing_note": "Search 'MP:42f3729aa758' on Reddit to find/share filter scripts"
+}
+```
+
+### CLI: Display Fingerprint
+
+```bash
+# Show fingerprint for a model
+python auto_fix_stl.py --fingerprint model.ctm
+# Output: MP:42f3729aa758
+
+# Search for filter scripts
+python auto_fix_stl.py --search-filter model.ctm
+# Opens browser to search for MP:42f3729aa758 on Reddit
+```
+
 Features
-- Shareable filter scripts: store JSON/YAML presets in the `filters/` directory with metadata (author, description, tags, version).
+- Shareable filter scripts: store JSON/YAML presets in the `filters/` directory with metadata (author, description, tags, version, **model fingerprint**).
 - Reproducible run packages: an `--export-run <dir>` option bundles the input sample, filter script, `report.json`, and small before/after thumbnails so others can reproduce the run.
-- Preset discovery: GUI and CLI support preset naming and metadata so presets can be associated with specific models and found externally.
+- Preset discovery: GUI and CLI support preset naming and metadata so presets can be associated with specific models and found externally via fingerprint search.
 - Standardized reports: include a short "how to reproduce" block with filter script name, pinned package versions (or Dockerfile), and commands used.
 - Contribution workflow: require a `CONTRIBUTING.md` and PR template for adding presets (author, test case, and verification notes).
 

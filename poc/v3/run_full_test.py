@@ -66,6 +66,7 @@ from meshprep_poc.filter_script import (
 from meshprep_poc.slicer_repair_loop import run_slicer_repair_loop, SlicerRepairResult
 from meshprep_poc.actions.blender_actions import is_blender_available
 from meshprep_poc.actions.slicer_actions import get_mesh_info_prusa, is_slicer_available
+from meshprep_poc.fingerprint import compute_file_fingerprint, compute_full_file_hash
 
 # Paths
 THINGI10K_PATH = Path(r"C:\Users\Dragon Ace\Source\repos\Thingi10K\raw_meshes")
@@ -97,6 +98,10 @@ class TestResult:
     filter_used: str = ""
     escalation_used: bool = False
     duration_ms: float = 0
+    
+    # Model fingerprint for filter script discovery
+    model_fingerprint: str = ""  # Searchable fingerprint: MP:xxxxxxxxxxxx
+    original_file_hash: str = ""  # Full SHA256 for exact matching
     
     # Pre-check result (slicer --info before repair)
     precheck_passed: bool = False  # True if model was already clean
@@ -337,16 +342,32 @@ def save_filter_script(file_id: str, filter_script: FilterScript, escalated: boo
         json.dump(filter_data, f, indent=2)
 
 
-def save_filter_info(file_id: str, filter_used: str, escalated: bool, repair_result: Optional[SlicerRepairResult] = None):
-    """Save filter/repair info for a model."""
+def save_filter_info(
+    file_id: str,
+    filter_used: str,
+    escalated: bool,
+    repair_result: Optional[SlicerRepairResult] = None,
+    model_fingerprint: str = "",
+    original_filename: str = "",
+    original_format: str = "",
+):
+    """Save filter/repair info for a model.
+    
+    The saved filter script includes the model fingerprint to enable
+    community sharing and discovery. Search "MP:xxxxxxxxxxxx" on Reddit
+    to find filter scripts for a specific model.
+    """
     # Ensure filters directory exists
     FILTERS_PATH.mkdir(parents=True, exist_ok=True)
     
     filter_path = FILTERS_PATH / f"{file_id}.json"
     
-    # Build filter data
+    # Build filter data with fingerprint for sharing/discovery
     filter_data = {
         "model_id": file_id,
+        "model_fingerprint": model_fingerprint,  # Searchable: MP:xxxxxxxxxxxx
+        "original_filename": original_filename,
+        "original_format": original_format,
         "filter_name": filter_used,
         "escalated_to_blender": escalated,
         "repair_loop_used": repair_result is not None,
@@ -361,7 +382,10 @@ def save_filter_info(file_id: str, filter_used: str, escalated: bool, repair_res
             }
             for a in (repair_result.attempts if repair_result else [])
         ],
-        "timestamp": datetime.now().isoformat()
+        "timestamp": datetime.now().isoformat(),
+        "meshprep_version": "0.1.0",
+        "meshprep_url": "https://github.com/DragonAceNL/MeshPrep",
+        "sharing_note": f"Search '{model_fingerprint}' on Reddit to find/share filter scripts for this model",
     }
     
     with open(filter_path, "w", encoding="utf-8") as f:
@@ -406,6 +430,12 @@ def process_single_model(stl_path: Path, skip_if_clean: bool = True, progress: O
     )
     
     try:
+        # Compute fingerprint FIRST (from original file bytes)
+        # This ensures CTM files are fingerprinted as CTM, not as decompressed mesh
+        result.model_fingerprint = compute_file_fingerprint(stl_path)
+        result.original_file_hash = compute_full_file_hash(stl_path)
+        logger.info(f"  Fingerprint: {result.model_fingerprint}")
+        
         # Load mesh
         original = load_mesh(stl_path)
         original_diag = compute_diagnostics(original)
@@ -552,7 +582,15 @@ def process_single_model(stl_path: Path, skip_if_clean: bool = True, progress: O
             logger.info(f"  Saved fixed model to {fixed_path}")
         
         # Save filter info (simplified since we use repair loop now)
-        save_filter_info(file_id, result.filter_used, result.escalation_used, repair_result)
+        save_filter_info(
+            file_id=file_id,
+            filter_used=result.filter_used,
+            escalated=result.escalation_used,
+            repair_result=repair_result,
+            model_fingerprint=result.model_fingerprint,
+            original_filename=stl_path.name,
+            original_format=stl_path.suffix.lstrip('.').lower(),
+        )
         
         # Generate report
         generate_report(stl_path, original, repaired, result, fixed_path if result.success else None)
@@ -832,6 +870,57 @@ def generate_report(stl_path: Path, original, repaired, result: TestResult, fixe
         }}
         .meshlab-available {{ background: #27ae60; color: white; }}
         .meshlab-unavailable {{ background: #e74c3c; color: white; }}
+        
+        /* Fingerprint box for filter script discovery */
+        .fingerprint-box {{
+            background: linear-gradient(135deg, #1b2b33 0%, #2a3a43 100%);
+            border: 2px solid #4fe8c4;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 25px;
+            text-align: center;
+        }}
+        .fingerprint-label {{
+            color: #888;
+            font-size: 14px;
+            margin-bottom: 10px;
+        }}
+        .fingerprint-value {{
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 28px;
+            font-weight: bold;
+            color: #4fe8c4;
+            background: #0f1720;
+            padding: 15px 25px;
+            border-radius: 8px;
+            display: inline-block;
+            cursor: pointer;
+            user-select: all;
+            transition: all 0.2s;
+        }}
+        .fingerprint-value:hover {{
+            background: #1a2530;
+            transform: scale(1.02);
+        }}
+        .fingerprint-help {{
+            margin-top: 12px;
+            font-size: 13px;
+            color: #666;
+        }}
+        .fingerprint-help a {{
+            color: #4fe8c4;
+            text-decoration: none;
+            padding: 4px 8px;
+            border-radius: 4px;
+            background: #1b2b33;
+        }}
+        .fingerprint-help a:hover {{
+            background: #2a3a43;
+        }}
+        .copy-hint {{
+            color: #555;
+            font-style: italic;
+        }}
     </style>
     <script>
         async function openInMeshLab(filePath) {{
@@ -890,6 +979,31 @@ def generate_report(stl_path: Path, original, repaired, result: TestResult, fixe
                 }}
             }}
         }}
+        
+        // Copy fingerprint to clipboard
+        function copyFingerprint() {{
+            const fingerprint = '{result.model_fingerprint}';
+            navigator.clipboard.writeText(fingerprint).then(() => {{
+                const el = document.querySelector('.fingerprint-value');
+                const original = el.textContent;
+                el.textContent = '\u2713 Copied!';
+                el.style.background = '#27ae60';
+                setTimeout(() => {{
+                    el.textContent = original;
+                    el.style.background = '#0f1720';
+                }}, 1500);
+            }}).catch(err => {{
+                // Fallback for older browsers
+                const el = document.querySelector('.fingerprint-value');
+                const range = document.createRange();
+                range.selectNodeContents(el);
+                window.getSelection().removeAllRanges();
+                window.getSelection().addRange(range);
+                document.execCommand('copy');
+                window.getSelection().removeAllRanges();
+            }});
+        }}
+        
         window.onload = checkMeshLab;
     </script>
 </head>
@@ -907,6 +1021,18 @@ def generate_report(stl_path: Path, original, repaired, result: TestResult, fixe
         
         <h1>{stl_path.stem}</h1>
         <span class="status-badge {status_class}">{status_text}</span>
+        
+        <!-- Fingerprint Box - for searching/sharing filter scripts -->
+        <div class="fingerprint-box">
+            <div class="fingerprint-label">&#128269; Model Fingerprint (search this on Reddit to find filter scripts)</div>
+            <div class="fingerprint-value" onclick="copyFingerprint()" title="Click to copy">{result.model_fingerprint}</div>
+            <div class="fingerprint-help">
+                <a href="https://www.reddit.com/search/?q={result.model_fingerprint}" target="_blank">Search Reddit</a> | 
+                <a href="https://www.google.com/search?q={result.model_fingerprint}" target="_blank">Search Google</a> |
+                <a href="https://github.com/DragonAceNL/MeshPrep" target="_blank">MeshPrep GitHub</a> |
+                <span class="copy-hint">Click fingerprint to copy</span>
+            </div>
+        </div>
         
         <div class="info-grid">
             <div class="info-card">
@@ -1615,10 +1741,10 @@ def append_to_csv(result: TestResult):
     """Append a single result to the CSV file."""
     import csv
     
-    # Define CSV columns
+    # Define CSV columns - fingerprint first for easy searching
     columns = [
-        'file_id', 'success', 'filter_used', 'escalation_used', 'duration_ms',
-        'precheck_passed', 'precheck_skipped',  # NEW: Pre-check fields
+        'model_fingerprint', 'file_id', 'success', 'filter_used', 'escalation_used', 'duration_ms',
+        'precheck_passed', 'precheck_skipped',
         'original_vertices', 'original_faces', 'original_volume', 
         'original_watertight', 'original_manifold',
         'result_vertices', 'result_faces', 'result_volume',
@@ -1641,6 +1767,7 @@ def append_to_csv(result: TestResult):
         
         # Convert result to dict and write
         row = {
+            'model_fingerprint': result.model_fingerprint,  # Searchable fingerprint
             'file_id': result.file_id,
             'success': result.success,
             'filter_used': result.filter_used,

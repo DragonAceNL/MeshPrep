@@ -28,6 +28,8 @@ import shutil
 import numpy as np
 import trimesh
 
+from .fingerprint import compute_file_fingerprint, compute_full_file_hash
+
 logger = logging.getLogger(__name__)
 
 
@@ -92,6 +94,8 @@ class LoadResult:
         original_path: Path to the original file
         original_vertices: Vertex count before any processing
         original_faces: Face count before any processing
+        model_fingerprint: Searchable fingerprint (MP:xxxxxxxxxxxx) computed from original file
+        original_file_hash: Full SHA256 hash of original file
         conversion_method: How the file was loaded/converted
         conversion_notes: Additional notes about the conversion
         warnings: Any warnings generated during loading
@@ -101,6 +105,8 @@ class LoadResult:
     original_path: Path
     original_vertices: int = 0
     original_faces: int = 0
+    model_fingerprint: str = ""  # Searchable fingerprint: MP:xxxxxxxxxxxx
+    original_file_hash: str = ""  # Full SHA256 for exact matching
     conversion_method: str = "trimesh"
     conversion_notes: str = ""
     warnings: list = field(default_factory=list)
@@ -112,6 +118,8 @@ class LoadResult:
             "original_path": str(self.original_path),
             "original_vertices": self.original_vertices,
             "original_faces": self.original_faces,
+            "model_fingerprint": self.model_fingerprint,
+            "original_file_hash": self.original_file_hash,
             "conversion_method": self.conversion_method,
             "conversion_notes": self.conversion_notes,
             "warnings": self.warnings,
@@ -526,6 +534,11 @@ def load_mesh(
         if len(mesh.faces) == 0:
             raise ValueError("Loaded mesh has no faces")
         
+        # Compute fingerprint from ORIGINAL file (not converted mesh)
+        # This ensures CTM files are fingerprinted as CTM, not as decompressed mesh
+        model_fingerprint = compute_file_fingerprint(path)
+        original_file_hash = compute_full_file_hash(path)
+        
         # Create result
         result = LoadResult(
             mesh=mesh,
@@ -533,6 +546,8 @@ def load_mesh(
             original_path=path,
             original_vertices=len(mesh.vertices),
             original_faces=len(mesh.faces),
+            model_fingerprint=model_fingerprint,
+            original_file_hash=original_file_hash,
             conversion_method=conversion_method,
             conversion_notes=conversion_notes,
             warnings=warnings,
@@ -542,7 +557,7 @@ def load_mesh(
             f"Successfully loaded {path.name}: "
             f"{result.original_vertices:,} vertices, "
             f"{result.original_faces:,} faces "
-            f"(method: {conversion_method})"
+            f"(method: {conversion_method}, fingerprint: {model_fingerprint})"
         )
         
         return result
