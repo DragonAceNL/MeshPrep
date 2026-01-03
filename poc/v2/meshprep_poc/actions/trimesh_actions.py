@@ -336,3 +336,56 @@ def action_validate(mesh: trimesh.Trimesh, params: dict) -> trimesh.Trimesh:
     when to run validation checks in the pipeline.
     """
     return mesh.copy()
+
+
+@register_action(
+    name="place_on_bed",
+    description="Move mesh so its lowest point is at Z=0 (on build plate)",
+    parameters={},
+    risk_level="low"
+)
+def action_place_on_bed(mesh: trimesh.Trimesh, params: dict) -> trimesh.Trimesh:
+    """
+    Move mesh to the build plate.
+    
+    Translates the mesh so its lowest Z coordinate is at Z=0,
+    ensuring it sits on the build plate.
+    """
+    mesh = mesh.copy()
+    
+    # Get the minimum Z value
+    min_z = mesh.bounds[0][2]  # bounds[0] is min, [2] is Z
+    
+    # Translate to place on bed (Z=0)
+    if min_z != 0:
+        translation = [0, 0, -min_z]
+        mesh.apply_translation(translation)
+    
+    return mesh
+
+
+@register_action(
+    name="center_mesh",
+    description="Center mesh at origin (X=0, Y=0) while keeping on bed",
+    parameters={},
+    risk_level="low"
+)
+def action_center_mesh(mesh: trimesh.Trimesh, params: dict) -> trimesh.Trimesh:
+    """
+    Center mesh at origin.
+    
+    Centers the mesh on X and Y axes while keeping it on the build plate.
+    """
+    mesh = mesh.copy()
+    
+    # Get centroid
+    centroid = mesh.centroid
+    
+    # Keep Z at minimum (on bed)
+    min_z = mesh.bounds[0][2]
+    
+    # Translate to center X/Y and place on bed
+    translation = [-centroid[0], -centroid[1], -min_z]
+    mesh.apply_translation(translation)
+    
+    return mesh

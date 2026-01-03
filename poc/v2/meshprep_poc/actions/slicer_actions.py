@@ -478,3 +478,93 @@ def get_available_slicers() -> Dict[str, Path]:
         if path:
             available[slicer_type] = path
     return available
+
+
+# ==============================================================================
+# REGISTERED ACTIONS FOR FILTER SCRIPTS
+# ==============================================================================
+
+from .registry import register_action
+
+
+@register_action(
+    name="slicer_validate",
+    description="Validate mesh with a slicer (PrusaSlicer, OrcaSlicer, etc.)",
+    parameters={
+        "slicer": "Slicer to use: 'prusa', 'orca', 'auto' (default: 'auto')",
+        "timeout": "Timeout in seconds (default: 120)",
+    },
+    risk_level="low"
+)
+def action_slicer_validate(mesh: trimesh.Trimesh, params: dict) -> trimesh.Trimesh:
+    """
+    Validate mesh using a slicer.
+    
+    This action does NOT modify the mesh - it only validates that the mesh
+    can be successfully sliced. If validation fails, an exception is raised.
+    
+    Args:
+        mesh: The mesh to validate
+        params: Parameters including 'slicer' and 'timeout'
+        
+    Returns:
+        The same mesh (unmodified) if validation passes
+        
+    Raises:
+        ValueError: If slicer validation fails
+    """
+    slicer = params.get("slicer", "auto")
+    timeout = params.get("timeout", 120)
+    
+    result = validate_mesh(mesh, slicer=slicer, timeout=timeout)
+    
+    if not result.success:
+        error_msg = "; ".join(result.errors) if result.errors else "Slicer validation failed"
+        raise ValueError(f"Slicer validation failed: {error_msg}")
+    
+    logger.info(f"Slicer validation passed ({result.slicer})")
+    return mesh
+
+
+@register_action(
+    name="slicer_check",
+    description="Check if mesh can be sliced (non-fatal, logs warnings)",
+    parameters={
+        "slicer": "Slicer to use: 'prusa', 'orca', 'auto' (default: 'auto')",
+        "timeout": "Timeout in seconds (default: 120)",
+    },
+    risk_level="low"
+)
+def action_slicer_check(mesh: trimesh.Trimesh, params: dict) -> trimesh.Trimesh:
+    """
+    Check mesh with a slicer (non-fatal version).
+    
+    Unlike slicer_validate, this action does not raise an exception on failure.
+    It logs warnings but allows the pipeline to continue.
+    
+    Args:
+        mesh: The mesh to check
+        params: Parameters including 'slicer' and 'timeout'
+        
+    Returns:
+        The same mesh (unmodified)
+    """
+    slicer = params.get("slicer", "auto")
+    timeout = params.get("timeout", 120)
+    
+    # Check if any slicer is available
+    if not is_slicer_available(slicer):
+        logger.warning(f"No slicer available for validation (tried: {slicer})")
+        return mesh
+    
+    result = validate_mesh(mesh, slicer=slicer, timeout=timeout)
+    
+    if result.success:
+        logger.info(f"Slicer check passed ({result.slicer})")
+    else:
+        logger.warning(f"Slicer check failed: {result.errors}")
+        if result.issues:
+            for issue in result.issues:
+                logger.warning(f"  Issue: [{issue['type']}] {issue['message']}")
+    
+    return mesh

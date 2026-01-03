@@ -13,5 +13,6 @@ from .registry import ActionRegistry, register_action
 from .trimesh_actions import *
 from .pymeshfix_actions import *
 from .blender_actions import *
+from .slicer_actions import *
 
 __all__ = ["ActionRegistry", "register_action"]

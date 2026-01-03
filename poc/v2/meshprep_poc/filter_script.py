@@ -349,6 +349,31 @@ PRESET_FULL_REPAIR_WITH_ESCALATION = create_filter_script(
     ]
 )
 
+# Slicer-validated presets
+PRESET_SLICER_VALIDATED = create_filter_script(
+    name="slicer-validated",
+    description="Full repair with slicer validation (default recommended workflow)",
+    actions=[
+        ("trimesh_basic", {}),
+        ("pymeshfix_repair", {"joincomp": True}),
+        ("fix_normals", {}),
+        ("validate", {}),
+        ("slicer_validate", {"slicer": "auto", "timeout": 120}),
+    ]
+)
+
+PRESET_CONSERVATIVE_SLICER_VALIDATED = create_filter_script(
+    name="conservative-slicer-validated",
+    description="Conservative repair (preserves components) with slicer validation",
+    actions=[
+        ("trimesh_basic", {}),
+        ("pymeshfix_repair_conservative", {}),
+        ("fix_normals", {}),
+        ("validate", {}),
+        ("slicer_validate", {"slicer": "auto", "timeout": 120}),
+    ]
+)
+
 # All presets
 PRESETS = {
     "basic-cleanup": PRESET_BASIC_CLEANUP,
@@ -359,6 +384,8 @@ PRESETS = {
     "blender-remesh": PRESET_BLENDER_REMESH,
     "blender-manifold": PRESET_BLENDER_MANIFOLD,
     "full-repair-escalation": PRESET_FULL_REPAIR_WITH_ESCALATION,
+    "slicer-validated": PRESET_SLICER_VALIDATED,
+    "conservative-slicer-validated": PRESET_CONSERVATIVE_SLICER_VALIDATED,
 }
 
 

@@ -17,7 +17,7 @@ Goal
 Scope
 - Input: a single STL file (ASCII or binary) per run. The tool will scan the selected model to produce a suggested, generic filter script that fits the model's profile; users can review and tweak the suggested filter script before applying it. The software will not accept a directory of files as the primary workflow — each model is treated individually to allow per-model tuning and reproducible presets.
 - Output: cleaned STL files suitable for slicing and a CSV/JSON report with diagnostics and the chosen filter script for the model.
-- Tools: Python-based stack using `trimesh`, `pymeshfix`, `meshio`. Optional escalation uses Blender headless if needed.
+- Tools: Python-based stack using `trimesh`, `pymeshfix`, `meshio`. External tools (Blender, slicers) are automatically detected and installed if missing — no manual setup required.
 
 Non-Goals
 - Provide a full-featured cloud service, hosted web app, or serverless execution model (deployment to cloud is out of scope for the initial version).
@@ -347,8 +347,11 @@ Design
 High-level flow
 1. Startup / environment prep:
    - Run `checkenv` to detect required tools and Python dependencies.
-   - If the environment is incomplete, attempt automatic setup (create virtualenv, install `requirements.txt`) where possible. If automatic setup cannot be performed, present clear, step-by-step instructions and one-click copyable commands in the GUI/CLI and logs.
-   - Detect optional external tools (Blender) and record versions for reproducibility.
+   - If the environment is incomplete, attempt automatic setup (create virtualenv, install `requirements.txt`) where possible.
+   - **Detect external tools (Blender, slicers)**: search configured paths, MeshPrep tools directory, system PATH, and standard installation locations.
+   - **Offer automatic installation**: if Blender or a slicer is not found, prompt the user to install it automatically to the MeshPrep tools directory.
+   - Record all tool versions for reproducibility.
+   - If automatic setup cannot be performed, present clear, step-by-step instructions and one-click copyable commands in the GUI/CLI and logs.
 2. Model selection / filter source choice:
    - User selects a single STL model in the GUI or provides a single file path via CLI.
    - Present a choice: (A) Auto-detect profile and generate a suggested filter script, or (B) Use an existing filter script provided by the user (local file, pasted JSON/YAML, or URL/downloaded preset such as from Reddit).
@@ -784,20 +787,27 @@ Features
 - Standardized reports: include a short "how to reproduce" block with filter script name, pinned package versions (or Dockerfile), and commands used.
 - Contribution workflow: require a `CONTRIBUTING.md` and PR template for adding presets (author, test case, and verification notes).
 
-Why Blender remains optional
-- Performance: Blender operations (remesh, booleans) are time-consuming; running Blender for every file would slow experimentation.
-- Stability and portability: Blender scripting (`bpy`) can be brittle across versions and is heavier to install on CI or contributor machines.
-- Fidelity: aggressive remeshing may change model detail; best used only when conservative repairs fail or when a preset explicitly requests it.
+Why Blender and Slicers are Automatically Managed
+- **Zero-friction setup**: Users can start using MeshPrep immediately without hunting for downloads or configuring paths.
+- **Reproducibility**: Pinned versions ensure consistent behavior across runs and machines.
+- **Isolation**: MeshPrep-managed installations don't conflict with existing system installations.
+- **Reliability over space**: Disk space is cheap; user time and frustration are not. Installing tools automatically prioritizes a working experience.
 
-Recommended approach
-- Keep Blender as an escalation step or as part of named aggressive presets (e.g. `aggressive-blender`) so contributors can opt-in when sharing presets.
-- Provide pinned Blender versions in preset metadata or a Dockerfile to improve reproducibility.
+When External Tools are Used
+- **Blender**: Used for escalation when conservative repairs fail, or when a preset explicitly requests Blender operations (remesh, booleans, solidify). Not used for every file.
+- **Slicers**: Used for final validation of repaired models. Strongly recommended to ensure output is truly printable. Can be skipped with `--trust-filter-script` when using proven presets.
+
+Recommended Configuration
+- Install both Blender and PrusaSlicer (~600 MB total) for full functionality.
+- Users with disk constraints can disable auto-install and use system-installed tools.
+- Provide pinned tool versions in preset metadata for reproducibility.
 
 Installation & Versioning
 
 Purpose
 - Provide an easy, up-to-date installation guide so new contributors and users can get started quickly.
 - Maintain a clear, versioned environment for reproducibility and to help debug regressions as the tool evolves.
+- **Automatically install and manage external tools** (Blender, slicers) so users don't need to manually configure their environment.
 
 Python Version Requirement
 - **Python 3.11 or 3.12 is required** for MeshPrep.
@@ -805,11 +815,330 @@ Python Version Requirement
 - When pymeshfix releases wheels for newer Python versions, this constraint will be relaxed.
 - The `pyproject.toml` enforces this constraint: `requires-python = ">=3.11,<3.13"`
 
+External Tools Management
+--------------------------
+
+### Design Philosophy
+
+MeshPrep prioritizes **reliability and simplicity over disk space savings**. External tools (Blender, slicers) are:
+
+1. **Automatically detected** in standard installation locations and PATH
+2. **Automatically installed** to a MeshPrep-managed directory if not found
+3. **Version-pinned** for reproducibility
+4. **Isolated** from system installations to avoid conflicts
+
+This "just works" approach ensures users can start using MeshPrep immediately without manual setup steps.
+
+### MeshPrep Tools Directory
+
+External tools are installed to a dedicated directory:
+
+| Platform | Default Location |
+|----------|------------------|
+| Windows | `%LOCALAPPDATA%\MeshPrep\tools\` |
+| macOS | `~/Library/Application Support/MeshPrep/tools/` |
+| Linux | `~/.local/share/meshprep/tools/` |
+
+Directory structure:
+```
+MeshPrep/tools/
+├── blender/
+│   └── blender-4.2.0/           # Pinned Blender version
+├── slicers/
+│   ├── prusaslicer-2.8.0/       # PrusaSlicer (primary)
+│   ├── orcaslicer-2.2.0/        # OrcaSlicer (alternative)
+│   └── superslicer-2.5.0/       # SuperSlicer (alternative)
+├── config/
+│   └── tools.json               # Tool paths and versions
+└── downloads/                   # Cached installers
+```
+
+### Tool Detection Order
+
+When MeshPrep needs an external tool, it searches in this order:
+
+1. **Explicit configuration** (`config/tools.json` or environment variable)
+2. **MeshPrep-managed installation** (`tools/` directory)
+3. **System PATH**
+4. **Standard installation locations** (platform-specific)
+
+If not found, MeshPrep offers to install the tool automatically.
+
+### Supported External Tools
+
+#### Blender
+
+| Property | Value |
+|----------|-------|
+| Purpose | Advanced mesh repair (remesh, booleans, solidify) |
+| Pinned Version | 4.2.0 LTS (or latest LTS) |
+| Required | No (escalation only) |
+| Size | ~400 MB (portable) |
+| Install Method | Download portable ZIP/tar.xz |
+
+**Detection locations (Windows):**
+- `%LOCALAPPDATA%\MeshPrep\tools\blender\`
+- `C:\Program Files\Blender Foundation\Blender *\`
+- `C:\Program Files (x86)\Blender Foundation\Blender *\`
+- PATH (`blender.exe`)
+
+**Detection locations (macOS):**
+- `~/Library/Application Support/MeshPrep/tools/blender/`
+- `/Applications/Blender.app/`
+- PATH (`blender`)
+
+**Detection locations (Linux):**
+- `~/.local/share/meshprep/tools/blender/`
+- `/usr/bin/blender`
+- `/snap/bin/blender`
+- PATH (`blender`)
+
+#### PrusaSlicer (Primary Slicer)
+
+| Property | Value |
+|----------|-------|
+| Purpose | Slicer validation (recommended) |
+| Pinned Version | 2.8.0 (or latest stable) |
+| Required | No (but strongly recommended) |
+| Size | ~200 MB |
+| Install Method | Download portable ZIP |
+
+**Detection locations (Windows):**
+- `%LOCALAPPDATA%\MeshPrep\tools\slicers\prusaslicer-*\`
+- `C:\Program Files\Prusa3D\PrusaSlicer\`
+- PATH (`prusa-slicer.exe`, `prusa-slicer-console.exe`)
+
+#### OrcaSlicer (Alternative)
+
+| Property | Value |
+|----------|-------|
+| Purpose | Slicer validation (alternative) |
+| Pinned Version | 2.2.0 (or latest stable) |
+| Required | No |
+| Size | ~250 MB |
+| Install Method | Download portable ZIP |
+
+**Detection locations (Windows):**
+- `%LOCALAPPDATA%\MeshPrep\tools\slicers\orcaslicer-*\`
+- `C:\Program Files\OrcaSlicer\`
+- PATH (`orca-slicer.exe`)
+
+#### SuperSlicer (Alternative)
+
+| Property | Value |
+|----------|-------|
+| Purpose | Slicer validation (alternative) |
+| Pinned Version | 2.5.0 (or latest stable) |
+| Required | No |
+| Size | ~200 MB |
+| Install Method | Download portable ZIP |
+
+#### Cura (Alternative)
+
+| Property | Value |
+|----------|-------|
+| Purpose | Slicer validation (requires printer profile) |
+| Pinned Version | 5.7.0 (or latest stable) |
+| Required | No |
+| Size | ~500 MB |
+| Install Method | Download portable or installer |
+
+**Note:** Cura requires a printer profile to function. MeshPrep includes a generic profile for validation purposes.
+
+### Automatic Installation Flow
+
+When MeshPrep starts or when a tool is needed:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    TOOL DETECTION FLOW                          │
+└─────────────────────────────────────────────────────────────────┘
+
+1. Check explicit config (tools.json, env vars)
+         │
+         ▼
+    ┌─────────┐      YES
+    │ Found?  │─────────────► Use configured path
+    └────┬────┘
+         │ NO
+         ▼
+2. Check MeshPrep tools directory
+         │
+         ▼
+    ┌─────────┐      YES
+    │ Found?  │─────────────► Use MeshPrep-managed install
+    └────┬────┘
+         │ NO
+         ▼
+3. Check system PATH and standard locations
+         │
+         ▼
+    ┌─────────┐      YES
+    │ Found?  │─────────────► Use system install
+    └────┬────┘
+         │ NO
+         ▼
+4. Prompt user for automatic installation
+         │
+         ▼
+    ┌─────────────┐      YES
+    │ User agrees?│─────────────► Download and install to tools/
+    └──────┬──────┘
+           │ NO
+           ▼
+    Mark tool as unavailable (log warning)
+```
+
+### Installation Implementation
+
+#### Download Sources
+
+| Tool | Download URL Pattern |
+|------|---------------------|
+| Blender | `https://download.blender.org/release/Blender{version}/blender-{version}-{platform}.zip` |
+| PrusaSlicer | `https://github.com/prusa3d/PrusaSlicer/releases/download/version_{version}/PrusaSlicer-{version}+{platform}.zip` |
+| OrcaSlicer | `https://github.com/SoftFever/OrcaSlicer/releases/download/v{version}/OrcaSlicer_{platform}_{version}.zip` |
+| SuperSlicer | `https://github.com/supermerill/SuperSlicer/releases/download/{version}/SuperSlicer-{platform}-{version}.zip` |
+
+#### Installation Script: `scripts/install_tools.py`
+
+```python
+# Usage examples:
+python scripts/install_tools.py --list              # List available tools
+python scripts/install_tools.py --install blender   # Install Blender
+python scripts/install_tools.py --install prusa     # Install PrusaSlicer
+python scripts/install_tools.py --install all       # Install all tools
+python scripts/install_tools.py --check             # Check installed tools
+python scripts/install_tools.py --update            # Update to pinned versions
+```
+
+#### Tools Configuration File: `config/tools.json`
+
+```json
+{
+  "version": "1.0.0",
+  "tools_directory": null,  // null = use platform default
+  "auto_install": true,     // Prompt to install missing tools
+  "tools": {
+    "blender": {
+      "enabled": true,
+      "path": null,          // null = auto-detect
+      "version": "4.2.0",    // Pinned version for auto-install
+      "min_version": "3.6.0" // Minimum supported version
+    },
+    "slicer": {
+      "preferred": "prusa",  // Primary slicer to use
+      "fallback_order": ["orca", "superslicer", "cura"],
+      "prusa": {
+        "enabled": true,
+        "path": null,
+        "version": "2.8.0"
+      },
+      "orca": {
+        "enabled": true,
+        "path": null,
+        "version": "2.2.0"
+      },
+      "superslicer": {
+        "enabled": true,
+        "path": null,
+        "version": "2.5.0"
+      },
+      "cura": {
+        "enabled": false,    // Requires printer profile setup
+        "path": null,
+        "version": "5.7.0"
+      }
+    }
+  }
+}
+```
+
+### Environment Variables
+
+Users can override auto-detection with environment variables:
+
+| Variable | Description |
+|----------|-------------|
+| `MESHPREP_TOOLS_DIR` | Override tools directory location |
+| `MESHPREP_BLENDER_PATH` | Path to Blender executable |
+| `MESHPREP_SLICER_PATH` | Path to preferred slicer executable |
+| `MESHPREP_PRUSA_PATH` | Path to PrusaSlicer executable |
+| `MESHPREP_ORCA_PATH` | Path to OrcaSlicer executable |
+| `MESHPREP_AUTO_INSTALL` | Set to `0` to disable auto-install prompts |
+
+### GUI Integration
+
+The GUI provides a **Tools** settings panel:
+
+1. **Tool Status**: Shows installed tools with version and path
+2. **Install Button**: One-click install for missing tools
+3. **Configure Button**: Override paths or disable tools
+4. **Update Button**: Update tools to latest pinned versions
+5. **Disk Usage**: Shows space used by MeshPrep-managed tools
+
+### CLI Integration
+
+The CLI supports tool management commands:
+
+```bash
+# Check environment (includes tool status)
+python scripts/checkenv.py
+
+# Install missing tools
+python scripts/install_tools.py --install all
+
+# Force reinstall of a specific tool
+python scripts/install_tools.py --install blender --force
+
+# Use specific tool path for a run
+python scripts/auto_fix_stl.py --input model.stl --blender-path /path/to/blender
+```
+
+### Startup Behavior
+
+On first run, MeshPrep:
+
+1. Detects installed Python packages (trimesh, pymeshfix, meshio)
+2. Detects external tools (Blender, slicers)
+3. If any slicer is missing, prompts: "No slicer found. Install PrusaSlicer for slicer validation? [Y/n]"
+4. If Blender is missing, notes: "Blender not found. Advanced repair features will be limited."
+5. Records tool versions in `report.json` for reproducibility
+
+### Disk Space Considerations
+
+Total space for all tools:
+
+| Tool | Approximate Size |
+|------|------------------|
+| Blender | ~400 MB |
+| PrusaSlicer | ~200 MB |
+| OrcaSlicer | ~250 MB |
+| SuperSlicer | ~200 MB |
+| **Total (recommended)** | **~600 MB** (Blender + PrusaSlicer) |
+| **Total (all)** | **~1.1 GB** |
+
+**Recommendation**: Install Blender + PrusaSlicer for full functionality.
+
+### Cleanup and Uninstall
+
+```bash
+# Remove all MeshPrep-managed tools
+python scripts/install_tools.py --uninstall all
+
+# Remove specific tool
+python scripts/install_tools.py --uninstall blender
+
+# Clear download cache
+python scripts/install_tools.py --clear-cache
+```
+
 What to include in `docs/INSTALL.md` (summary)
 - Quickstart: create virtualenv, `pip install -r requirements.txt`, example run command.
+- Automatic tool installation: explain that Blender and slicers are installed automatically on first use.
+- Manual tool configuration: how to use existing system installations or override paths.
 - Alternate install: `conda` environment instructions with exported `environment.yml` optional.
 - Platform notes: Windows, macOS, Linux caveats and troubleshooting hints (e.g. common `pymeshfix` wheel issues).
-- Optional tools: Blender install instructions, recommended Blender version(s), and how to verify `blender --version`.
 - Docker: optional `Dockerfile` usage and how to run a reproducible containerized run.
 - Troubleshooting: how to collect logs, attach `report.json`, `checkenv` output, and minimal repro files when reporting issues.
 
@@ -817,9 +1146,13 @@ Versioning rules
 - Maintain a `VERSION` file at repo root using Semantic Versioning (MAJOR.MINOR.PATCH), e.g. `0.1.0`.
 - When dependencies or install steps change, update `requirements.txt`, bump `VERSION`, and add a short entry in `CHANGELOG.md`.
 - Filter scripts must include a `preset_version` and either pinned dependencies or a Docker image tag to allow exact reproduction.
+- External tool versions are pinned in `config/tools.json` and recorded in `report.json`.
 
 Environment validation tool
-- Provide `scripts/checkenv.py` that prints installed package versions and checks for optional external tools (Blender). Include its output in exported run packages and CI logs.
+- Provide `scripts/checkenv.py` that prints installed package versions and checks for external tools (Blender, slicers).
+- Output includes: Python version, package versions, tool paths and versions, disk space usage.
+- Include its output in exported run packages and CI logs.
+- If tools are missing, output includes installation commands.
 
 Documentation hygiene & process
 - Require PRs that change dependencies or install steps to update `docs/INSTALL.md`, `requirements.txt`, and bump `VERSION`.
@@ -828,3 +1161,4 @@ Documentation hygiene & process
 Release process (brief)
 - Tag releases (`vMAJOR.MINOR.PATCH`) and publish a release that includes `CHANGELOG.md` entries and the updated `VERSION` file.
 - Optionally publish a Docker image with the same tag for reproducible environments.
+- Update pinned tool versions in `config/tools.json` when new stable versions are available.
