@@ -93,6 +93,7 @@ That's it! The test will run automatically.
 | `run_full_test.py --fresh` | Reprocess all files (doesn't delete existing results) |
 | `run_full_test.py --limit 100` | Test only the first 100 models |
 | `run_full_test.py --ctm-priority` | Process CTM meshes FIRST before other files |
+| `run_full_test.py --learning-stats` | Show learning engine statistics |
 
 ## Features
 
@@ -107,6 +108,55 @@ That's it! The test will run automatically.
 - ✅ **Fixed models**: Successfully repaired models saved to `Thingi10K\raw_meshes\fixed\`
 - ✅ **Blender escalation**: Difficult models automatically escalated to Blender remesh
 - ✅ **Decimation**: Large meshes from Blender are decimated to ~100k faces (if it doesn't break manifold status)
+
+
+## Self-Learning Engine
+
+POC v3 includes a **self-learning engine** that improves repair strategies over time:
+
+### How It Works
+
+1. **Records every repair attempt** - Pipeline used, success/failure, duration, mesh characteristics
+2. **Learns optimal pipeline order** - Ranks pipelines by efficiency (success rate / time)
+3. **Tracks issue patterns** - Maps issue combinations to best-performing pipelines
+4. **Profiles mesh types** - Learns which strategies work for different mesh categories
+
+### What It Tracks
+
+- **Pipeline statistics**: Success rate, average duration, efficiency score
+- **Issue patterns**: Which pipeline works best for `[open_edges, non_manifold]` vs `[fragmented]`
+- **Mesh profiles**: Simple-broken, complex-broken, multi-body, fragmented, high-poly
+- **Per-issue success rates**: How well each pipeline handles specific issues
+
+### Viewing Learning Data
+
+```powershell
+# Show learning statistics
+python run_full_test.py --learning-stats
+
+# Example output:
+# Models processed: 5,432
+# Top pipeline: pymeshfix (78% success, 350ms avg)
+# Profile: complex-broken - 85% fix rate
+```
+
+### Data Location
+
+Learning data is stored in SQLite database: `learning_data/meshprep_learning.db`
+
+**Why SQLite instead of JSON?**
+- Efficient incremental updates (no full file rewrite)
+- Query capability for analysis
+- ACID transactions (crash-safe)
+- Handles 10,000+ models efficiently
+- Built into Python (no extra dependencies)
+
+### Future Improvements (Planned)
+
+- [ ] Use learned data to select optimal pipeline order at runtime
+- [ ] Predict repair success probability before attempting
+- [ ] Auto-generate optimized filter scripts based on learnings
+- [ ] Export learnings as shareable model profiles
 
 ## Output Locations
 

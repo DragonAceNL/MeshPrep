@@ -69,6 +69,7 @@ from meshprep_poc.slicer_repair_loop import run_slicer_repair_loop, SlicerRepair
 from meshprep_poc.actions.blender_actions import is_blender_available
 from meshprep_poc.actions.slicer_actions import get_mesh_info_prusa, is_slicer_available
 from meshprep_poc.fingerprint import compute_file_fingerprint, compute_full_file_hash
+from meshprep_poc.learning_engine import get_learning_engine, LearningEngine
 
 # Paths
 THINGI10K_PATH = Path(r"C:\Users\Dragon Ace\Source\repos\Thingi10K\raw_meshes")
@@ -742,6 +743,39 @@ def process_single_model(stl_path: Path, skip_if_clean: bool = True, progress: O
             before_diagnostics=before_diagnostics,
             after_diagnostics=after_diagnostics,
         )
+        
+        # Feed result to learning engine for continuous improvement
+        try:
+            learning_engine = get_learning_engine()
+            filter_data = {
+                "success": result.success,
+                "escalated_to_blender": result.escalation_used,
+                "precheck": {
+                    "passed": repair_result.precheck_passed if repair_result else False,
+                    "skipped": repair_result.precheck_skipped if repair_result else False,
+                    "mesh_info": {
+                        "issues": repair_result.issues_found if repair_result else [],
+                    } if repair_result else None,
+                },
+                "repair_attempts": {
+                    "total_attempts": repair_result.total_attempts if repair_result else 0,
+                    "attempts": [
+                        {
+                            "pipeline_name": a.pipeline_name,
+                            "success": a.success,
+                            "duration_ms": a.duration_ms,
+                        }
+                        for a in (repair_result.attempts if repair_result else [])
+                    ],
+                },
+                "diagnostics": {
+                    "before": before_diagnostics,
+                    "after": after_diagnostics,
+                },
+            }
+            learning_engine.record_result(filter_data)
+        except Exception as le_error:
+            logger.debug(f"Learning engine update failed: {le_error}")
         
         # Generate report
         generate_report(stl_path, original, repaired, result, fixed_path if result.success else None)
@@ -1839,8 +1873,8 @@ def generate_reports_index(results: List[TestResult] = None):
                 let bVal = b.cells[columnIndex].textContent.trim();
                 
                 // Try numeric sort first
-                const aNum = parseFloat(aVal.replace(/[^\d.-]/g, ''));
-                const bNum = parseFloat(bVal.replace(/[^\d.-]/g, ''));
+                const aNum = parseFloat(aVal.replace(/[^\\d.-]/g, ''));
+                const bNum = parseFloat(bVal.replace(/[^\\d.-]/g, ''));
                 
                 if (!isNaN(aNum) && !isNaN(bNum)) {
                     return (aNum - bNum) * dir;
@@ -1983,6 +2017,23 @@ def run_batch_test(limit: Optional[int] = None, skip_existing: bool = True, ctm_
         print("[WARN] PyMeshLab not installed - CTM files will fail", flush=True)
         print("        Install with: pip install pymeshlab", flush=True)
         logger.warning("PyMeshLab not installed - CTM files may fail")
+    
+    # Initialize learning engine and show stats
+    try:
+        learning_engine = get_learning_engine()
+        stats = learning_engine.get_stats_summary()
+        if stats["total_models_processed"] > 0:
+            print(f"[OK] Learning engine: {stats['total_models_processed']} models learned", flush=True)
+            logger.info(f"Learning engine loaded: {stats['total_models_processed']} models")
+            if stats["top_pipelines"]:
+                top = stats["top_pipelines"][0]
+                print(f"     Top pipeline: {top['name']} ({top['success_rate']*100:.0f}% success)", flush=True)
+        else:
+            print("[OK] Learning engine: Starting fresh (no prior data)", flush=True)
+            logger.info("Learning engine: Starting fresh")
+    except Exception as e:
+        print(f"[WARN] Learning engine unavailable: {e}", flush=True)
+        logger.warning(f"Learning engine error: {e}")
     
     # Get ALL mesh files (for total count)
     all_mesh_files = get_all_mesh_files(limit=None, ctm_priority=ctm_priority)
@@ -2161,6 +2212,50 @@ def show_status():
     print("=" * 50 + "\n")
 
 
+def show_learning_stats():
+    """Display detailed learning engine statistics."""
+    print("=" * 60)
+    print("MeshPrep Learning Engine Statistics")
+    print("=" * 60)
+    
+    try:
+        engine = get_learning_engine()
+        stats = engine.get_stats_summary()
+        
+        print(f"\nModels processed: {stats['total_models_processed']:,}")
+        print(f"Last updated: {stats['last_updated'] or 'Never'}")
+        print(f"Pipelines tracked: {stats['pipelines_tracked']}")
+        print(f"Issue patterns tracked: {stats['issue_patterns_tracked']}")
+        print(f"Profiles tracked: {stats['profiles_tracked']}")
+        
+        if stats['optimal_pipeline_order']:
+            print(f"\nOptimal pipeline order (top 5):")
+            for i, name in enumerate(stats['optimal_pipeline_order'], 1):
+                print(f"  {i}. {name}")
+        
+        if stats['top_pipelines']:
+            print(f"\nTop pipelines by success rate:")
+            print(f"  {'Pipeline':<30} {'Success':>8} {'Avg Time':>10} {'Attempts':>10}")
+            print(f"  {'-'*30} {'-'*8} {'-'*10} {'-'*10}")
+            for p in stats['top_pipelines']:
+                print(f"  {p['name']:<30} {p['success_rate']*100:>7.1f}% {p['avg_duration_ms']:>8.0f}ms {p['attempts']:>10}")
+        
+        if stats['profile_summary']:
+            print(f"\nProfile summary:")
+            print(f"  {'Profile':<20} {'Total':>8} {'Fix Rate':>10}")
+            print(f"  {'-'*20} {'-'*8} {'-'*10}")
+            for name, data in stats['profile_summary'].items():
+                print(f"  {name:<20} {data['total']:>8} {data['fix_rate']*100:>9.1f}%")
+        
+        # Show where data is saved
+        print(f"\nLearning data location: {engine.data_path}")
+        
+    except Exception as e:
+        print(f"Error loading learning stats: {e}")
+    
+    print("=" * 60)
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Run MeshPrep repair against all Thingi10K models (auto-resumes by default)"
@@ -2185,11 +2280,20 @@ def main():
         action="store_true",
         help="Process CTM meshes FIRST before other files"
     )
+    parser.add_argument(
+        "--learning-stats",
+        action="store_true",
+        help="Show learning engine statistics"
+    )
     
     args = parser.parse_args()
     
     if args.status:
         show_status()
+        return
+    
+    if args.learning_stats:
+        show_learning_stats()
         return
     
     # If --fresh is passed, reprocess all files (but don't delete existing results)
