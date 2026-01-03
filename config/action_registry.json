@@ -1,0 +1,229 @@
+{
+  "version": "1.0.0",
+  "description": "MeshPrep Action Registry - defines all available repair actions with version tracking",
+  "actions": {
+    "trimesh_basic": {
+      "version": "1.0.0",
+      "introduced_in": "0.1.0",
+      "deprecated_in": null,
+      "tool": "trimesh",
+      "category": "cleanup",
+      "description": "Basic mesh cleanup: merge vertices, remove degenerate faces, remove infinite values",
+      "parameters": {
+        "merge_tex": {"type": "bool", "default": true, "description": "Merge texture coordinates"},
+        "merge_norm": {"type": "bool", "default": true, "description": "Merge normals"}
+      },
+      "changelog": [
+        {"version": "1.0.0", "change": "Initial implementation"}
+      ]
+    },
+    "fix_normals": {
+      "version": "1.0.0",
+      "introduced_in": "0.1.0",
+      "deprecated_in": null,
+      "tool": "trimesh",
+      "category": "normals",
+      "description": "Fix face normals to point outward consistently",
+      "parameters": {},
+      "changelog": [
+        {"version": "1.0.0", "change": "Initial implementation"}
+      ]
+    },
+    "fix_winding": {
+      "version": "1.0.0",
+      "introduced_in": "0.1.0",
+      "deprecated_in": null,
+      "tool": "trimesh",
+      "category": "normals",
+      "description": "Fix face winding order for consistent normals",
+      "parameters": {},
+      "changelog": [
+        {"version": "1.0.0", "change": "Initial implementation"}
+      ]
+    },
+    "fill_holes": {
+      "version": "1.0.0",
+      "introduced_in": "0.1.0",
+      "deprecated_in": null,
+      "tool": "trimesh",
+      "category": "repair",
+      "description": "Fill holes in mesh up to maximum size",
+      "parameters": {
+        "max_hole_size": {"type": "int", "default": 1000, "description": "Maximum hole size in edges"}
+      },
+      "changelog": [
+        {"version": "1.0.0", "change": "Initial implementation"}
+      ]
+    },
+    "fill_holes_pymeshfix": {
+      "version": "1.0.0",
+      "introduced_in": "0.1.0",
+      "deprecated_in": null,
+      "tool": "pymeshfix",
+      "category": "repair",
+      "description": "Fill holes using pymeshfix for robust repairs",
+      "parameters": {},
+      "changelog": [
+        {"version": "1.0.0", "change": "Initial implementation"}
+      ]
+    },
+    "pymeshfix_repair": {
+      "version": "1.1.0",
+      "introduced_in": "0.1.0",
+      "deprecated_in": null,
+      "tool": "pymeshfix",
+      "category": "repair",
+      "description": "Full mesh repair using PyMeshFix",
+      "parameters": {
+        "joincomp": {"type": "bool", "default": true, "description": "Join disconnected components"},
+        "remove_smallest_components": {"type": "bool", "default": true, "description": "Remove small components"}
+      },
+      "changelog": [
+        {"version": "1.1.0", "change": "Added remove_smallest_components parameter"},
+        {"version": "1.0.0", "change": "Initial implementation"}
+      ]
+    },
+    "pymeshfix_repair_conservative": {
+      "version": "1.0.0",
+      "introduced_in": "0.1.0",
+      "deprecated_in": null,
+      "tool": "pymeshfix",
+      "category": "repair",
+      "description": "Conservative repair that preserves multi-component models",
+      "parameters": {},
+      "changelog": [
+        {"version": "1.0.0", "change": "Initial implementation"}
+      ]
+    },
+    "make_manifold": {
+      "version": "1.0.0",
+      "introduced_in": "0.1.0",
+      "deprecated_in": null,
+      "tool": "internal",
+      "category": "repair",
+      "description": "Attempt to make mesh manifold",
+      "parameters": {},
+      "changelog": [
+        {"version": "1.0.0", "change": "Initial implementation"}
+      ]
+    },
+    "remove_degenerate": {
+      "version": "1.0.0",
+      "introduced_in": "0.1.0",
+      "deprecated_in": null,
+      "tool": "trimesh",
+      "category": "cleanup",
+      "description": "Remove degenerate (zero-area) faces",
+      "parameters": {},
+      "changelog": [
+        {"version": "1.0.0", "change": "Initial implementation"}
+      ]
+    },
+    "place_on_bed": {
+      "version": "1.0.0",
+      "introduced_in": "0.1.0",
+      "deprecated_in": null,
+      "tool": "internal",
+      "category": "transform",
+      "description": "Place mesh flat on print bed (Z=0)",
+      "parameters": {},
+      "changelog": [
+        {"version": "1.0.0", "change": "Initial implementation"}
+      ]
+    },
+    "validate": {
+      "version": "1.0.0",
+      "introduced_in": "0.1.0",
+      "deprecated_in": null,
+      "tool": "internal",
+      "category": "validation",
+      "description": "Run validation checks and compute diagnostics",
+      "parameters": {},
+      "changelog": [
+        {"version": "1.0.0", "change": "Initial implementation"}
+      ]
+    },
+    "blender_remesh": {
+      "version": "1.0.0",
+      "introduced_in": "0.1.0",
+      "deprecated_in": null,
+      "tool": "blender",
+      "category": "repair",
+      "description": "Aggressive voxel remesh using Blender",
+      "parameters": {
+        "voxel_size": {"type": "float", "default": 0.05, "description": "Voxel size for remeshing"},
+        "mode": {"type": "string", "default": "VOXEL", "description": "Remesh mode (VOXEL, QUAD)"}
+      },
+      "changelog": [
+        {"version": "1.0.0", "change": "Initial implementation"}
+      ]
+    },
+    "blender_make_manifold": {
+      "version": "1.0.0",
+      "introduced_in": "0.1.0",
+      "deprecated_in": null,
+      "tool": "blender",
+      "category": "repair",
+      "description": "Make mesh manifold using Blender",
+      "parameters": {},
+      "changelog": [
+        {"version": "1.0.0", "change": "Initial implementation"}
+      ]
+    },
+    "slicer_validate": {
+      "version": "1.0.0",
+      "introduced_in": "0.2.0",
+      "deprecated_in": null,
+      "tool": "slicer",
+      "category": "validation",
+      "description": "Validate mesh by attempting to slice it",
+      "parameters": {
+        "slicer": {"type": "string", "default": "auto", "description": "Slicer to use (prusa, orca, auto)"},
+        "timeout": {"type": "int", "default": 120, "description": "Timeout in seconds"}
+      },
+      "changelog": [
+        {"version": "1.0.0", "change": "Initial implementation"}
+      ]
+    },
+    "pymeshlab_load_ctm": {
+      "version": "1.0.0",
+      "introduced_in": "0.2.0",
+      "deprecated_in": null,
+      "tool": "pymeshlab",
+      "category": "io",
+      "description": "Load CTM (OpenCTM) compressed mesh files",
+      "parameters": {
+        "path": {"type": "string", "required": true, "description": "Path to CTM file"}
+      },
+      "changelog": [
+        {"version": "1.0.0", "change": "Initial implementation"}
+      ]
+    }
+  },
+  "categories": {
+    "cleanup": {
+      "name": "Loading & Basic Cleanup",
+      "description": "Basic mesh loading and cleanup operations"
+    },
+    "repair": {
+      "name": "Repair & Manifold Fixes",
+      "description": "Mesh repair and manifold fixing operations"
+    },
+    "normals": {
+      "name": "Normal Correction",
+      "description": "Face and vertex normal correction"
+    },
+    "transform": {
+      "name": "Transformations",
+      "description": "Mesh transformations (move, rotate, scale)"
+    },
+    "validation": {
+      "name": "Validation & Diagnostics",
+      "description": "Mesh validation and quality checks"
+    },
+    "io": {
+      "name": "Import/Export",
+      "description": "File format loading and saving"
+    }
+  }
+}

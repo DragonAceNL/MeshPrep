@@ -6,11 +6,14 @@
 Filter script loading and execution.
 
 A filter script defines a sequence of repair actions to apply to a mesh.
+Includes version tracking for reproducibility.
 """
 
+import hashlib
 import json
 import logging
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 from typing import Optional, Any
 import time
@@ -32,12 +35,19 @@ class FilterAction:
 
 @dataclass
 class FilterScript:
-    """A complete filter script."""
+    """A complete filter script with version tracking."""
     name: str
     version: str = "1.0.0"
     description: str = ""
     actions: list[FilterAction] = field(default_factory=list)
     metadata: dict = field(default_factory=dict)
+    
+    # Reproducibility metadata (populated on save/export)
+    meshprep_version: Optional[str] = None
+    action_registry_version: Optional[str] = None
+    tool_versions: dict[str, str] = field(default_factory=dict)
+    created_with: dict[str, str] = field(default_factory=dict)
+    model_fingerprint: Optional[str] = None
     
     @classmethod
     def from_dict(cls, data: dict) -> "FilterScript":
@@ -50,12 +60,20 @@ class FilterScript:
                 enabled=action_data.get("enabled", True)
             ))
         
+        # Extract reproducibility metadata from 'meta' block
+        meta = data.get("meta", data.get("metadata", {}))
+        
         return cls(
             name=data.get("name", "unnamed"),
             version=data.get("version", "1.0.0"),
             description=data.get("description", ""),
             actions=actions,
-            metadata=data.get("metadata", {})
+            metadata=meta,
+            meshprep_version=meta.get("meshprep_version"),
+            action_registry_version=meta.get("action_registry_version"),
+            tool_versions=meta.get("tool_versions", {}),
+            created_with=meta.get("created_with", {}),
+            model_fingerprint=meta.get("model_fingerprint"),
         )
     
     @classmethod
@@ -65,9 +83,13 @@ class FilterScript:
             data = json.load(f)
         return cls.from_dict(data)
     
-    def to_dict(self) -> dict:
-        """Convert to dictionary."""
-        return {
+    def to_dict(self, include_reproducibility: bool = True) -> dict:
+        """Convert to dictionary.
+        
+        Args:
+            include_reproducibility: Whether to include version metadata
+        """
+        result = {
             "name": self.name,
             "version": self.version,
             "description": self.description,
@@ -79,13 +101,81 @@ class FilterScript:
                 }
                 for a in self.actions
             ],
-            "metadata": self.metadata
         }
+        
+        # Build metadata/meta block
+        meta = dict(self.metadata)  # Start with existing metadata
+        
+        if include_reproducibility:
+            # Add reproducibility info
+            if self.meshprep_version:
+                meta["meshprep_version"] = self.meshprep_version
+            if self.action_registry_version:
+                meta["action_registry_version"] = self.action_registry_version
+            if self.tool_versions:
+                meta["tool_versions"] = self.tool_versions
+            if self.created_with:
+                meta["created_with"] = self.created_with
+            if self.model_fingerprint:
+                meta["model_fingerprint"] = self.model_fingerprint
+            
+            # Add timestamp if not present
+            if "timestamp" not in meta:
+                meta["timestamp"] = datetime.now().isoformat()
+        
+        result["meta"] = meta
+        return result
     
-    def to_json(self, path: Path) -> None:
+    def to_json(self, path: Path, include_reproducibility: bool = True) -> None:
         """Save to JSON file."""
         with open(path, "w") as f:
-            json.dump(self.to_dict(), f, indent=2)
+            json.dump(self.to_dict(include_reproducibility), f, indent=2)
+    
+    def compute_hash(self) -> str:
+        """Compute SHA256 hash of the filter script content.
+        
+        Hash is based on actions only (not metadata) to allow
+        comparing filter scripts with different timestamps.
+        """
+        # Create a stable representation of actions
+        content = json.dumps(
+            [
+                {"name": a.name, "params": a.params, "enabled": a.enabled}
+                for a in self.actions
+            ],
+            sort_keys=True
+        )
+        return hashlib.sha256(content.encode()).hexdigest()
+    
+    def populate_version_metadata(self) -> None:
+        """Populate version metadata from current environment.
+        
+        Call this before saving a filter script to ensure
+        reproducibility information is captured.
+        """
+        # Lazy import to avoid circular dependency
+        from .reproducibility import (
+            get_meshprep_version,
+            get_package_version,
+            get_python_version,
+            get_platform_info,
+        )
+        
+        self.meshprep_version = get_meshprep_version()
+        self.action_registry_version = "1.0.0"  # TODO: Load from registry
+        
+        # Capture tool versions
+        self.tool_versions = {}
+        for pkg in ["trimesh", "pymeshfix", "pymeshlab", "numpy"]:
+            version = get_package_version(pkg)
+            if version:
+                self.tool_versions[pkg] = version
+        
+        # Capture creation environment
+        self.created_with = {
+            "python": get_python_version(),
+            "platform": get_platform_info(),
+        }
 
 
 @dataclass

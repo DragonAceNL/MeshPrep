@@ -16,13 +16,18 @@ import logging
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 import json
 
 import numpy as np
 import trimesh
 
 from .mesh_ops import MeshDiagnostics, compute_diagnostics
+from .reproducibility import (
+    ReproducibilityLevel,
+    capture_environment,
+    create_reproducibility_block,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -163,6 +168,11 @@ class RepairReport:
     # Model file paths (relative to report)
     before_model: Optional[str] = None
     after_model: Optional[str] = None
+    
+    # Reproducibility information
+    reproducibility: Optional[dict[str, Any]] = None
+    model_fingerprint: Optional[str] = None
+    filter_script_hash: Optional[str] = None
 
 
 def generate_markdown_report(
@@ -422,6 +432,7 @@ def generate_markdown_report(
 def generate_json_report(
     report: RepairReport,
     output_path: Path,
+    include_reproducibility: bool = True,
 ) -> None:
     """
     Generate a JSON report for programmatic consumption.
@@ -429,6 +440,7 @@ def generate_json_report(
     Args:
         report: The repair report data
         output_path: Path to save the JSON file
+        include_reproducibility: Whether to include reproducibility block
     """
     output_path.parent.mkdir(parents=True, exist_ok=True)
     
@@ -455,6 +467,22 @@ def generate_json_report(
         "original_diagnostics": report.original_diagnostics.to_dict() if report.original_diagnostics else None,
         "repaired_diagnostics": report.repaired_diagnostics.to_dict() if report.repaired_diagnostics else None,
     }
+    
+    # Add reproducibility information
+    if include_reproducibility:
+        if report.reproducibility:
+            data["reproducibility"] = report.reproducibility
+        else:
+            # Capture current environment
+            data["reproducibility"] = create_reproducibility_block(
+                level=ReproducibilityLevel.STANDARD,
+                filter_script_hash=report.filter_script_hash,
+                input_file_hash=report.model_fingerprint,
+            )
+    
+    # Add fingerprint if available
+    if report.model_fingerprint:
+        data["model_fingerprint"] = report.model_fingerprint
     
     with open(output_path, 'w') as f:
         json.dump(data, f, indent=2)

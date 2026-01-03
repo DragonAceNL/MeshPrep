@@ -1385,26 +1385,277 @@ What to include in `docs/INSTALL.md` (summary)
 - Docker: optional `Dockerfile` usage and how to run a reproducible containerized run.
 - Troubleshooting: how to collect logs, attach `report.json`, `checkenv` output, and minimal repro files when reporting issues.
 
-Versioning rules
-- Maintain a `VERSION` file at repo root using Semantic Versioning (MAJOR.MINOR.PATCH), e.g. `0.1.0`.
-- When dependencies or install steps change, update `requirements.txt`, bump `VERSION`, and add a short entry in `CHANGELOG.md`.
-- Filter scripts must include a `preset_version` and either pinned dependencies or a Docker image tag to allow exact reproduction.
-- External tool versions are pinned in `config/tools.json` and recorded in `report.json`.
+Reproducibility & Versioning
+----------------------------
 
-Environment validation tool
-- Provide `scripts/checkenv.py` that prints installed package versions and checks for external tools (Blender, slicers).
-- Output includes: Python version, package versions, tool paths and versions, disk space usage.
-- Include its output in exported run packages and CI logs.
-- If tools are missing, output includes installation commands.
+Reproducibility is a core design principle of MeshPrep. Every repair run should be exactly reproducible given the same inputs, filter script, and environment. This section defines the versioning strategy that enables this.
 
-Documentation hygiene & process
+### Versioning Overview
+
+MeshPrep uses a layered versioning system:
+
+| Component | Version Location | Purpose |
+|-----------|------------------|----------|
+| **MeshPrep** | `VERSION` file at repo root | Overall application version |
+| **Action Registry** | `config/action_registry.json` | Tracks action behavior versions |
+| **Filter Scripts** | `version` field in script | Filter script schema version |
+| **Tool Compatibility** | `config/compatibility.json` | Maps MeshPrep → tool versions |
+| **Reports** | `reproducibility` block | Full snapshot for exact reproduction |
+
+### MeshPrep Version
+
+- Maintained in `VERSION` file at repo root using Semantic Versioning (MAJOR.MINOR.PATCH), e.g., `0.2.0`.
+- **MAJOR**: Breaking changes to filter script format or action behavior.
+- **MINOR**: New actions, features, or non-breaking improvements.
+- **PATCH**: Bug fixes that don't change action behavior.
+- When dependencies or install steps change, update `requirements.txt`, bump `VERSION`, and add entry to `CHANGELOG.md`.
+
+### Tool Compatibility Matrix
+
+MeshPrep maintains a compatibility matrix in `config/compatibility.json` that defines which tool versions are supported for each MeshPrep release:
+
+```json
+{
+  "meshprep_version": "0.2.0",
+  "action_registry_version": "1.0.0",
+  "python": {
+    "min": "3.11",
+    "max": "3.12",
+    "recommended": "3.12"
+  },
+  "required_packages": {
+    "trimesh": {"min": "4.0.0", "recommended": "4.5.0", "max": null},
+    "pymeshfix": {"min": "0.16.0", "recommended": "0.17.0", "max": null},
+    "pymeshlab": {"min": "2023.12", "recommended": "2025.7", "max": null},
+    "numpy": {"min": "1.24.0", "recommended": "2.4.0", "max": null}
+  },
+  "external_tools": {
+    "blender": {"min": "3.6.0", "recommended": "4.2.0", "max": null},
+    "prusaslicer": {"min": "2.6.0", "recommended": "2.8.0", "max": null},
+    "orcaslicer": {"min": "2.0.0", "recommended": "2.2.0", "max": null}
+  }
+}
+```
+
+This file is checked at startup and warnings are issued if installed versions fall outside supported ranges.
+
+### Action Registry Versioning
+
+Each action in the registry has a stable version number that is bumped when behavior changes:
+
+```json
+{
+  "actions": {
+    "fill_holes": {
+      "version": "1.0.0",
+      "introduced_in": "0.1.0",
+      "deprecated_in": null,
+      "tool": "trimesh",
+      "description": "Fill holes up to a maximum size",
+      "parameters": {...}
+    },
+    "pymeshfix_repair": {
+      "version": "1.1.0",
+      "introduced_in": "0.1.0",
+      "changelog": [
+        {"version": "1.1.0", "change": "Added conservative mode parameter"},
+        {"version": "1.0.0", "change": "Initial implementation"}
+      ]
+    }
+  }
+}
+```
+
+**Version bumping rules:**
+- **Patch** (1.0.0 → 1.0.1): Bug fix that doesn't change expected output.
+- **Minor** (1.0.0 → 1.1.0): New optional parameters, improved behavior with same defaults.
+- **Major** (1.0.0 → 2.0.0): Changed default behavior, different output for same inputs.
+
+### Filter Script Versioning
+
+Filter scripts include comprehensive version metadata for reproducibility:
+
+```json
+{
+  "name": "holes-and-normals-fix",
+  "version": "1.0.0",
+  "meta": {
+    "meshprep_version": "0.2.0",
+    "action_registry_version": "1.0.0",
+    "tool_versions": {
+      "trimesh": "4.5.0",
+      "pymeshfix": "0.17.0",
+      "pymeshlab": "2025.7",
+      "blender": "4.2.0"
+    },
+    "created_with": {
+      "python": "3.12.9",
+      "platform": "Windows-10"
+    },
+    "generated_by": "model_scan",
+    "model_fingerprint": "MP:42f3729aa758",
+    "timestamp": "2025-01-15T10:30:00Z",
+    "author": "auto",
+    "description": "Suggested fix for model with holes and normal issues"
+  },
+  "actions": [
+    {"id": "step-1", "name": "trimesh_basic", "params": {}},
+    {"id": "step-2", "name": "fill_holes", "params": {"max_hole_size": 1000}},
+    {"id": "step-3", "name": "fix_normals", "params": {}}
+  ]
+}
+```
+
+**When loading a filter script:**
+1. Check `meshprep_version` compatibility with current version.
+2. Check `action_registry_version` for action compatibility.
+3. Warn if `tool_versions` differ significantly from current environment.
+4. Log any version mismatches in the report.
+
+### Reproducibility Levels
+
+MeshPrep supports three levels of reproducibility:
+
+| Level | What's Pinned | Use Case | CLI Flag |
+|-------|---------------|----------|----------|
+| **Loose** | MeshPrep version only | Quick sharing, "should work" | (default) |
+| **Standard** | MeshPrep + tool versions | Community sharing, recommended | `--pin-versions` |
+| **Strict** | Everything + exact commits | Scientific/production | `--strict-reproducibility` |
+
+**Loose**: Filter script specifies MeshPrep version; assumes compatible tools are installed.
+
+**Standard**: Filter script includes tool versions used during creation; warnings issued if current versions differ.
+
+**Strict**: Full environment snapshot including git commit hashes; will fail if environment doesn't match exactly.
+
+### Report Reproducibility Block
+
+Every `report.json` includes a complete reproducibility snapshot:
+
+```json
+{
+  "reproducibility": {
+    "level": "standard",
+    "meshprep_version": "0.2.0",
+    "meshprep_commit": "abc1234",
+    "action_registry_version": "1.0.0",
+    "python_version": "3.12.9",
+    "platform": "Windows-10-10.0.22631-SP0",
+    "tool_versions": {
+      "trimesh": "4.5.0",
+      "pymeshfix": "0.17.0",
+      "pymeshlab": "2025.7",
+      "numpy": "2.4.0",
+      "scipy": "1.14.0"
+    },
+    "external_tools": {
+      "blender": {
+        "version": "4.2.0",
+        "path": "C:\\Program Files\\Blender Foundation\\Blender 4.2\\blender.exe",
+        "used": true
+      },
+      "prusaslicer": {
+        "version": "2.8.0",
+        "path": "C:\\Program Files\\Prusa3D\\PrusaSlicer\\prusa-slicer.exe",
+        "used": false
+      }
+    },
+    "filter_script_hash": "sha256:e3b0c44298fc...",
+    "input_file_hash": "sha256:d7a8fbb307d7...",
+    "reproduce_command": "python auto_fix_stl.py --input model.stl --filter script.json --pin-versions"
+  }
+}
+```
+
+### Version Compatibility Checking
+
+At runtime, MeshPrep performs these compatibility checks:
+
+1. **Startup checks:**
+   - Python version within supported range
+   - Required packages installed and within version range
+   - Warn about deprecated package versions
+
+2. **Filter script loading:**
+   - Compare `meshprep_version` with current version
+   - Check action versions against registry
+   - Warn if tool versions in script differ from installed
+
+3. **Action execution:**
+   - Verify action exists in registry
+   - Check parameter types and ranges
+   - Log actual tool versions used
+
+### Backward Compatibility
+
+- MeshPrep maintains backward compatibility for filter scripts within the same MAJOR version.
+- Deprecated actions emit warnings but continue to work until the next MAJOR release.
+- The action registry includes `deprecated_in` and `replaced_by` fields for migration guidance.
+- `meshprep migrate-script old_script.json` command updates deprecated actions.
+
+### CLI Options for Reproducibility
+
+| Argument | Description |
+|----------|-------------|
+| `--pin-versions` | Record and enforce tool versions in filter script |
+| `--strict-reproducibility` | Require exact environment match |
+| `--ignore-version-warnings` | Suppress version mismatch warnings |
+| `--export-environment <path>` | Export full environment snapshot to file |
+| `--import-environment <path>` | Use environment snapshot for version checking |
+
+### Environment Validation Tool
+
+`scripts/checkenv.py` validates the environment and reports version information:
+
+```bash
+$ python scripts/checkenv.py
+
+MeshPrep Environment Check
+==========================
+MeshPrep version: 0.2.0
+Action registry: 1.0.0
+Python: 3.12.9 (OK - recommended: 3.12)
+
+Required Packages:
+  trimesh      4.5.0   OK (recommended: 4.5.0)
+  pymeshfix    0.17.0  OK (recommended: 0.17.0)
+  pymeshlab    2025.7  OK (recommended: 2025.7)
+  numpy        2.4.0   OK (recommended: 2.4.0)
+
+External Tools:
+  blender      4.2.0   OK (recommended: 4.2.0)
+  prusaslicer  2.8.0   OK (recommended: 2.8.0)
+  orcaslicer   (not found)
+
+Environment: COMPATIBLE
+```
+
+Output is included in exported run packages and CI logs.
+
+### Documentation Hygiene & Process
+
 - Require PRs that change dependencies or install steps to update `docs/INSTALL.md`, `requirements.txt`, and bump `VERSION`.
 - Add PR checklist in `CONTRIBUTING.md` to remind contributors to update installation docs and versioning when relevant.
+- When adding new actions, update the action registry with version `1.0.0`.
+- When modifying action behavior, bump the action version appropriately.
 
-Release process (brief)
-- Tag releases (`vMAJOR.MINOR.PATCH`) and publish a release that includes `CHANGELOG.md` entries and the updated `VERSION` file.
-- Optionally publish a Docker image with the same tag for reproducible environments.
-- Update pinned tool versions in `config/tools.json` when new stable versions are available.
+### Release Process
+
+1. Update `VERSION` file with new version number.
+2. Update `CHANGELOG.md` with release notes.
+3. Update `config/compatibility.json` with current recommended tool versions.
+4. Run full test suite to verify compatibility.
+5. Tag release (`vMAJOR.MINOR.PATCH`) and publish.
+6. Optionally publish a Docker image with the same tag for reproducible environments.
+
+### PyMeshLab Stability Notes
+
+**NumPy Compatibility**: PyMeshLab 2023.12.post2 and later (including 2025.7) fully support NumPy 2.x. No version pinning required for recent installations.
+
+**Best Practices**:
+- Always run PyMeshLab inside a virtual environment to avoid dependency conflicts.
+- PyMeshLab 2025.7+ is recommended for best stability and feature support.
+- If you encounter issues with complex meshes, MeshPrep automatically falls back to trimesh or Blender escalation.
 
 Adaptive Thresholds Learning
 -----------------------------
