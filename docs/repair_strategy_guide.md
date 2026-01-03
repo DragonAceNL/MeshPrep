@@ -2,8 +2,8 @@
 
 > **Purpose:** This document captures lessons learned from testing and development to help make optimal repair decisions and achieve 100% success rates.
 
-**Last Updated:** 2026-01-02  
-**Based on:** POC v2 testing with Thingi10K fixtures
+**Last Updated:** 2026-01-03  
+**Based on:** POC v2/v3 testing with Thingi10K (10,000 models)
 
 ---
 
@@ -292,6 +292,44 @@ component_drop = (before > 1 and after == 1)  # Lost components
 - Skipping trimesh_basic (leaves degenerate faces)
 - Not validating after repair
 
+### Lesson 7: ALWAYS Start Fresh from Original Mesh
+
+**Problem:** When trying multiple repair strategies in sequence, each failed repair can damage the mesh. If strategy A partially breaks the mesh, then strategy B tries to fix the already-broken mesh, not the original.
+
+**Example - Model 100500:**
+```
+Original: 466 faces, 99 components
+After fill_holes (failed): mesh slightly modified
+After fix_normals (failed): mesh further modified  
+After fill_holes_1000 (failed): mesh more damaged
+After fix_winding (failed): mesh even worse
+After blender_remesh: 7968 faces, 1 component - DESTROYED!
+```
+
+The Blender remesh was working on a mesh that had been damaged by 4 previous failed repairs, not the original.
+
+**Solution:** Each repair strategy MUST start from the ORIGINAL mesh:
+```python
+# WRONG - stacking damage
+current_mesh = mesh.copy()
+for strategy in strategies:
+    current_mesh = try_repair(current_mesh, strategy)  # Each builds on previous damage
+
+# CORRECT - fresh start each time
+original_mesh = mesh.copy()
+for strategy in strategies:
+    working_mesh = original_mesh.copy()  # Fresh start!
+    result = try_repair(working_mesh, strategy)
+    if result.success:
+        return result
+```
+
+**Implementation:** The `run_slicer_repair_loop()` function now:
+1. Keeps a pristine copy of the original mesh
+2. Each repair attempt starts from the original
+3. Tracks the "best" result across all attempts
+4. Returns the best result if nothing fully succeeds
+
 ---
 
 ## Detection Strategies
@@ -399,6 +437,50 @@ INPUT: mesh, category (optional)
 ---
 
 ## Known Issues & Workarounds
+
+### Issue: Blender Voxel Remesh Destroys Fragmented/Thin Models
+
+**Symptom:** Model passes watertight/manifold checks after Blender remesh, but visual inspection shows parts missing or structure destroyed.
+
+**Example - Model 100500 (MP:c20c0f27c611):**
+```
+Original: 181 vertices, 466 faces, 99 components, Volume: 0
+After Blender remesh: 3,986 vertices, 7,968 faces, 1 component, Volume: 7724
+Result: Model is "fixed" but structure is destroyed - NOT PRINTABLE!
+```
+
+**Root Cause (Verified):** The problem IS `blender_remesh` itself, NOT stacking of previous repairs. Even when applied ONLY to the fresh original model, voxel remesh:
+1. Creates a voxel grid around the model
+2. Fills in all gaps between components
+3. Produces a single solid blob
+
+**Smart Detection:** The `analyze_fragmented_model()` function classifies fragmentation types:
+
+| Type | Description | Blender Safe? |
+|------|-------------|---------------|
+| `debris-particles` | >70% of components are tiny (<10 faces) | ❌ NO |
+| `multi-part-assembly` | Multiple large components (>=2 with >=50 faces) | ❌ NO |
+| `sparse-wireframe` | Very few faces per unit bbox volume | ❌ NO |
+| `split-seam` | Few components (<10), one dominant part | ✅ YES (may help reconnect) |
+| `unknown` | Unclear structure with <10 components | ✅ YES (conservative) |
+
+**Detection Code:**
+```python
+from meshprep_poc.filter_pipelines import analyze_fragmented_model
+
+analysis = analyze_fragmented_model(mesh)
+if analysis["is_fragmented"] and not analysis["blender_safe"]:
+    # Skip blender_remesh pipelines
+    logger.warning(f"Blender unsafe: {analysis['reason']}")
+```
+
+**Model 100500 Analysis:**
+```
+is_fragmented: True
+fragmentation_type: debris-particles
+blender_safe: False
+reason: 97/99 components are tiny (<10 faces)
+```
 
 ### Issue: pymeshfix Creates Invalid Output
 
@@ -528,18 +610,27 @@ Before deploying any repair strategy changes:
 │                                                             │
 │  STEP 4: Escalate if needed:                                │
 │    • Blender available? → blender-remesh                    │
+│    • BUT CHECK for fragmented models first!                 │
 │                                                             │
 │  RED FLAGS:                                                 │
 │    ⚠️ Face loss > 40%                                       │
 │    ⚠️ Bbox change > 30%                                     │
 │    ⚠️ Components: many → 1                                  │
 │    ⚠️ Volume change > 50%                                   │
+│    ⚠️ Face count INCREASE > 500% after Blender remesh       │
 │                                                             │
 │  NEVER:                                                     │
 │    ❌ Use full-repair on multi-component without checking   │
 │    ❌ Trust watertight flag alone                           │
 │    ❌ Skip Blender escalation when available                │
 │    ❌ Trust slicer SLICE mode (auto-repairs silently)       │
+│    ❌ Use Blender remesh on highly fragmented models        │
+│       (>20 components, <1000 faces)                         │
+│                                                             │
+│  FALSE POSITIVES (watertight but destroyed):                │
+│    ⚠️ 99 components → 1 component = DESTROYED               │
+│    ⚠️ 466 faces → 7968 faces (+1609%) = VOXEL FILL          │
+│    ⚠️ Volume 0 → Volume 7724 = STRUCTURE LOST               │
 │                                                             │
 └─────────────────────────────────────────────────────────────┘
 ```

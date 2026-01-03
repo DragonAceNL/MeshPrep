@@ -56,6 +56,8 @@ sys.stdout.reconfigure(line_buffering=True)
 # Add POC v2 to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent / "v2"))
 
+import trimesh
+
 from meshprep_poc.mesh_ops import load_mesh, save_mesh, compute_diagnostics
 from meshprep_poc.validation import validate_repair
 from meshprep_poc.filter_script import (
@@ -71,9 +73,13 @@ from meshprep_poc.fingerprint import compute_file_fingerprint, compute_full_file
 # Paths
 THINGI10K_PATH = Path(r"C:\Users\Dragon Ace\Source\repos\Thingi10K\raw_meshes")
 CTM_MESHES_PATH = Path(r"C:\Users\Dragon Ace\Source\repos\Thingi10K\ctm_meshes")
-REPORTS_PATH = Path(r"C:\Users\Dragon Ace\Source\repos\Thingi10K\raw_meshes\reports")
-FILTERS_PATH = Path(r"C:\Users\Dragon Ace\Source\repos\Thingi10K\raw_meshes\reports\filters")
-FIXED_OUTPUT_PATH = Path(r"C:\Users\Dragon Ace\Source\repos\Thingi10K\raw_meshes\fixed")
+
+# Combined output paths (shared for STL and CTM)
+OUTPUT_BASE_PATH = Path(r"C:\Users\Dragon Ace\Source\repos\Thingi10K")
+REPORTS_PATH = OUTPUT_BASE_PATH / "reports"
+FILTERS_PATH = OUTPUT_BASE_PATH / "reports" / "filters"
+FIXED_OUTPUT_PATH = OUTPUT_BASE_PATH / "fixed"
+
 PROGRESS_FILE = Path(__file__).parent / "progress.json"
 SUMMARY_FILE = Path(__file__).parent / "summary.json"
 RESULTS_CSV = Path(__file__).parent / "results.csv"
@@ -195,31 +201,49 @@ def save_progress(progress: Progress):
         json.dump(asdict(progress), f, indent=2)
 
 
-def get_all_mesh_files(limit: Optional[int] = None, include_ctm: bool = False) -> List[Path]:
-    """Get all mesh files from Thingi10K and optionally CTM meshes.
+def get_all_mesh_files(limit: Optional[int] = None, ctm_priority: bool = False) -> List[Path]:
+    """Get all mesh files from Thingi10K and CTM meshes.
     
     Args:
         limit: Optional limit on number of files to return
-        include_ctm: If True, include CTM meshes from the ctm_meshes directory
+        ctm_priority: If True, CTM meshes are listed FIRST (before other files)
     """
-    mesh_files = []
+    thingi_files = []
+    ctm_files = []
     
-    # Get STL files from Thingi10K
+    # Get all supported mesh files from Thingi10K (STL, OBJ, PLY, OFF, 3MF)
     if THINGI10K_PATH.exists():
-        stl_files = list(THINGI10K_PATH.glob("*.stl"))
-        mesh_files.extend(stl_files)
-        logger.info(f"Found {len(stl_files):,} STL files in Thingi10K")
+        for ext in SUPPORTED_FORMATS:
+            if ext != '.ctm':  # CTM files are in separate directory
+                found = list(THINGI10K_PATH.glob(f"*{ext}"))
+                thingi_files.extend(found)
+        logger.info(f"Found {len(thingi_files):,} mesh files in Thingi10K")
+        
+        # Log breakdown by type
+        by_ext = {}
+        for f in thingi_files:
+            ext = f.suffix.lower()
+            by_ext[ext] = by_ext.get(ext, 0) + 1
+        for ext, count in sorted(by_ext.items()):
+            logger.info(f"  {ext}: {count:,}")
     else:
         logger.warning(f"Thingi10K path not found: {THINGI10K_PATH}")
     
-    # Get CTM files if requested
-    if include_ctm and CTM_MESHES_PATH.exists():
-        ctm_files = list(CTM_MESHES_PATH.rglob("*.ctm"))
-        mesh_files.extend(ctm_files)
+    # Always get CTM files
+    if CTM_MESHES_PATH.exists():
+        ctm_files = list(CTM_MESHES_PATH.glob("*.ctm"))
         logger.info(f"Found {len(ctm_files):,} CTM files in ctm_meshes")
     
-    # Sort all files
-    mesh_files = sorted(mesh_files, key=lambda p: p.stem)
+    # Combine files - CTM first if priority requested
+    if ctm_priority and ctm_files:
+        logger.info("CTM PRIORITY MODE: CTM files will be processed first")
+        # Sort CTM files first, then Thingi files
+        ctm_files = sorted(ctm_files, key=lambda p: p.stem)
+        thingi_files = sorted(thingi_files, key=lambda p: p.stem)
+        mesh_files = ctm_files + thingi_files
+    else:
+        # Default: sort all files together by stem
+        mesh_files = sorted(thingi_files + ctm_files, key=lambda p: p.stem)
     
     if limit:
         mesh_files = mesh_files[:limit]
@@ -229,7 +253,7 @@ def get_all_mesh_files(limit: Optional[int] = None, include_ctm: bool = False) -
 
 def get_all_stl_files(limit: Optional[int] = None) -> List[Path]:
     """Get all STL files from Thingi10K (legacy function, use get_all_mesh_files)."""
-    return get_all_mesh_files(limit=limit, include_ctm=False)
+    return get_all_mesh_files(limit=limit)
 
 
 def get_best_filter(mesh) -> FilterScript:
@@ -350,8 +374,15 @@ def save_filter_info(
     model_fingerprint: str = "",
     original_filename: str = "",
     original_format: str = "",
+    before_diagnostics: Optional[Dict[str, Any]] = None,
+    after_diagnostics: Optional[Dict[str, Any]] = None,
 ):
-    """Save filter/repair info for a model.
+    """Save detailed filter/repair info for a model.
+    
+    This saves comprehensive data for later analysis to:
+    - Refine filter script selection
+    - Improve model profile detection
+    - Optimize repair pipeline performance
     
     The saved filter script includes the model fingerprint to enable
     community sharing and discovery. Search "MP:xxxxxxxxxxxx" on Reddit
@@ -362,26 +393,76 @@ def save_filter_info(
     
     filter_path = FILTERS_PATH / f"{file_id}.json"
     
-    # Build filter data with fingerprint for sharing/discovery
+    # Extract detailed attempt info for analysis
+    attempts_detail = []
+    if repair_result and repair_result.attempts:
+        for attempt in repair_result.attempts:
+            attempt_info = {
+                "attempt_number": attempt.attempt_number,
+                "pipeline_name": attempt.pipeline_name,
+                "actions": attempt.pipeline_actions,
+                "success": attempt.success,
+                "duration_ms": attempt.duration_ms,
+                "error": attempt.error,
+                "geometry_valid": attempt.geometry_valid,
+            }
+            # Include slicer validation results if available
+            if attempt.slicer_result:
+                attempt_info["slicer_validation"] = {
+                    "valid": attempt.slicer_result.valid,
+                    "issues": attempt.slicer_result.issues,
+                    "warnings": attempt.slicer_result.warnings[:5] if attempt.slicer_result.warnings else [],  # Limit
+                    "errors": attempt.slicer_result.errors[:5] if attempt.slicer_result.errors else [],  # Limit
+                }
+            attempts_detail.append(attempt_info)
+    
+    # Extract precheck info for analysis
+    precheck_info = None
+    if repair_result and repair_result.precheck_mesh_info:
+        precheck_info = {
+            "manifold": repair_result.precheck_mesh_info.manifold,
+            "open_edges": repair_result.precheck_mesh_info.open_edges,
+            "reversed_facets": getattr(repair_result.precheck_mesh_info, 'reversed_facets', 0),
+            "is_clean": repair_result.precheck_mesh_info.is_clean,
+            "issues": repair_result.precheck_mesh_info.issues,
+        }
+    
+    # Build comprehensive filter data for analysis
     filter_data = {
+        # Model identification
         "model_id": file_id,
         "model_fingerprint": model_fingerprint,  # Searchable: MP:xxxxxxxxxxxx
         "original_filename": original_filename,
         "original_format": original_format,
+        
+        # Repair outcome
         "filter_name": filter_used,
+        "success": repair_result.success if repair_result else False,
         "escalated_to_blender": escalated,
-        "repair_loop_used": repair_result is not None,
-        "precheck_passed": repair_result.precheck_passed if repair_result else False,
-        "precheck_skipped": repair_result.precheck_skipped if repair_result else False,
-        "total_attempts": repair_result.total_attempts if repair_result else 0,
-        "attempts": [
-            {
-                "action": a.strategy.action,
-                "params": a.strategy.params,
-                "success": a.success,
-            }
-            for a in (repair_result.attempts if repair_result else [])
-        ],
+        
+        # Precheck results (for analyzing which models need repair)
+        "precheck": {
+            "passed": repair_result.precheck_passed if repair_result else False,
+            "skipped": repair_result.precheck_skipped if repair_result else False,
+            "mesh_info": precheck_info,
+        },
+        
+        # Detailed attempt history (for pipeline optimization)
+        "repair_attempts": {
+            "total_attempts": repair_result.total_attempts if repair_result else 0,
+            "total_duration_ms": repair_result.total_duration_ms if repair_result else 0,
+            "issues_found": repair_result.issues_found if repair_result else [],
+            "issues_resolved": repair_result.issues_resolved if repair_result else [],
+            "attempts": attempts_detail,
+        },
+        
+        # Mesh diagnostics (for model profile analysis)
+        "diagnostics": {
+            "before": before_diagnostics,
+            "after": after_diagnostics,
+        },
+        
+        # Metadata
         "timestamp": datetime.now().isoformat(),
         "meshprep_version": "0.1.0",
         "meshprep_url": "https://github.com/DragonAceNL/MeshPrep",
@@ -390,6 +471,71 @@ def save_filter_info(
     
     with open(filter_path, "w", encoding="utf-8") as f:
         json.dump(filter_data, f, indent=2)
+
+
+def extract_mesh_diagnostics(mesh: trimesh.Trimesh, label: str = "") -> Dict[str, Any]:
+    """Extract comprehensive mesh diagnostics for analysis.
+    
+    This captures mesh characteristics useful for:
+    - Model profile detection
+    - Filter script selection
+    - Understanding repair outcomes
+    """
+    if mesh is None:
+        return None
+    
+    try:
+        diagnostics = {
+            # Basic geometry
+            "vertices": len(mesh.vertices),
+            "faces": len(mesh.faces),
+            "edges": len(mesh.edges_unique) if hasattr(mesh, 'edges_unique') else 0,
+            
+            # Volume and bounds
+            "volume": float(mesh.volume) if mesh.is_watertight else None,
+            "bounding_box": {
+                "min": mesh.bounds[0].tolist() if mesh.bounds is not None else None,
+                "max": mesh.bounds[1].tolist() if mesh.bounds is not None else None,
+            },
+            "extents": mesh.extents.tolist() if hasattr(mesh, 'extents') else None,
+            
+            # Topology
+            "is_watertight": bool(mesh.is_watertight),
+            "is_winding_consistent": bool(mesh.is_winding_consistent) if hasattr(mesh, 'is_winding_consistent') else None,
+            "euler_number": int(mesh.euler_number) if hasattr(mesh, 'euler_number') else None,
+            
+            # Body count (fragmentation)
+            "body_count": len(mesh.split(only_watertight=False)) if hasattr(mesh, 'split') else 1,
+            
+            # Face analysis
+            "degenerate_faces": int(mesh.degenerate_faces.sum()) if hasattr(mesh, 'degenerate_faces') else 0,
+            
+            # Area
+            "surface_area": float(mesh.area) if hasattr(mesh, 'area') else None,
+        }
+        
+        # Try to get additional diagnostics
+        try:
+            # Check for non-manifold edges
+            if hasattr(mesh, 'edges_unique') and hasattr(mesh, 'faces'):
+                # Simple heuristic: non-manifold if we have unusual edge-face relationships
+                edges = mesh.edges_sorted.reshape(-1, 2)
+                edge_counts = {}
+                for e in map(tuple, edges):
+                    edge_counts[e] = edge_counts.get(e, 0) + 1
+                non_manifold_edges = sum(1 for c in edge_counts.values() if c > 2)
+                diagnostics["non_manifold_edges"] = non_manifold_edges
+        except:
+            pass
+        
+        return diagnostics
+        
+    except Exception as e:
+        return {
+            "error": f"Failed to extract diagnostics: {str(e)}",
+            "vertices": len(mesh.vertices) if hasattr(mesh, 'vertices') else 0,
+            "faces": len(mesh.faces) if hasattr(mesh, 'faces') else 0,
+        }
 
 
 # Global progress reference for callback
@@ -459,8 +605,7 @@ def process_single_model(stl_path: Path, skip_if_clean: bool = True, progress: O
         repair_result = run_slicer_repair_loop(
             mesh=original,
             slicer="auto",
-            max_attempts=10,
-            escalate_to_blender_after=5,
+            max_attempts=20,  # More attempts for pipeline combinations
             timeout=120,
             skip_if_clean=skip_if_clean,
             progress_callback=update_action_progress,
@@ -581,7 +726,11 @@ def process_single_model(stl_path: Path, skip_if_clean: bool = True, progress: O
             result.fixed_file_size = fixed_path.stat().st_size
             logger.info(f"  Saved fixed model to {fixed_path}")
         
-        # Save filter info (simplified since we use repair loop now)
+        # Extract diagnostics for analysis
+        before_diagnostics = extract_mesh_diagnostics(original, "before")
+        after_diagnostics = extract_mesh_diagnostics(repaired, "after") if repaired else None
+        
+        # Save detailed filter info for later analysis
         save_filter_info(
             file_id=file_id,
             filter_used=result.filter_used,
@@ -590,6 +739,8 @@ def process_single_model(stl_path: Path, skip_if_clean: bool = True, progress: O
             model_fingerprint=result.model_fingerprint,
             original_filename=stl_path.name,
             original_format=stl_path.suffix.lstrip('.').lower(),
+            before_diagnostics=before_diagnostics,
+            after_diagnostics=after_diagnostics,
         )
         
         # Generate report
@@ -1799,13 +1950,13 @@ def append_to_csv(result: TestResult):
         writer.writerow(row)
 
 
-def run_batch_test(limit: Optional[int] = None, skip_existing: bool = True, include_ctm: bool = False):
+def run_batch_test(limit: Optional[int] = None, skip_existing: bool = True, ctm_priority: bool = False):
     """Run the full batch test.
     
     Args:
         limit: Optional limit on number of files to process
         skip_existing: If True (default), skip files that already have reports
-        include_ctm: If True, include CTM meshes from the ctm_meshes directory
+        ctm_priority: If True, process CTM meshes FIRST before other files
     """
     print("="* 60, flush=True)
     print("MeshPrep Thingi10K Full Test - POC v3", flush=True)
@@ -1824,29 +1975,31 @@ def run_batch_test(limit: Optional[int] = None, skip_existing: bool = True, incl
         logger.warning("[WARN] Blender not available - some models may fail")
     
     # Check PyMeshLab for CTM support
-    if include_ctm:
-        try:
-            import pymeshlab
-            print("[OK] PyMeshLab available for CTM support", flush=True)
-            logger.info("[OK] PyMeshLab available for CTM support")
-        except ImportError:
-            print("[ERROR] PyMeshLab not installed - CTM files will fail", flush=True)
-            print("        Install with: pip install pymeshlab", flush=True)
-            logger.error("PyMeshLab not installed - CTM files will fail")
-            return
+    try:
+        import pymeshlab
+        print("[OK] PyMeshLab available for CTM support", flush=True)
+        logger.info("[OK] PyMeshLab available for CTM support")
+    except ImportError:
+        print("[WARN] PyMeshLab not installed - CTM files will fail", flush=True)
+        print("        Install with: pip install pymeshlab", flush=True)
+        logger.warning("PyMeshLab not installed - CTM files may fail")
     
     # Get ALL mesh files (for total count)
-    all_mesh_files = get_all_mesh_files(limit=None, include_ctm=include_ctm)
+    all_mesh_files = get_all_mesh_files(limit=None, ctm_priority=ctm_priority)
     total_mesh_count = len(all_mesh_files)
     
     # Get files to consider (with optional limit)
-    files_to_consider = get_all_mesh_files(limit, include_ctm=include_ctm)
+    files_to_consider = get_all_mesh_files(limit, ctm_priority=ctm_priority)
     print(f"Found {total_mesh_count:,} total mesh files", flush=True)
-    if include_ctm:
-        ctm_count = sum(1 for f in all_mesh_files if f.suffix.lower() == '.ctm')
-        stl_count = total_mesh_count - ctm_count
-        print(f"  - STL files: {stl_count:,}", flush=True)
-        print(f"  - CTM files: {ctm_count:,}", flush=True)
+    
+    # Show breakdown by type
+    by_ext = {}
+    for f in all_mesh_files:
+        ext = f.suffix.lower()
+        by_ext[ext] = by_ext.get(ext, 0) + 1
+    for ext, count in sorted(by_ext.items()):
+        print(f"  - {ext}: {count:,}", flush=True)
+    
     if limit:
         print(f"Processing first {len(files_to_consider):,} files (--limit {limit})", flush=True)
     logger.info(f"Found {total_mesh_count:,} mesh files")
@@ -2028,9 +2181,9 @@ def main():
         help="Show current progress status"
     )
     parser.add_argument(
-        "--ctm",
+        "--ctm-priority",
         action="store_true",
-        help="Include CTM meshes from ctm_meshes directory (requires pymeshlab)"
+        help="Process CTM meshes FIRST before other files"
     )
     
     args = parser.parse_args()
@@ -2043,7 +2196,11 @@ def main():
     if args.fresh:
         logger.info("Fresh mode: will reprocess all files (existing results preserved until overwritten)")
     
-    run_batch_test(limit=args.limit, skip_existing=not args.fresh, include_ctm=args.ctm)
+    run_batch_test(
+        limit=args.limit,
+        skip_existing=not args.fresh,
+        ctm_priority=args.ctm_priority
+    )
 
 
 if __name__ == "__main__":

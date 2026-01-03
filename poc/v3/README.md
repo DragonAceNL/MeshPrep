@@ -4,6 +4,8 @@
 
 POC v3 is a **batch testing wrapper** around the POC v2 repair pipeline. It runs automatic repair against all ~10,000 models in the Thingi10K dataset, generating detailed reports with before/after comparisons.
 
+**Supported formats:** STL, OBJ, PLY, OFF, 3MF, CTM
+
 **Note:** All repair logic lives in POC v2. POC v3 only handles:
 - Batch processing and progress tracking
 - Report generation (markdown + images)
@@ -90,6 +92,7 @@ That's it! The test will run automatically.
 | `run_full_test.py --status` | Check current progress without processing |
 | `run_full_test.py --fresh` | Reprocess all files (doesn't delete existing results) |
 | `run_full_test.py --limit 100` | Test only the first 100 models |
+| `run_full_test.py --ctm-priority` | Process CTM meshes FIRST before other files |
 
 ## Features
 
@@ -107,13 +110,15 @@ That's it! The test will run automatically.
 
 ## Output Locations
 
+All outputs are saved in a combined location under `Thingi10K/` (shared for both STL and CTM models):
+
 | Output | Location |
 |--------|----------|
-| Reports (`.html`) | `C:\Users\Dragon Ace\Source\repos\Thingi10K\raw_meshes\reports\` |
-| Reports Index | `C:\Users\Dragon Ace\Source\repos\Thingi10K\raw_meshes\reports\index.html` |
-| Before/After Images | `C:\Users\Dragon Ace\Source\repos\Thingi10K\raw_meshes\reports\images\` |
-| Filter Scripts | `C:\Users\Dragon Ace\Source\repos\Thingi10K\raw_meshes\reports\filters\` |
-| Fixed Models | `C:\Users\Dragon Ace\Source\repos\Thingi10K\raw_meshes\fixed\` |
+| Reports (`.html`) | `C:\Users\Dragon Ace\Source\repos\Thingi10K\reports\` |
+| Reports Index | `C:\Users\Dragon Ace\Source\repos\Thingi10K\reports\index.html` |
+| Before/After Images | `C:\Users\Dragon Ace\Source\repos\Thingi10K\reports\images\` |
+| Filter Scripts | `C:\Users\Dragon Ace\Source\repos\Thingi10K\reports\filters\` |
+| Fixed Models | `C:\Users\Dragon Ace\Source\repos\Thingi10K\fixed\` |
 | **Results CSV** | `poc\v3\results.csv` - All results in one file for analysis |
 | Progress File | `poc\v3\progress.json` |
 | Dashboard | `poc\v3\dashboard.html` (static) or `live_dashboard.html` (live) |
@@ -203,19 +208,82 @@ Reports include:
 
 ## Example Filter Script
 
-Each model also gets a filter script JSON:
+Each model gets a detailed filter script JSON with comprehensive data for analysis:
 
 ```json
 {
   "model_id": "100027",
+  "model_fingerprint": "MP:abc123def456",
+  "original_filename": "100027.stl",
+  "original_format": "stl",
+  
   "filter_name": "blender-remesh",
-  "filter_version": "1.0.0",
+  "success": true,
   "escalated_to_blender": true,
-  "actions": [
-    { "name": "trimesh_basic", "params": {} },
-    { "name": "blender_remesh", "params": { "voxel_size": 0.05, "mode": "VOXEL" } },
-    { "name": "fix_normals", "params": {} },
-    { "name": "validate", "params": {} }
-  ],
+  
+  "precheck": {
+    "passed": false,
+    "skipped": false,
+    "mesh_info": {
+      "manifold": false,
+      "open_edges": 16,
+      "is_clean": false,
+      "issues": ["open_edges", "non_manifold"]
+    }
+  },
+  
+  "repair_attempts": {
+    "total_attempts": 3,
+    "total_duration_ms": 2500,
+    "issues_found": ["open_edges", "non_manifold"],
+    "issues_resolved": ["open_edges", "non_manifold"],
+    "attempts": [
+      {
+        "attempt_number": 1,
+        "pipeline_name": "targeted-holes",
+        "actions": ["fill_holes", "fix_normals"],
+        "success": false,
+        "duration_ms": 150,
+        "geometry_valid": true
+      },
+      {
+        "attempt_number": 2,
+        "pipeline_name": "pymeshfix",
+        "actions": ["pymeshfix_repair"],
+        "success": false,
+        "duration_ms": 350
+      },
+      {
+        "attempt_number": 3,
+        "pipeline_name": "blender-remesh",
+        "actions": ["blender_remesh", "fix_normals"],
+        "success": true,
+        "duration_ms": 2000
+      }
+    ]
+  },
+  
+  "diagnostics": {
+    "before": {
+      "vertices": 5432,
+      "faces": 10864,
+      "is_watertight": false,
+      "body_count": 3
+    },
+    "after": {
+      "vertices": 12500,
+      "faces": 25000,
+      "is_watertight": true,
+      "body_count": 1
+    }
+  },
+  
   "timestamp": "2026-01-02T20:18:01.568852"
 }
+```
+
+This detailed data enables:
+- **Filter script optimization**: See which pipelines work for which issues
+- **Model profile refinement**: Correlate mesh characteristics with repair outcomes
+- **Performance analysis**: Identify slow pipelines and optimize order
+- **Failure analysis**: Understand why certain repairs fail

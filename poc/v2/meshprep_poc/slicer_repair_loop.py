@@ -29,6 +29,13 @@ from .actions.slicer_actions import (
     SLICER_ERROR_PATTERNS,
 )
 from .filter_script import FilterScript, FilterScriptRunner, create_filter_script
+from .filter_pipelines import (
+    FilterPipeline,
+    get_pipelines_for_issues,
+    analyze_fragmented_model,
+    PROFILE_PIPELINES,
+    GENERIC_PIPELINES,
+)
 from .validation import validate_geometry
 
 logger = logging.getLogger(__name__)
@@ -134,6 +141,14 @@ SLICER_ISSUE_MAPPINGS: Dict[str, List[RepairStrategy]] = {
         RepairStrategy("geometry_issue", "pymeshfix_repair", {}, 2, "Full repair with PyMeshFix"),
         RepairStrategy("geometry_issue", "blender_remesh", {"voxel_size": "auto"}, 3, "Blender remesh (auto)"),
     ],
+    # Fragmented models - many components, sparse geometry
+    # These need special handling - don't use blender_remesh which destroys structure
+    "fragmented": [
+        RepairStrategy("fragmented", "pymeshfix_repair_conservative", {}, 1, "Conservative per-component repair"),
+        RepairStrategy("fragmented", "fill_holes", {"max_hole_size": 50}, 2, "Fill tiny holes only"),
+        RepairStrategy("fragmented", "fix_normals", {}, 3, "Fix normals"),
+        # NOTE: blender_remesh intentionally NOT included - it destroys fragmented models
+    ],
     # Generic fallback strategies
     "unknown": [
         RepairStrategy("unknown", "trimesh_basic", {}, 1, "Basic cleanup"),
@@ -145,14 +160,25 @@ SLICER_ISSUE_MAPPINGS: Dict[str, List[RepairStrategy]] = {
 
 @dataclass
 class RepairAttempt:
-    """Record of a single repair attempt."""
+    """Record of a single repair attempt (can be a pipeline with multiple actions)."""
     attempt_number: int
-    strategy: RepairStrategy
+    pipeline_name: str
+    pipeline_actions: List[str]  # List of action names in the pipeline
     success: bool
     duration_ms: float
     error: Optional[str] = None
     slicer_result: Optional[SlicerResult] = None
     geometry_valid: bool = False
+    
+    # Legacy compatibility
+    @property
+    def strategy(self):
+        """Legacy compatibility - return a strategy-like object."""
+        return type('Strategy', (), {
+            'action': self.pipeline_name,
+            'params': {},
+            'issue_type': 'pipeline',
+        })()
 
 
 @dataclass
@@ -192,8 +218,8 @@ class SlicerRepairResult:
             "attempts": [
                 {
                     "attempt": a.attempt_number,
-                    "action": a.strategy.action,
-                    "params": a.strategy.params,
+                    "pipeline": a.pipeline_name,
+                    "actions": a.pipeline_actions,
                     "success": a.success,
                     "duration_ms": a.duration_ms,
                     "error": a.error,
@@ -204,12 +230,13 @@ class SlicerRepairResult:
         }
 
 
-def categorize_slicer_issues(slicer_result: SlicerResult) -> List[str]:
+def categorize_slicer_issues(slicer_result: SlicerResult, mesh: trimesh.Trimesh = None) -> List[str]:
     """
     Analyze slicer output to categorize issues.
     
     Args:
         slicer_result: Result from slicer validation
+        mesh: Optional mesh to analyze for additional issues (e.g., fragmented)
         
     Returns:
         List of issue categories found
@@ -236,6 +263,24 @@ def categorize_slicer_issues(slicer_result: SlicerResult) -> List[str]:
     
     if "first layer" in all_text:
         categories.add("bed_adhesion")
+    
+    # Check for fragmented models if mesh is provided
+    if mesh is not None:
+        try:
+            components = mesh.split(only_watertight=False)
+            num_components = len(components)
+            num_faces = len(mesh.faces)
+            
+            # Fragmented: many components with sparse geometry
+            # This is important because blender_remesh destroys fragmented models!
+            if num_components > 20 and num_faces < 1000:
+                categories.add("fragmented")
+                logger.info(f"  Detected FRAGMENTED model: {num_components} components, {num_faces} faces")
+            elif num_components > 50:
+                categories.add("fragmented")
+                logger.info(f"  Detected FRAGMENTED model: {num_components} components")
+        except Exception:
+            pass
     
     return list(categories) if categories else ["unknown"]
 
@@ -275,30 +320,31 @@ def get_repair_strategies(issue_categories: List[str]) -> List[RepairStrategy]:
 def run_slicer_repair_loop(
     mesh: trimesh.Trimesh,
     slicer: str = "auto",
-    max_attempts: int = 10,
-    escalate_to_blender_after: int = 5,
+    max_attempts: int = 20,
     timeout: int = 120,
     skip_if_clean: bool = True,
     progress_callback: Optional[callable] = None,
 ) -> SlicerRepairResult:
     """
-    Run the iterative slicer-driven repair loop.
+    Run the iterative slicer-driven repair loop using smart filter pipelines.
     
     This function:
     1. Pre-checks the mesh with STRICT slicer validation (no auto-repair)
     2. If already clean, returns immediately without repair
-    3. If it fails, parses the errors and maps to repair actions
-    4. Tries repair actions in priority order
-    5. Repeats until success or max attempts reached
+    3. Detects model profile (fragmented, holes, non-manifold, etc.)
+    4. Gets profile-specific pipelines (multi-action sequences)
+    5. Tries each pipeline FROM THE ORIGINAL MESH until one succeeds
+    
+    IMPORTANT: Each pipeline is applied to the ORIGINAL mesh, not to
+    the result of a previous failed pipeline. This prevents "stacking" damage.
     
     Args:
         mesh: Input mesh to repair
         slicer: Slicer to use ('prusa', 'orca', 'auto')
-        max_attempts: Maximum repair attempts
-        escalate_to_blender_after: Number of attempts before escalating to Blender
+        max_attempts: Maximum pipeline attempts (default 20 for more combinations)
         timeout: Slicer timeout in seconds
         skip_if_clean: If True, skip repair if pre-check passes (default: True)
-        progress_callback: Optional callback(attempt_num, action_name, total_attempts)
+        progress_callback: Optional callback(attempt_num, pipeline_name, total_attempts)
         
     Returns:
         SlicerRepairResult with repair details
@@ -315,9 +361,11 @@ def run_slicer_repair_loop(
         result.error = f"No slicer available (tried: {slicer})"
         return result
     
+    # Keep the original mesh for fresh starts on each attempt
+    original_mesh = mesh.copy()
+    
     # =========================================================================
     # STEP 0: PRE-CHECK - Run STRICT slicer validation BEFORE any repair
-    # This detects models that are already clean and don't need repair
     # =========================================================================
     if skip_if_clean:
         logger.info("Running STRICT pre-check (no auto-repair)...")
@@ -325,8 +373,7 @@ def run_slicer_repair_loop(
         result.precheck_mesh_info = precheck_result.mesh_info
         
         if precheck_result.success and precheck_result.mesh_info and precheck_result.mesh_info.is_clean:
-            # Model is already clean! Skip repair entirely.
-            logger.info("  PRE-CHECK PASSED: Model already clean (manifold, no holes, no reversed facets)")
+            logger.info("  PRE-CHECK PASSED: Model already clean")
             result.success = True
             result.precheck_passed = True
             result.precheck_skipped = True
@@ -335,110 +382,153 @@ def run_slicer_repair_loop(
             result.total_duration_ms = (time.perf_counter() - start_time) * 1000
             return result
         else:
-            # Model has issues, will proceed with repair
             issues = precheck_result.mesh_info.issues if precheck_result.mesh_info else ["unknown"]
             logger.info(f"  PRE-CHECK: Issues detected: {issues}")
             result.precheck_passed = False
             result.issues_found.extend(issues)
     
     # =========================================================================
-    # STEP 1+: Iterative repair loop
+    # STEP 1: Analyze fragmented models (critical for pipeline selection)
+    # Use smart analysis to determine if blender_remesh would be destructive
     # =========================================================================
-    current_mesh = mesh.copy()
-    attempted_actions = set()
+    frag_analysis = analyze_fragmented_model(original_mesh)
+    blender_unsafe = False  # Will be True if blender_remesh should be skipped
     
-    logger.info(f"Starting slicer repair loop (max_attempts={max_attempts})")
+    if frag_analysis["is_fragmented"]:
+        if "fragmented" not in result.issues_found:
+            result.issues_found.append("fragmented")
+        
+        frag_type = frag_analysis.get("fragmentation_type", "unknown")
+        blender_safe = frag_analysis.get("blender_safe", False)
+        reason = frag_analysis.get("reason", "")
+        
+        logger.warning(f"  FRAGMENTED MODEL DETECTED")
+        logger.warning(f"    Type: {frag_type}")
+        logger.warning(f"    Reason: {reason}")
+        logger.warning(f"    Components: {frag_analysis.get('component_count', '?')}")
+        
+        if blender_safe:
+            logger.info(f"    Blender remesh: ALLOWED (may help reconnect parts)")
+            blender_unsafe = False
+        else:
+            logger.warning(f"    Blender remesh: BLOCKED (would destroy structure)")
+            blender_unsafe = True
     
-    for attempt_num in range(1, max_attempts + 1):
+    # =========================================================================
+    # STEP 2: Get smart pipelines for the detected issues
+    # =========================================================================
+    issues = result.issues_found if result.issues_found else ["unknown"]
+    pipelines = get_pipelines_for_issues(issues, is_fragmented=blender_unsafe)
+    
+    logger.info(f"Starting pipeline-based repair loop")
+    logger.info(f"  Issues: {issues}")
+    logger.info(f"  Available pipelines: {len(pipelines)}")
+    logger.info(f"  Max attempts: {max_attempts}")
+    logger.info(f"  Blender remesh allowed: {not blender_unsafe}")
+    logger.info(f"  NOTE: Each pipeline starts fresh from the original mesh")
+    
+    # =========================================================================
+    # STEP 3: Try each pipeline until one succeeds
+    # =========================================================================
+    best_mesh = None
+    best_score = -1
+    attempted_pipelines = set()
+    
+    for attempt_num in range(1, min(max_attempts, len(pipelines)) + 1):
         result.total_attempts = attempt_num
         
-        # Step 1: Validate with slicer (STRICT mode - no auto-repair)
-        logger.info(f"  Attempt {attempt_num}: Running slicer validation...")
-        slicer_result = validate_mesh(current_mesh, slicer=slicer, timeout=timeout, strict=True)
+        # Get next untried pipeline
+        pipeline = None
+        for p in pipelines:
+            if p.name not in attempted_pipelines:
+                pipeline = p
+                break
         
-        if slicer_result.success:
-            # Success! We're done
-            logger.info(f"  Slicer validation PASSED on attempt {attempt_num}")
-            result.success = True
-            result.final_mesh = current_mesh
-            result.final_slicer_result = slicer_result
+        if pipeline is None:
+            logger.warning(f"  No more pipelines available")
+            result.error = "Exhausted all repair pipelines"
             break
         
-        # Step 2: Parse slicer errors and categorize issues
-        issues = categorize_slicer_issues(slicer_result)
-        logger.info(f"  Slicer validation FAILED. Issues: {issues}")
-        result.issues_found.extend([i for i in issues if i not in result.issues_found])
+        attempted_pipelines.add(pipeline.name)
         
-        # Step 3: Get repair strategies for these issues
-        strategies = get_repair_strategies(issues)
+        action_names = [a["action"] for a in pipeline.actions]
+        logger.info(f"  Attempt {attempt_num}: {pipeline.name}")
+        logger.info(f"    Actions: {' → '.join(action_names)}")
+        logger.info(f"    Starting from ORIGINAL mesh")
         
-        # Filter out already-tried strategies
-        strategies = [
-            s for s in strategies 
-            if (s.action, str(s.params)) not in attempted_actions
-        ]
-        
-        if not strategies:
-            logger.warning(f"  No more repair strategies available")
-            result.error = "Exhausted all repair strategies"
-            result.final_mesh = current_mesh
-            result.final_slicer_result = slicer_result
-            break
-        
-        # Should we escalate to Blender?
-        if attempt_num >= escalate_to_blender_after:
-            # Move Blender strategies to front
-            blender_strategies = [s for s in strategies if "blender" in s.action]
-            other_strategies = [s for s in strategies if "blender" not in s.action]
-            strategies = blender_strategies + other_strategies
-        
-        # Step 4: Try the next repair strategy
-        strategy = strategies[0]
-        logger.info(f"  Trying repair: {strategy.action} {strategy.params}")
-        
-        # Call progress callback if provided
+        # Progress callback
         if progress_callback:
-            progress_callback(attempt_num, strategy.action, max_attempts)
-        
-        attempted_actions.add((strategy.action, str(strategy.params)))
+            progress_callback(attempt_num, pipeline.name, min(max_attempts, len(pipelines)))
         
         attempt_start = time.perf_counter()
         attempt_result = RepairAttempt(
             attempt_number=attempt_num,
-            strategy=strategy,
+            pipeline_name=pipeline.name,
+            pipeline_actions=action_names,
             success=False,
             duration_ms=0,
         )
         
         try:
-            # Execute the repair action
-            repaired_mesh = ActionRegistry.execute(
-                strategy.action, current_mesh, strategy.params
-            )
+            # ALWAYS start from the ORIGINAL mesh!
+            working_mesh = original_mesh.copy()
             
-            # Step 5: Validate geometry before slicer re-check
+            # Execute each action in the pipeline sequentially
+            for action_def in pipeline.actions:
+                action_name = action_def["action"]
+                action_params = action_def.get("params", {})
+                
+                logger.debug(f"      Executing: {action_name} {action_params}")
+                working_mesh = ActionRegistry.execute(action_name, working_mesh, action_params)
+            
+            repaired_mesh = working_mesh
+            
+            # Validate geometry
             geom_valid = validate_geometry(repaired_mesh)
             attempt_result.geometry_valid = geom_valid.is_printable
             
-            # Step 5b: Check for geometry loss (reject if model was destroyed)
-            geom_acceptable, geom_loss_reason = check_geometry_loss(mesh, repaired_mesh)
+            # Check for geometry loss
+            geom_acceptable, geom_loss_reason = check_geometry_loss(original_mesh, repaired_mesh)
             
             if geom_valid.is_printable and geom_acceptable:
-                logger.info(f"    Repair applied, geometry valid")
-                current_mesh = repaired_mesh
-                attempt_result.success = True
-                result.issues_resolved.append(strategy.issue_type)
+                logger.info(f"    Pipeline completed, geometry valid")
+                
+                # Run slicer validation
+                logger.info(f"    Running slicer validation...")
+                slicer_result = validate_mesh(repaired_mesh, slicer=slicer, timeout=timeout, strict=True)
+                attempt_result.slicer_result = slicer_result
+                
+                if slicer_result.success:
+                    logger.info(f"    ✓ Slicer validation PASSED!")
+                    result.success = True
+                    result.final_mesh = repaired_mesh
+                    result.final_slicer_result = slicer_result
+                    result.issues_resolved.append(pipeline.name)
+                    attempt_result.success = True
+                    attempt_result.duration_ms = (time.perf_counter() - attempt_start) * 1000
+                    result.attempts.append(attempt_result)
+                    break  # Success!
+                else:
+                    logger.info(f"    ✗ Slicer validation FAILED")
+                    
+                    # Track best result
+                    score = (1 if repaired_mesh.is_watertight else 0) + (1 if repaired_mesh.is_volume else 0)
+                    if score > best_score:
+                        best_score = score
+                        best_mesh = repaired_mesh
+                        logger.info(f"    New best mesh (score: {score})")
+                    
+                    attempt_result.error = f"Slicer issues remain"
             elif geom_valid.is_printable and not geom_acceptable:
-                # Geometry is technically valid but too much was lost
-                logger.warning(f"    Repair caused unacceptable geometry loss: {geom_loss_reason}")
+                logger.warning(f"    ✗ Geometry loss: {geom_loss_reason}")
                 attempt_result.error = f"Geometry loss: {geom_loss_reason}"
-                attempt_result.geometry_valid = False  # Mark as invalid due to loss
+                attempt_result.geometry_valid = False
             else:
-                logger.warning(f"    Repair broke geometry: {geom_valid.issues}")
+                logger.warning(f"    ✗ Geometry invalid: {geom_valid.issues}")
                 attempt_result.error = f"Geometry invalid: {geom_valid.issues}"
             
         except Exception as e:
-            logger.error(f"    Repair action failed: {e}")
+            logger.error(f"    ✗ Pipeline failed: {e}")
             attempt_result.error = str(e)
         
         attempt_result.duration_ms = (time.perf_counter() - attempt_start) * 1000
@@ -447,8 +537,8 @@ def run_slicer_repair_loop(
     result.total_duration_ms = (time.perf_counter() - start_time) * 1000
     
     if not result.success:
-        result.final_mesh = current_mesh
+        result.final_mesh = best_mesh if best_mesh is not None else original_mesh
         if not result.error:
-            result.error = f"Failed after {result.total_attempts} attempts"
+            result.error = f"Failed after {result.total_attempts} pipeline attempts"
     
     return result
