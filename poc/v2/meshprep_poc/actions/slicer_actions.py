@@ -7,10 +7,24 @@ Slicer validation actions for mesh repair.
 
 Validates meshes by running them through actual slicers (PrusaSlicer, OrcaSlicer,
 SuperSlicer, Cura) to ensure they are truly 3D printable.
+
+IMPORTANT: Modern slicers (PrusaSlicer, OrcaSlicer) have built-in auto-repair
+that silently fixes many mesh issues. This means:
+1. A model that "passes" slicing may still have issues
+2. The slicer is fixing issues internally, not the exported mesh
+3. Users exporting to OTHER slicers may have problems
+
+This module provides two validation modes:
+1. STRICT MODE (--info): Uses slicer's mesh analysis WITHOUT auto-repair
+2. SLICE MODE (--export-gcode): Tests if slicer can produce G-code (with auto-repair)
+
+For MeshPrep, we use STRICT MODE to ensure the mesh itself is clean,
+not just that the slicer can work around issues.
 """
 
 import logging
 import os
+import re
 import shutil
 import subprocess
 import tempfile
@@ -21,6 +35,45 @@ from typing import Optional, List, Dict, Any
 import trimesh
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class MeshInfo:
+    """Raw mesh information from slicer --info command."""
+    manifold: bool = False
+    open_edges: int = 0
+    facets_reversed: int = 0
+    backwards_edges: int = 0
+    number_of_parts: int = 0
+    number_of_facets: int = 0
+    volume: float = 0.0
+    size_x: float = 0.0
+    size_y: float = 0.0
+    size_z: float = 0.0
+    
+    @property
+    def is_clean(self) -> bool:
+        """Check if mesh is clean (no issues detected)."""
+        return (
+            self.manifold and
+            self.open_edges == 0 and
+            self.backwards_edges == 0 and
+            self.facets_reversed == 0  # Reversed facets indicate normal issues
+        )
+    
+    @property
+    def issues(self) -> List[str]:
+        """List of detected issues."""
+        issues = []
+        if not self.manifold:
+            issues.append("non-manifold")
+        if self.open_edges > 0:
+            issues.append(f"open_edges ({self.open_edges})")
+        if self.backwards_edges > 0:
+            issues.append(f"backwards_edges ({self.backwards_edges})")
+        if self.facets_reversed > 0:
+            issues.append(f"facets_reversed ({self.facets_reversed})")
+        return issues
 
 
 @dataclass
@@ -35,7 +88,9 @@ class SlicerResult:
     stdout: str = ""
     stderr: str = ""
     return_code: int = -1
-    # Estimates (only available on success)
+    # Mesh info (from --info mode)
+    mesh_info: Optional[MeshInfo] = None
+    # Estimates (only available on slice success)
     print_time_minutes: Optional[float] = None
     filament_grams: Optional[float] = None
     layer_count: Optional[int] = None
@@ -76,9 +131,11 @@ SLICER_ERROR_PATTERNS = {
         "non manifold",
         "not manifold",
         "manifold edge",
+        "manifold = no",
     ],
     "holes": [
         "open edge",
+        "open_edges",
         "hole detected",
         "not watertight",
         "open mesh",
@@ -103,6 +160,8 @@ SLICER_ERROR_PATTERNS = {
         "flipped normal",
         "inverted normal",
         "wrong orientation",
+        "facets_reversed",
+        "backwards_edges",
     ],
     "size": [
         "too large",
@@ -188,6 +247,54 @@ def is_slicer_available(slicer_type: str = "auto") -> bool:
     return find_slicer(slicer_type) is not None
 
 
+def parse_mesh_info(output: str) -> MeshInfo:
+    """
+    Parse the output of slicer --info command.
+    
+    Args:
+        output: The stdout from --info command
+        
+    Returns:
+        MeshInfo dataclass with parsed values
+    """
+    info = MeshInfo()
+    
+    for line in output.split("\n"):
+        line = line.strip()
+        if "=" not in line:
+            continue
+        
+        key, value = line.split("=", 1)
+        key = key.strip()
+        value = value.strip()
+        
+        try:
+            if key == "manifold":
+                info.manifold = value.lower() == "yes"
+            elif key == "open_edges":
+                info.open_edges = int(value)
+            elif key == "facets_reversed":
+                info.facets_reversed = int(value)
+            elif key == "backwards_edges":
+                info.backwards_edges = int(value)
+            elif key == "number_of_parts":
+                info.number_of_parts = int(value)
+            elif key == "number_of_facets":
+                info.number_of_facets = int(value)
+            elif key == "volume":
+                info.volume = float(value)
+            elif key == "size_x":
+                info.size_x = float(value)
+            elif key == "size_y":
+                info.size_y = float(value)
+            elif key == "size_z":
+                info.size_z = float(value)
+        except (ValueError, TypeError):
+            pass
+    
+    return info
+
+
 def parse_slicer_output(stdout: str, stderr: str) -> Dict[str, Any]:
     """
     Parse slicer output to extract errors, warnings, and issues.
@@ -230,9 +337,86 @@ def parse_slicer_output(stdout: str, stderr: str) -> Dict[str, Any]:
     }
 
 
+def get_mesh_info_prusa(stl_path: Path, timeout: int = 30) -> SlicerResult:
+    """
+    Get mesh info using PrusaSlicer --info (STRICT MODE - no auto-repair).
+    
+    This is the preferred validation method as it reports the actual mesh
+    state WITHOUT any auto-repair.
+    
+    Args:
+        stl_path: Path to the STL file
+        timeout: Timeout in seconds
+        
+    Returns:
+        SlicerResult with mesh_info populated
+    """
+    slicer_path = find_slicer("prusa")
+    if not slicer_path:
+        return SlicerResult(
+            success=False,
+            slicer="prusa",
+            errors=["PrusaSlicer not found"]
+        )
+    
+    cmd = [str(slicer_path), "--info", str(stl_path)]
+    
+    try:
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=timeout
+        )
+        
+        mesh_info = parse_mesh_info(result.stdout)
+        
+        # Build issues list from mesh_info
+        issues = []
+        if not mesh_info.manifold:
+            issues.append({"type": "non_manifold", "message": "Mesh is not manifold"})
+        if mesh_info.open_edges > 0:
+            issues.append({"type": "holes", "message": f"{mesh_info.open_edges} open edges"})
+        if mesh_info.backwards_edges > 0:
+            issues.append({"type": "normals", "message": f"{mesh_info.backwards_edges} backwards edges"})
+        if mesh_info.facets_reversed > 0:
+            issues.append({"type": "normals", "message": f"{mesh_info.facets_reversed} facets reversed"})
+        
+        return SlicerResult(
+            success=mesh_info.is_clean,
+            slicer="prusa-slicer (--info)",
+            slicer_version=get_slicer_version(slicer_path),
+            errors=[],
+            warnings=[],
+            issues=issues,
+            stdout=result.stdout,
+            stderr=result.stderr,
+            return_code=result.returncode,
+            mesh_info=mesh_info
+        )
+        
+    except subprocess.TimeoutExpired:
+        return SlicerResult(
+            success=False,
+            slicer="prusa-slicer",
+            errors=[f"Slicer timed out after {timeout} seconds"]
+        )
+    except Exception as e:
+        return SlicerResult(
+            success=False,
+            slicer="prusa-slicer",
+            errors=[f"Slicer execution failed: {str(e)}"]
+        )
+
+
 def validate_with_prusa(stl_path: Path, config_path: Optional[Path] = None, timeout: int = 120) -> SlicerResult:
     """
-    Validate an STL file using PrusaSlicer.
+    Validate an STL file using PrusaSlicer (SLICE MODE - includes auto-repair).
+    
+    WARNING: PrusaSlicer auto-repairs many mesh issues internally. A model that
+    passes this validation may still have issues when used with other slicers.
+    
+    For strict validation without auto-repair, use get_mesh_info_prusa() instead.
     
     Args:
         stl_path: Path to the STL file
@@ -280,7 +464,7 @@ def validate_with_prusa(stl_path: Path, config_path: Optional[Path] = None, time
             
             return SlicerResult(
                 success=success,
-                slicer="prusa-slicer",
+                slicer="prusa-slicer (slice mode)",
                 slicer_version=get_slicer_version(slicer_path),
                 errors=parsed["errors"],
                 warnings=parsed["warnings"],
@@ -367,11 +551,55 @@ def validate_with_orca(stl_path: Path, config_path: Optional[Path] = None, timeo
             )
 
 
+def validate_mesh_strict(
+    mesh: trimesh.Trimesh,
+    slicer: str = "auto",
+    timeout: int = 30
+) -> SlicerResult:
+    """
+    STRICT validation: Get mesh info WITHOUT slicer auto-repair.
+    
+    This is the recommended validation method for MeshPrep as it ensures
+    the mesh itself is clean, not just that a specific slicer can fix it.
+    
+    Args:
+        mesh: The trimesh mesh to validate
+        slicer: Slicer to use (currently only 'prusa' supports --info)
+        timeout: Timeout in seconds
+        
+    Returns:
+        SlicerResult with mesh_info and issues
+    """
+    # Find available slicer that supports --info
+    slicer_path = find_slicer(slicer)
+    if not slicer_path:
+        return SlicerResult(
+            success=False,
+            slicer=slicer,
+            errors=[f"No slicer found (tried: {slicer})"]
+        )
+    
+    # Currently only PrusaSlicer supports --info
+    slicer_name = slicer_path.stem.lower()
+    if "prusa" not in slicer_name and "super" not in slicer_name:
+        # Fall back to slice mode for other slicers
+        logger.warning(f"Slicer {slicer_name} doesn't support --info, falling back to slice mode")
+        return validate_mesh(mesh, slicer=slicer, timeout=timeout)
+    
+    # Export mesh to temp STL
+    with tempfile.TemporaryDirectory() as tmpdir:
+        stl_path = Path(tmpdir) / "mesh.stl"
+        mesh.export(str(stl_path))
+        
+        return get_mesh_info_prusa(stl_path, timeout)
+
+
 def validate_mesh(
     mesh: trimesh.Trimesh,
     slicer: str = "auto",
     config_path: Optional[Path] = None,
-    timeout: int = 120
+    timeout: int = 120,
+    strict: bool = True
 ) -> SlicerResult:
     """
     Validate a mesh using an available slicer.
@@ -381,10 +609,18 @@ def validate_mesh(
         slicer: Slicer to use ('prusa', 'orca', 'superslicer', 'cura', or 'auto')
         config_path: Optional path to slicer config
         timeout: Timeout in seconds
+        strict: If True, use --info mode (no auto-repair). If False, use slice mode.
         
     Returns:
         SlicerResult with validation details
     """
+    # For strict mode, use --info if available
+    if strict:
+        result = validate_mesh_strict(mesh, slicer, timeout)
+        if result.mesh_info is not None:
+            return result
+        # Fall through to slice mode if --info not available
+    
     # Find available slicer
     slicer_path = find_slicer(slicer)
     if not slicer_path:
@@ -428,7 +664,8 @@ def validate_stl_file(
     stl_path: Path,
     slicer: str = "auto",
     config_path: Optional[Path] = None,
-    timeout: int = 120
+    timeout: int = 120,
+    strict: bool = True
 ) -> SlicerResult:
     """
     Validate an STL file using an available slicer.
@@ -438,10 +675,20 @@ def validate_stl_file(
         slicer: Slicer to use ('prusa', 'orca', 'superslicer', 'cura', or 'auto')
         config_path: Optional path to slicer config
         timeout: Timeout in seconds
+        strict: If True, use --info mode (no auto-repair). If False, use slice mode.
         
     Returns:
         SlicerResult with validation details
     """
+    # For strict mode, use --info if available
+    if strict:
+        slicer_path = find_slicer(slicer)
+        if slicer_path:
+            slicer_name = slicer_path.stem.lower()
+            if "prusa" in slicer_name or "super" in slicer_name:
+                return get_mesh_info_prusa(stl_path, timeout)
+    
+    # Fall back to slice mode
     slicer_path = find_slicer(slicer)
     if not slicer_path:
         return SlicerResult(
@@ -489,23 +736,25 @@ from .registry import register_action
 
 @register_action(
     name="slicer_validate",
-    description="Validate mesh with a slicer (PrusaSlicer, OrcaSlicer, etc.)",
+    description="Validate mesh with a slicer (STRICT mode - no auto-repair)",
     parameters={
         "slicer": "Slicer to use: 'prusa', 'orca', 'auto' (default: 'auto')",
-        "timeout": "Timeout in seconds (default: 120)",
+        "timeout": "Timeout in seconds (default: 30)",
+        "strict": "If True, use --info mode without auto-repair (default: True)",
     },
     risk_level="low"
 )
 def action_slicer_validate(mesh: trimesh.Trimesh, params: dict) -> trimesh.Trimesh:
     """
-    Validate mesh using a slicer.
+    Validate mesh using a slicer (STRICT mode by default).
     
     This action does NOT modify the mesh - it only validates that the mesh
-    can be successfully sliced. If validation fails, an exception is raised.
+    is clean according to the slicer's mesh analysis (without auto-repair).
+    If validation fails, an exception is raised.
     
     Args:
         mesh: The mesh to validate
-        params: Parameters including 'slicer' and 'timeout'
+        params: Parameters including 'slicer', 'timeout', 'strict'
         
     Returns:
         The same mesh (unmodified) if validation passes
@@ -514,12 +763,23 @@ def action_slicer_validate(mesh: trimesh.Trimesh, params: dict) -> trimesh.Trime
         ValueError: If slicer validation fails
     """
     slicer = params.get("slicer", "auto")
-    timeout = params.get("timeout", 120)
+    timeout = params.get("timeout", 30)
+    strict = params.get("strict", True)
     
-    result = validate_mesh(mesh, slicer=slicer, timeout=timeout)
+    result = validate_mesh(mesh, slicer=slicer, timeout=timeout, strict=strict)
     
     if not result.success:
-        error_msg = "; ".join(result.errors) if result.errors else "Slicer validation failed"
+        # Build detailed error message
+        error_parts = []
+        if result.errors:
+            error_parts.extend(result.errors)
+        if result.mesh_info and not result.mesh_info.is_clean:
+            error_parts.append(f"Mesh issues: {', '.join(result.mesh_info.issues)}")
+        if result.issues:
+            issue_types = list(set(i['type'] for i in result.issues))
+            error_parts.append(f"Issue types: {', '.join(issue_types)}")
+        
+        error_msg = "; ".join(error_parts) if error_parts else "Slicer validation failed"
         raise ValueError(f"Slicer validation failed: {error_msg}")
     
     logger.info(f"Slicer validation passed ({result.slicer})")
@@ -527,11 +787,42 @@ def action_slicer_validate(mesh: trimesh.Trimesh, params: dict) -> trimesh.Trime
 
 
 @register_action(
-    name="slicer_check",
-    description="Check if mesh can be sliced (non-fatal, logs warnings)",
+    name="slicer_validate_slice",
+    description="Validate mesh can be sliced (with slicer auto-repair)",
     parameters={
         "slicer": "Slicer to use: 'prusa', 'orca', 'auto' (default: 'auto')",
         "timeout": "Timeout in seconds (default: 120)",
+    },
+    risk_level="low"
+)
+def action_slicer_validate_slice(mesh: trimesh.Trimesh, params: dict) -> trimesh.Trimesh:
+    """
+    Validate mesh can be sliced (allows slicer auto-repair).
+    
+    WARNING: This mode allows the slicer to auto-repair issues, so a mesh
+    that passes may still have problems with other slicers.
+    
+    Use slicer_validate for strict validation without auto-repair.
+    """
+    slicer = params.get("slicer", "auto")
+    timeout = params.get("timeout", 120)
+    
+    result = validate_mesh(mesh, slicer=slicer, timeout=timeout, strict=False)
+    
+    if not result.success:
+        error_msg = "; ".join(result.errors) if result.errors else "Slicer validation failed"
+        raise ValueError(f"Slicer validation failed: {error_msg}")
+    
+    logger.info(f"Slicer slice validation passed ({result.slicer})")
+    return mesh
+
+
+@register_action(
+    name="slicer_check",
+    description="Check if mesh is clean (non-fatal, logs warnings)",
+    parameters={
+        "slicer": "Slicer to use: 'prusa', 'orca', 'auto' (default: 'auto')",
+        "timeout": "Timeout in seconds (default: 30)",
     },
     risk_level="low"
 )
@@ -550,21 +841,24 @@ def action_slicer_check(mesh: trimesh.Trimesh, params: dict) -> trimesh.Trimesh:
         The same mesh (unmodified)
     """
     slicer = params.get("slicer", "auto")
-    timeout = params.get("timeout", 120)
+    timeout = params.get("timeout", 30)
     
     # Check if any slicer is available
     if not is_slicer_available(slicer):
         logger.warning(f"No slicer available for validation (tried: {slicer})")
         return mesh
     
-    result = validate_mesh(mesh, slicer=slicer, timeout=timeout)
+    result = validate_mesh(mesh, slicer=slicer, timeout=timeout, strict=True)
     
     if result.success:
         logger.info(f"Slicer check passed ({result.slicer})")
     else:
-        logger.warning(f"Slicer check failed: {result.errors}")
+        logger.warning(f"Slicer check failed:")
+        if result.mesh_info:
+            for issue in result.mesh_info.issues:
+                logger.warning(f"  - {issue}")
         if result.issues:
             for issue in result.issues:
-                logger.warning(f"  Issue: [{issue['type']}] {issue['message']}")
+                logger.warning(f"  - [{issue['type']}] {issue['message']}")
     
     return mesh

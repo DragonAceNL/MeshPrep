@@ -524,6 +524,7 @@ Before deploying any repair strategy changes:
 │  STEP 3: Validate result:                                   │
 │    • is_watertight? is_volume?                              │
 │    • Face loss < 50%? Bbox change < 30%?                    │
+│    • STRICT slicer validation (--info mode)                 │
 │                                                             │
 │  STEP 4: Escalate if needed:                                │
 │    • Blender available? → blender-remesh                    │
@@ -538,9 +539,52 @@ Before deploying any repair strategy changes:
 │    ❌ Use full-repair on multi-component without checking   │
 │    ❌ Trust watertight flag alone                           │
 │    ❌ Skip Blender escalation when available                │
+│    ❌ Trust slicer SLICE mode (auto-repairs silently)       │
 │                                                             │
 └─────────────────────────────────────────────────────────────┘
 ```
+
+---
+
+## Slicer Validation Modes
+
+### Critical Discovery: Slicer Auto-Repair
+
+Modern slicers (PrusaSlicer, OrcaSlicer, SuperSlicer) have **built-in auto-repair** that silently fixes mesh issues during slicing. This means:
+
+1. A model that "passes" slicing may still have mesh issues
+2. The slicer fixes issues internally, NOT the exported mesh
+3. Users exporting to OTHER slicers may have problems
+
+### STRICT Mode (Recommended)
+
+Use `prusa-slicer --info model.stl` to get raw mesh statistics **without auto-repair**:
+
+```
+[100036.stl]
+manifold = no          <-- Real mesh state
+open_edges = 46        <-- Hole count
+facets_reversed = 34   <-- Normal issues
+backwards_edges = 32   <-- More normal issues
+```
+
+### SLICE Mode (Not Recommended for Validation)
+
+Using `prusa-slicer --export-gcode` will pass models that have issues:
+
+```
+Model with 46 open edges:
+  STRICT mode: FAIL (correctly detects issues)
+  SLICE mode:  PASS (slicer auto-fixed internally)
+```
+
+### Validation Decision
+
+| Use Case | Mode | Why |
+|----------|------|-----|
+| MeshPrep validation | STRICT | Ensures mesh is truly clean |
+| Testing specific slicer | SLICE | Only if user will ONLY use that slicer |
+| Sharing filter scripts | STRICT | Mesh must work with ANY slicer |
 
 ---
 

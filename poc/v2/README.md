@@ -8,7 +8,8 @@ This POC proves that our filter scripts actually repair meshes by:
 1. Loading real STL files from Thingi10K test fixtures
 2. Running actual trimesh/pymeshfix operations
 3. Validating results are printable and visually unchanged
-4. Reporting success rates per defect category
+4. **NEW: Validating with real slicers (PrusaSlicer, OrcaSlicer)**
+5. Reporting success rates per defect category
 
 ## Quick Start
 
@@ -38,8 +39,111 @@ python validate_filters.py --all --limit 5
 # Test specific category
 python validate_filters.py --category holes --limit 10
 
+# Test with slicer validation
+python validate_filters.py --filter slicer-validated --category clean --limit 5
+
 # Save results to JSON
 python validate_filters.py --all --output results.json
+```
+
+## Slicer Validation (NEW)
+
+POC v2 now supports **real slicer validation** to ensure repaired models are truly 3D printable.
+
+### Important: STRICT vs SLICE Mode
+
+Modern slicers (PrusaSlicer, OrcaSlicer) have **built-in auto-repair** that silently fixes mesh issues. This means a model that "passes" slicing may still have issues when used with other slicers.
+
+MeshPrep uses **STRICT mode** by default:
+
+| Mode | How It Works | Result |
+|------|--------------|--------|
+| **STRICT** (`--info`) | Analyzes mesh WITHOUT auto-repair | True mesh quality |
+| **SLICE** (`--export-gcode`) | Tests if slicer can produce G-code | May hide issues |
+
+Example difference:
+
+```
+Model: 100036.stl (has 46 open edges)
+
+STRICT MODE: FAIL
+  manifold: False
+  open_edges: 46
+  is_clean: False
+
+SLICE MODE: PASS
+  (slicer auto-fixed issues internally)
+```
+
+With STRICT mode, MeshPrep ensures the mesh itself is clean, not just that one particular slicer can work around issues.
+
+### Supported Slicers
+
+| Slicer | Detected Automatically | Installation |
+|--------|------------------------|--------------|
+| PrusaSlicer | ✅ Yes | `winget install Prusa3D.PrusaSlicer` |
+| OrcaSlicer | ✅ Yes | `winget install SoftFever.OrcaSlicer` |
+| SuperSlicer | ✅ Yes | Manual install |
+
+### Test Slicer Integration
+
+```bash
+python test_slicer.py
+```
+
+Expected output:
+```
+============================================================
+   MESHPREP POC v2 - SLICER INTEGRATION TEST
+============================================================
+  [OK] Found 1 slicer(s):
+    - prusa: C:\Program Files\Prusa3D\PrusaSlicer\prusa-slicer-console.exe
+  ...
+  All tests passed! Slicer integration is working.
+```
+
+### Slicer-Validated Presets
+
+New filter presets that include slicer validation:
+
+| Preset | Description |
+|--------|-------------|
+| `slicer-validated` | Full repair + slicer validation |
+| `conservative-slicer-validated` | Conservative repair + slicer validation |
+
+### Iterative Slicer Repair Loop
+
+When slicer validation fails, the system **automatically tries different repair strategies**:
+
+```bash
+python test_slicer_repair_loop.py
+```
+
+The repair loop:
+1. Validates mesh with slicer
+2. If it fails, parses errors to identify issues
+3. Maps issues to repair strategies
+4. Tries repairs in priority order
+5. Repeats until success or max attempts reached
+
+Example output:
+```
+RUNNING SLICER REPAIR LOOP
+  Attempt 1: Running slicer validation...
+  Slicer validation FAILED. Issues: ['unknown']
+  Trying repair: trimesh_basic {}
+    Repair broke geometry...
+  Attempt 2: Running slicer validation...
+  Trying repair: pymeshfix_repair {}
+    Repair applied, geometry valid
+  Attempt 3: Running slicer validation...
+  Slicer validation PASSED on attempt 3
+
+REPAIR RESULT
+  Success: True
+  Total attempts: 3
+  Final mesh: Watertight=True, Is Volume=True
+  Final slicer validation: PASS
 ```
 
 ## What It Tests
@@ -70,6 +174,11 @@ python validate_filters.py --all --output results.json
 - ✅ Bounding box unchanged
 - ✅ Hausdorff distance < 0.1% of bbox diagonal
 
+**Slicer Validation (ultimate test):**
+- ✅ Model produces valid G-code
+- ✅ No fatal slicer errors
+- ✅ Model has extrusions in first layer
+
 ## Available Actions
 
 ```bash
@@ -85,6 +194,10 @@ python validate_filters.py --list-actions
 | `make_manifold` | Make mesh manifold | Medium |
 | `keep_largest_component` | Remove small components | High |
 | `simplify` | Reduce face count | Medium |
+| `place_on_bed` | Move mesh to build plate (Z=0) | Low |
+| `center_mesh` | Center mesh at origin | Low |
+| `slicer_validate` | Validate with slicer (fatal on fail) | Low |
+| `slicer_check` | Validate with slicer (warning only) | Low |
 
 ## Filter Presets
 
@@ -95,9 +208,13 @@ python validate_filters.py --list-presets
 | Preset | Description |
 |--------|-------------|
 | `basic-cleanup` | Merge vertices, remove degenerates, fix normals |
-| `fill-holes` | Fill holes using trimesh |
+| `fill-holes` | Fill holes using pymeshfix |
 | `full-repair` | Complete repair using PyMeshFix |
+| `conservative-repair` | Preserves multi-component models |
 | `manifold-repair` | Make mesh manifold |
+| `blender-remesh` | Aggressive Blender voxel remesh |
+| `slicer-validated` | Full repair + slicer validation |
+| `conservative-slicer-validated` | Conservative + slicer validation |
 
 ## Project Structure
 
@@ -105,22 +222,27 @@ python validate_filters.py --list-presets
 poc/v2/
 ├── meshprep_poc/
 │   ├── __init__.py
-│   ├── mesh_ops.py          # Mesh loading, diagnostics
-│   ├── validation.py        # Two-stage validation
-│   ├── filter_script.py     # Filter script runner
+│   ├── mesh_ops.py              # Mesh loading, diagnostics
+│   ├── validation.py            # Two-stage validation
+│   ├── filter_script.py         # Filter script runner
+│   ├── slicer_repair_loop.py    # Iterative slicer repair (NEW)
 │   └── actions/
 │       ├── __init__.py
-│       ├── registry.py      # Action registration
+│       ├── registry.py          # Action registration
 │       ├── trimesh_actions.py   # trimesh-based actions
-│       └── pymeshfix_actions.py # pymeshfix-based actions
+│       ├── pymeshfix_actions.py # pymeshfix-based actions
+│       ├── blender_actions.py   # Blender-based actions
+│       └── slicer_actions.py    # Slicer validation (NEW)
 ├── filters/
 │   ├── basic-cleanup.json
 │   ├── fill-holes.json
 │   ├── full-repair.json
 │   └── manifold-repair.json
-├── output/                  # Repaired models (optional)
+├── output/                      # Repaired models (optional)
 ├── requirements.txt
-├── validate_filters.py      # Main validation script
+├── validate_filters.py          # Main validation script
+├── test_slicer.py              # Slicer integration test (NEW)
+├── test_slicer_repair_loop.py  # Iterative repair test (NEW)
 └── README.md
 ```
 
@@ -156,6 +278,7 @@ By Category:
 - **pymeshfix** - Manifold repair (optional but recommended)
 - **numpy** - Numerical operations
 - **scipy** - Hausdorff distance computation
+- **PrusaSlicer** (optional) - Slicer validation
 
 ## What This Proves
 
@@ -164,7 +287,9 @@ If this POC shows good success rates, it means:
 1. ✅ Our filter script concept works
 2. ✅ trimesh + pymeshfix can actually repair meshes
 3. ✅ Our validation criteria are reasonable
-4. ✅ We can proceed to build MeshPrep v1 with confidence
+4. ✅ **Slicer validation provides definitive proof of printability**
+5. ✅ **Iterative repair loop can fix slicer failures automatically**
+6. ✅ We can proceed to build MeshPrep v1 with confidence
 
 ## Next Steps After POC v2
 

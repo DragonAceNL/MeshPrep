@@ -252,9 +252,9 @@ def run_slicer_repair_loop(
     for attempt_num in range(1, max_attempts + 1):
         result.total_attempts = attempt_num
         
-        # Step 1: Validate with slicer
+        # Step 1: Validate with slicer (STRICT mode - no auto-repair)
         logger.info(f"  Attempt {attempt_num}: Running slicer validation...")
-        slicer_result = validate_mesh(current_mesh, slicer=slicer, timeout=timeout)
+        slicer_result = validate_mesh(current_mesh, slicer=slicer, timeout=timeout, strict=True)
         
         if slicer_result.success:
             # Success! We're done
