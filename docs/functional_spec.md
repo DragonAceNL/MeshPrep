@@ -15,9 +15,161 @@ Goal
 - Automatically detect a model's profile (see `docs/model_profiles.md`) and generate a suggested filter script tailored to that profile; present the suggested filter script for review and editing before execution.
 
 Scope
-- Input: a single STL file (ASCII or binary) per run. The tool will scan the selected model to produce a suggested, generic filter script that fits the model's profile; users can review and tweak the suggested filter script before applying it. The software will not accept a directory of files as the primary workflow — each model is treated individually to allow per-model tuning and reproducible presets.
+- Input: 3D mesh files in various formats. While the primary workflow targets STL files (ASCII or binary), MeshPrep accepts models in any format supported by `trimesh` or `meshio` and automatically converts them to STL for processing. The tool will scan the selected model to produce a suggested, generic filter script that fits the model's profile; users can review and tweak the suggested filter script before applying it. The software will not accept a directory of files as the primary workflow — each model is treated individually to allow per-model tuning and reproducible presets.
 - Output: cleaned STL files suitable for slicing and a CSV/JSON report with diagnostics and the chosen filter script for the model.
 - Tools: Python-based stack using `trimesh`, `pymeshfix`, `meshio`. External tools (Blender, slicers) are automatically detected and installed if missing — no manual setup required.
+
+Supported Input Formats
+-----------------------
+MeshPrep leverages `trimesh` and `meshio` to support a wide range of 3D file formats. When a non-STL file is provided, it is automatically loaded and converted to an internal mesh representation for processing. The final output is always STL (the standard for 3D printing).
+
+### Common 3D Printing Formats
+
+| Format | Extensions | Tool | Notes |
+|--------|------------|------|-------|
+| **STL** | `.stl` | trimesh | Primary format (ASCII and binary) |
+| **OBJ** | `.obj` | trimesh/meshio | Wavefront OBJ, widely supported |
+| **PLY** | `.ply` | trimesh/meshio | Stanford PLY, good for scans |
+| **3MF** | `.3mf` | trimesh | Modern 3D printing format (recommended over STL) |
+| **GLTF/GLB** | `.gltf`, `.glb` | trimesh | Web 3D format, common from Sketchfab |
+| **OFF** | `.off` | trimesh/meshio | Object File Format |
+| **AMF** | `.amf` | trimesh | Additive Manufacturing Format |
+
+### Compressed/Optimized Formats
+
+| Format | Extensions | Tool | Notes |
+|--------|------------|------|-------|
+| **CTM** | `.ctm` | openctm* | OpenCTM compressed mesh (common on Sketchfab, CGTrader) |
+| **Draco** | `.drc` | trimesh* | Google's compressed mesh format |
+
+*Note: CTM requires optional `python-openctm` package. Draco requires `trimesh[easy]` or DracoPy.
+
+### CAD & Engineering Formats
+
+| Format | Extensions | Tool | Notes |
+|--------|------------|------|-------|
+| **STEP** | `.step`, `.stp` | trimesh* | CAD interchange format (requires OpenCASCADE) |
+| **IGES** | `.iges`, `.igs` | trimesh* | Legacy CAD format (requires OpenCASCADE) |
+| **BREP** | `.brep` | trimesh* | Boundary representation (requires OpenCASCADE) |
+| **VTK** | `.vtk`, `.vtu` | trimesh/meshio | Visualization Toolkit |
+| **Gmsh** | `.msh` | meshio | Mesh generation tool |
+| **NASTRAN** | `.nas`, `.bdf`, `.fem` | meshio | Finite element |
+| **Abaqus** | `.inp` | meshio | Finite element |
+| **EXODUS** | `.e`, `.ex2`, `.exo` | meshio | Sandia format |
+
+*Note: STEP/IGES/BREP import requires optional OpenCASCADE dependencies (`pip install trimesh[easy]`).
+
+### 3D Modeling Software Formats
+
+| Format | Extensions | Tool | Notes |
+|--------|------------|------|-------|
+| **FBX** | `.fbx` | trimesh* | Autodesk exchange format |
+| **DAE** | `.dae` | trimesh | COLLADA format |
+| **3DS** | `.3ds` | trimesh | Legacy 3D Studio Max |
+| **Blender** | `.blend` | blender | Requires Blender for conversion |
+
+*Note: FBX requires Autodesk FBX SDK or conversion via Blender.
+
+### Other Supported Formats
+
+| Format | Extensions | Tool |
+|--------|------------|------|
+| DXF | `.dxf` | trimesh |
+| SVG | `.svg` | trimesh/meshio |
+| CGNS | `.cgns` | meshio |
+| XDMF | `.xdmf`, `.xmf` | meshio |
+| Tecplot | `.dat`, `.tec` | meshio |
+| Netgen | `.vol` | meshio |
+| TetGen | `.ele`, `.node` | meshio |
+| UGRID | `.ugrid` | meshio |
+| SU2 | `.su2` | meshio |
+| MEDIT | `.mesh`, `.meshb` | meshio |
+
+### Format-Specific Notes
+
+#### CTM (OpenCTM)
+CTM files are commonly found on 3D model marketplaces like Sketchfab and CGTrader. They offer excellent compression (often 10-20x smaller than STL) but require the optional `python-openctm` package:
+
+```bash
+pip install python-openctm
+```
+
+#### STEP/IGES (CAD Files)
+CAD formats like STEP and IGES are parametric and contain exact geometry (curves, surfaces). Converting to STL involves tessellation, which MeshPrep handles automatically. For best results:
+- Higher tessellation = more triangles = smoother surfaces
+- MeshPrep uses sensible defaults but allows overriding via `--cad-resolution`
+
+#### 3MF (Recommended over STL)
+3MF is a modern format that includes:
+- Better precision than STL
+- Units and scale information
+- Color and texture support
+- Multiple objects in one file
+
+When possible, prefer 3MF over STL as input.
+
+### Format Conversion Behavior
+
+When a non-STL file is provided:
+
+1. **Detect**: Format is detected from file extension (or magic bytes for ambiguous cases).
+2. **Load**: The file is loaded using the appropriate library:
+   - `trimesh` (preferred for mesh formats)
+   - `meshio` (fallback, especially for FEM formats)
+   - `openctm` (for CTM files)
+   - Blender subprocess (for formats requiring conversion)
+3. **Validate**: Basic validation ensures the mesh has vertices and faces.
+4. **Convert**: The mesh is converted to trimesh's internal representation.
+5. **Process**: Standard repair pipeline runs (same as STL input).
+6. **Export**: Final output is always STL (binary by default).
+
+**CLI Example:**
+```bash
+# Convert and fix an OBJ file
+python auto_fix_stl.py --input model.obj --output ./clean/
+
+# Convert and fix a PLY scan
+python auto_fix_stl.py --input scan.ply --output ./clean/
+
+# Convert GLTF to printable STL
+python auto_fix_stl.py --input model.glb --output ./clean/
+
+# Convert CTM from marketplace
+python auto_fix_stl.py --input downloaded.ctm --output ./clean/
+
+# Convert STEP file from CAD
+python auto_fix_stl.py --input part.step --output ./clean/
+```
+
+**Report Metadata:**
+The report includes the original format for traceability:
+```json
+{
+  "input": {
+    "filename": "model.ctm",
+    "format": "ctm",
+    "converted_from": "ctm",
+    "original_vertices": 12450,
+    "original_faces": 24896,
+    "conversion_notes": "Loaded via python-openctm"
+  }
+}
+```
+
+### Installing Optional Format Support
+
+For maximum format support, install optional dependencies:
+
+```bash
+# CTM support
+pip install python-openctm
+
+# CAD format support (STEP, IGES, BREP)
+pip install trimesh[easy]  # Includes OpenCASCADE bindings
+
+# Or install everything
+pip install meshprep[all-formats]
+```
 
 Non-Goals
 - Provide a full-featured cloud service, hosted web app, or serverless execution model (deployment to cloud is out of scope for the initial version).
@@ -511,6 +663,7 @@ The following is the initial catalog of filter actions available in MeshPrep, gr
 
 | Action | Tool | Description | Parameters |
 |--------|------|-------------|------------|
+| `load_mesh` | trimesh/meshio | Load a 3D mesh file in any supported format (STL, OBJ, PLY, 3MF, GLTF, etc.). Automatically detects format from extension. | `path` (string) |
 | `load_stl` | trimesh | Load an STL file (ASCII or binary) into memory. | `path` (string) |
 | `trimesh_basic` | trimesh | Load and apply basic cleanup: merge duplicate vertices, remove degenerate faces, remove infinite values. | `merge_tex` (bool), `merge_norm` (bool) |
 | `merge_vertices` | trimesh | Weld duplicate vertices within a tolerance. Reduces vertex count and fixes small gaps. | `eps` (float, default 1e-8) |
@@ -693,7 +846,7 @@ Command-line interface specification for `auto_fix_stl.py`:
 
 | Argument | Type | Required | Default | Description |
 |----------|------|----------|---------|-------------|
-| `--input` | path | yes | — | Path to input STL file |
+| `--input` | path | yes | — | Path to input mesh file (STL, OBJ, PLY, 3MF, GLTF, or any supported format) |
 | `--output` | path | no | `./output/` | Directory for cleaned STL output |
 | `--filter` | path | no | — | Path to a filter script (JSON/YAML) to use instead of auto-detection |
 | `--preset` | string | no | — | Name of a preset from `filters/` to use |
@@ -710,6 +863,7 @@ Command-line interface specification for `auto_fix_stl.py`:
 
 | `--overwrite` | flag | no | false | Overwrite existing output files |
 | `--verbose` | flag | no | false | Enable verbose logging |
+| `--cad-resolution` | float | no | `0.01` | Tessellation resolution for CAD formats (STEP, IGES). Lower = finer mesh |
 | `--workers` | int | no | 1 | Number of parallel workers (reserved for future batch mode) |
 
 Examples:
