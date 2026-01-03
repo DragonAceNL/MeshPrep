@@ -1405,3 +1405,961 @@ Release process (brief)
 - Tag releases (`vMAJOR.MINOR.PATCH`) and publish a release that includes `CHANGELOG.md` entries and the updated `VERSION` file.
 - Optionally publish a Docker image with the same tag for reproducible environments.
 - Update pinned tool versions in `config/tools.json` when new stable versions are available.
+
+Adaptive Thresholds Learning
+-----------------------------
+
+MeshPrep includes an **adaptive thresholds learning system** that automatically learns optimal parameter values from repair outcomes. Instead of using hardcoded thresholds, the system observes what values lead to successful repairs and adjusts accordingly.
+
+### Design Philosophy
+
+Many repair decisions depend on threshold values that are difficult to determine statically:
+- What percentage of volume loss indicates a failed repair?
+- At what face count should decimation be triggered?
+- How many repair attempts are optimal before giving up?
+
+Rather than guessing these values, MeshPrep **learns them from experience**. As models are processed, the system records observations and periodically optimizes thresholds based on actual outcomes.
+
+### Tracked Thresholds
+
+The following thresholds are dynamically learned:
+
+| Threshold | Default | Description |
+|-----------|---------|-------------|
+| `volume_loss_limit_pct` | 30.0 | Maximum volume loss (%) before flagging significant geometry loss |
+| `face_loss_limit_pct` | 40.0 | Maximum face count loss (%) before flagging significant geometry loss |
+| `decimation_trigger_faces` | 100,000 | Face count above which decimation is triggered |
+| `decimation_target_faces` | 100,000 | Target face count for decimation |
+| `body_count_fragmented` | 10 | Body count threshold for "fragmented" profile detection |
+| `body_count_multi` | 1 | Body count threshold for "multi-body" profile detection |
+| `face_count_tiny` | 1,000 | Face count bucket boundary (tiny) |
+| `face_count_small` | 10,000 | Face count bucket boundary (small) |
+| `face_count_medium` | 100,000 | Face count bucket boundary (medium) |
+| `face_count_large` | 500,000 | Face count bucket boundary (large) |
+| `max_repair_attempts` | 20 | Maximum repair attempts before giving up |
+| `repair_timeout_seconds` | 120 | Timeout for repair operations |
+| `escalation_volume_loss_pct` | 30.0 | Volume loss threshold triggering Blender escalation |
+| `escalation_face_loss_pct` | 40.0 | Face loss threshold triggering Blender escalation |
+
+### How Learning Works
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                 ADAPTIVE THRESHOLDS FLOW                        │
+└─────────────────────────────────────────────────────────────────┘
+
+1. Process Model
+         │
+         ▼
+2. Record Observations
+   - Actual value vs threshold value
+   - Success/failure outcome
+   - Quality score (geometry preservation)
+   - Model profile
+         │
+         ▼
+3. Store in SQLite Database
+   - Per-threshold statistics
+   - Per-profile breakdowns
+   - Historical adjustments
+         │
+         ▼
+4. Periodic Optimization (every 100 models or on-demand)
+   - Analyze success rates above/below each threshold
+   - If significant difference (>10%), adjust threshold by 10%
+   - Record adjustment history
+         │
+         ▼
+5. Use Learned Thresholds
+   - New runs use optimized values
+   - Profile-specific thresholds when available
+```
+
+### Observation Recording
+
+For each processed model, the system records:
+
+1. **Geometry Loss Observations**
+   - Volume loss percentage vs threshold
+   - Face loss percentage vs threshold
+   - Whether repair was successful
+   - Quality score based on geometry preservation
+
+2. **Decimation Observations**
+   - Original face count vs trigger threshold
+   - Target vs actual result face count
+   - Whether decimation preserved manifold status
+
+3. **Repair Attempt Observations**
+   - Number of attempts used vs maximum
+   - Total duration vs timeout
+   - Success/failure outcome
+
+### Optimization Algorithm
+
+Threshold optimization uses success rate analysis:
+
+```python
+# For each threshold:
+1. Count observations where actual_value > threshold ("above")
+2. Count observations where actual_value <= threshold ("below")
+3. Calculate success_rate_above and success_rate_below
+4. If success_rate_below > success_rate_above + 0.1:
+   # Threshold is too high - lower it by 10%
+   new_threshold = current * 0.9
+5. If success_rate_above > success_rate_below + 0.1:
+   # Threshold is too low - raise it by 10%
+   new_threshold = current * 1.1
+```
+
+This conservative approach prevents over-fitting to small sample sizes.
+
+### Auto-Optimization
+
+By default, thresholds are automatically optimized:
+
+1. **During batch processing**: Every 100 models processed
+2. **At end of batch**: Final optimization run with all collected data
+3. **On-demand**: Via CLI command `--optimize-thresholds`
+
+Auto-optimization can be disabled with `--no-auto-optimize`.
+
+### Profile-Specific Thresholds
+
+The system learns different optimal thresholds for different model profiles:
+
+```json
+{
+  "threshold": "volume_loss_limit_pct",
+  "global_optimal": 27.5,
+  "profile_optimal": {
+    "fragmented": 45.0,
+    "multi-body": 35.0,
+    "simple-solid": 20.0,
+    "high-poly": 25.0
+  }
+}
+```
+
+When processing a model, the system first checks for a profile-specific optimal value before falling back to the global threshold.
+
+### Data Storage
+
+Learning data is stored in SQLite at `learning_data/adaptive_thresholds.db`:
+
+```sql
+-- Current threshold values
+CREATE TABLE thresholds (
+    name TEXT PRIMARY KEY,
+    current_value REAL,
+    default_value REAL,
+    optimal_value REAL,
+    confidence REAL,
+    last_updated TEXT
+);
+
+-- Individual observations
+CREATE TABLE threshold_observations (
+    id INTEGER PRIMARY KEY,
+    threshold_name TEXT,
+    threshold_value REAL,
+    actual_value REAL,
+    outcome_success INTEGER,
+    outcome_quality REAL,
+    profile TEXT,
+    created_at TEXT
+);
+
+-- Aggregated statistics by profile
+CREATE TABLE threshold_profile_stats (
+    threshold_name TEXT,
+    profile TEXT,
+    observations INTEGER,
+    successes_above INTEGER,
+    successes_below INTEGER,
+    failures_above INTEGER,
+    failures_below INTEGER,
+    optimal_value REAL,
+    PRIMARY KEY (threshold_name, profile)
+);
+
+-- Adjustment history for auditability
+CREATE TABLE threshold_history (
+    id INTEGER PRIMARY KEY,
+    threshold_name TEXT,
+    old_value REAL,
+    new_value REAL,
+    reason TEXT,
+    observations_count INTEGER,
+    created_at TEXT
+);
+```
+
+### CLI Commands
+
+| Command | Description |
+|---------|-------------|
+| `--threshold-stats` | Show current threshold values and statistics |
+| `--optimize-thresholds` | Manually trigger threshold optimization |
+| `--reset-thresholds` | Reset all thresholds to default values |
+| `--no-auto-optimize` | Disable automatic optimization during batch processing |
+| `--min-samples N` | Minimum observations required before optimization (default: 20) |
+
+### CLI Examples
+
+```bash
+# Show current adaptive thresholds status
+python run_full_test.py --threshold-stats
+
+# Output:
+# ============================================================
+# Adaptive Thresholds Statistics
+# ============================================================
+# Total observations: 1,234
+# Thresholds adjusted: 3 / 14
+#
+# Current thresholds:
+#   Threshold                             Current      Default     Change
+#   ----------------------------------- ------------ ------------ ----------
+# * volume_loss_limit_pct                      27.00        30.00      -10.0%
+# * face_loss_limit_pct                        36.00        40.00      -10.0%
+#   decimation_trigger_faces               100000.00    100000.00          -
+# * decimation_target_faces                 90000.00    100000.00      -10.0%
+#   ...
+
+# Manually optimize thresholds
+python run_full_test.py --optimize-thresholds --min-samples 50
+
+# Reset to defaults (preserves observation history)
+python run_full_test.py --reset-thresholds
+
+# Run batch without auto-optimization
+python run_full_test.py --no-auto-optimize
+```
+
+### Startup Output
+
+When running batch processing, the adaptive thresholds status is shown at startup:
+
+```
+============================================================
+MeshPrep Thingi10K Full Test - POC v3
+============================================================
+[OK] Blender available for escalation
+[OK] Learning engine: 5,432 models learned
+     Top pipeline: trimesh-basic-repair (87% success)
+[OK] Adaptive thresholds: 12,456 observations, 3 adjusted
+Found 10,000 total mesh files
+...
+```
+
+### Report Integration
+
+Adaptive threshold data is included in `report.json`:
+
+```json
+{
+  "adaptive_thresholds": {
+    "thresholds_used": {
+      "volume_loss_limit_pct": 27.0,
+      "face_loss_limit_pct": 36.0,
+      "decimation_trigger_faces": 100000
+    },
+    "observations_recorded": {
+      "geometry_loss": true,
+      "decimation": false,
+      "repair_attempts": true
+    },
+    "profile": "simple-solid",
+    "total_observations": 12456
+  }
+}
+```
+
+### Quality Score Calculation
+
+The quality score used for threshold learning is computed from geometry preservation:
+
+```python
+quality = 1.0
+if volume_loss_pct > 0:
+    quality -= min(volume_loss_pct / 100, 0.5)  # Up to 0.5 penalty
+if face_loss_pct > 0:
+    quality -= min(face_loss_pct / 100, 0.3)    # Up to 0.3 penalty
+quality = max(0, quality)  # Clamp to 0-1
+```
+
+This rewards repairs that preserve original geometry while still achieving manifold status.
+
+### Confidence Levels
+
+Each threshold has a confidence score based on observation count:
+
+| Observations | Confidence | Behavior |
+|--------------|------------|----------|
+| < 20 | Low | Use default value |
+| 20-100 | Medium | Use learned value with caution |
+| > 100 | High | Fully trust learned value |
+
+Confidence is calculated as: `min(observations / 100, 1.0)`
+
+### Benefits
+
+1. **Self-improving**: System gets better over time as more models are processed
+2. **Profile-aware**: Different model types can have different optimal thresholds
+3. **Transparent**: All adjustments are logged with reasons
+4. **Reversible**: Can reset to defaults while preserving observation history
+5. **Conservative**: Small adjustments prevent over-correction
+6. **Automatic**: No manual tuning required - just process models
+
+### Relationship to Other Learning Components
+
+Adaptive thresholds complement other learning systems:
+
+| Component | What it Learns | Data Source |
+|-----------|---------------|-------------|
+| **Learning Engine** | Pipeline success rates, optimal ordering | Repair outcomes |
+| **Pipeline Evolution** | New pipeline combinations | Failed repairs |
+| **Profile Discovery** | New model categories | Mesh diagnostics clustering |
+| **Adaptive Thresholds** | Optimal parameter values | Threshold observations |
+
+Together, these systems enable MeshPrep to continuously improve its repair capabilities without manual intervention.
+
+Learning Engine (Self-Learning Repair)
+--------------------------------------
+
+The **Learning Engine** is the central hub for MeshPrep's self-learning capabilities. It tracks repair outcomes and uses this data to optimize pipeline selection and ordering.
+
+### Purpose
+
+The learning engine answers key questions:
+- Which pipelines work best for specific mesh characteristics?
+- What is the optimal order to try pipelines?
+- Which issue patterns are most common, and how are they best resolved?
+- What is the success rate for different model profiles?
+
+### What It Tracks
+
+#### Pipeline Statistics
+
+For each repair pipeline, the engine tracks:
+
+| Metric | Description |
+|--------|-------------|
+| `total_attempts` | How many times this pipeline was tried |
+| `successes` | Number of successful repairs |
+| `failures` | Number of failed repairs |
+| `total_duration_ms` | Cumulative time spent |
+| `success_rate` | Calculated success percentage |
+| `avg_duration_ms` | Average time per attempt |
+
+#### Pipeline-Issue Success Matrix
+
+Tracks which pipelines work best for specific issues:
+
+```
+                  | holes | non_manifold | degenerate | normals |
+------------------|-------|--------------|------------|----------|
+trimesh-basic     | 45%   | 30%          | 85%        | 90%     |
+pymeshfix-repair  | 75%   | 80%          | 60%        | 50%     |
+blender-remesh    | 95%   | 95%          | 90%        | 85%     |
+```
+
+#### Pipeline-Characteristic Success Matrix
+
+Tracks which pipelines work best for mesh characteristics:
+
+```
+                  | body_count:1 | body_count:multi | faces:large |
+------------------|--------------|------------------|-------------|
+trimesh-basic     | 85%          | 40%              | 70%         |
+pymeshfix-repair  | 90%          | 60%              | 75%         |
+blender-remesh    | 95%          | 85%              | 90%         |
+```
+
+#### Issue Pattern Statistics
+
+Common combinations of issues and their resolution:
+
+```json
+{
+  "pattern_key": "degenerate,holes,non_manifold",
+  "total_models": 234,
+  "fixed_models": 198,
+  "failed_models": 36,
+  "best_pipeline": "pymeshfix-repair",
+  "best_pipeline_success_rate": 0.87
+}
+```
+
+#### Model Profile Statistics
+
+Per-profile aggregated outcomes:
+
+```json
+{
+  "profile_name": "fragmented-debris",
+  "total_models": 456,
+  "clean_models": 12,
+  "fixed_models": 389,
+  "failed_models": 55,
+  "escalated_models": 78,
+  "avg_attempts_to_fix": 2.3,
+  "best_first_pipeline": "blender-remesh"
+}
+```
+
+### Optimal Pipeline Ordering
+
+The learning engine computes an optimal pipeline order using a scoring formula:
+
+```python
+score = success_rate * (1 - (avg_duration_ms / max_duration_ms) * 0.3)
+```
+
+This balances success rate (primary) with speed (secondary), preferring fast pipelines when success rates are similar.
+
+### Data Storage
+
+Learning data is stored in SQLite at `learning_data/meshprep_learning.db`:
+
+```sql
+-- Pipeline statistics
+CREATE TABLE pipeline_stats (
+    pipeline_name TEXT PRIMARY KEY,
+    total_attempts INTEGER,
+    successes INTEGER,
+    failures INTEGER,
+    total_duration_ms REAL,
+    updated_at TEXT
+);
+
+-- Pipeline success by issue type
+CREATE TABLE pipeline_issue_stats (
+    pipeline_name TEXT,
+    issue_type TEXT,
+    successes INTEGER,
+    failures INTEGER,
+    PRIMARY KEY (pipeline_name, issue_type)
+);
+
+-- Pipeline success by mesh characteristics
+CREATE TABLE pipeline_mesh_stats (
+    pipeline_name TEXT,
+    characteristic TEXT,
+    successes INTEGER,
+    failures INTEGER,
+    PRIMARY KEY (pipeline_name, characteristic)
+);
+
+-- Issue pattern statistics
+CREATE TABLE issue_pattern_stats (
+    pattern_key TEXT PRIMARY KEY,
+    total_models INTEGER,
+    fixed_models INTEGER,
+    failed_models INTEGER,
+    best_pipeline TEXT,
+    best_pipeline_success_rate REAL
+);
+
+-- Individual model results
+CREATE TABLE model_results (
+    model_id TEXT PRIMARY KEY,
+    fingerprint TEXT,
+    profile TEXT,
+    issue_pattern TEXT,
+    success INTEGER,
+    escalated INTEGER,
+    total_attempts INTEGER,
+    winning_pipeline TEXT,
+    total_duration_ms REAL
+);
+```
+
+### CLI Commands
+
+```bash
+# Show learning engine statistics
+python run_full_test.py --learning-stats
+
+# Generate visual learning status page
+python run_full_test.py --generate-status-page
+```
+
+### API Usage
+
+```python
+from meshprep_poc.learning_engine import get_learning_engine
+
+# Get the singleton learning engine instance
+engine = get_learning_engine()
+
+# Record a repair result
+engine.record_result({
+    "success": True,
+    "escalated_to_blender": False,
+    "precheck": {"passed": False, "skipped": False},
+    "repair_attempts": {
+        "total_attempts": 2,
+        "attempts": [
+            {"pipeline_name": "trimesh-basic", "success": False},
+            {"pipeline_name": "pymeshfix-repair", "success": True}
+        ]
+    },
+    "diagnostics": {"before": {...}, "after": {...}}
+})
+
+# Get optimal pipeline order
+order = engine.get_optimal_pipeline_order()
+# Returns: ["pymeshfix-repair", "trimesh-basic", "blender-remesh", ...]
+
+# Get stats summary
+stats = engine.get_stats_summary()
+```
+
+Evolutionary Pipeline Discovery
+-------------------------------
+
+The **Pipeline Evolution Engine** uses genetic algorithm concepts to discover new repair pipeline combinations that may work better than predefined pipelines.
+
+### Design Philosophy
+
+Predefined pipelines can't cover every possible mesh issue combination. The evolution engine:
+1. Tracks individual action success rates
+2. Combines successful actions from different pipelines
+3. Occasionally mutates pipelines (add/remove/swap actions)
+4. Saves winning combinations as new pipelines
+
+### Available Actions for Evolution
+
+The engine can combine these repair actions:
+
+| Category | Actions |
+|----------|----------|
+| Basic cleanup | `trimesh_basic`, `remove_degenerate`, `fix_normals`, `fix_winding` |
+| Hole filling | `fill_holes` (sizes: 50, 100, 500, 1000) |
+| PyMeshFix | `pymeshfix_repair`, `pymeshfix_clean`, `pymeshfix_repair_conservative` |
+| Manifold | `make_manifold` |
+| Placement | `place_on_bed` |
+| Blender | `blender_remesh` (voxel sizes: auto, 0.5, 1.0) |
+
+### Genetic Operations
+
+#### Selection
+
+Choose parent pipelines/actions based on:
+- Success rate (fitness)
+- Diversity (avoid too-similar parents)
+- Recency (prefer recently successful)
+
+#### Crossover
+
+Combine actions from two successful pipelines:
+
+```
+Parent A: [trimesh_basic, fill_holes(100), fix_normals]
+Parent B: [pymeshfix_repair, place_on_bed]
+
+Offspring: [trimesh_basic, pymeshfix_repair, fill_holes(100), place_on_bed]
+```
+
+#### Mutation
+
+Randomly modify pipelines:
+- **Add action**: Insert a random action
+- **Remove action**: Remove a random action
+- **Swap action**: Replace one action with another
+- **Reorder**: Change action sequence
+
+### Evolution Triggers
+
+New pipelines are evolved when:
+1. Standard pipelines fail for a model
+2. A model has an unusual issue combination
+3. Periodically during batch processing (every N failures)
+
+### Pipeline Constraints
+
+| Constraint | Value | Purpose |
+|------------|-------|----------|
+| Max pipeline length | 5 | Prevent bloat |
+| Min pipeline length | 1 | Ensure validity |
+| Prep actions first | `trimesh_basic`, `fix_normals`, etc. | Logical ordering |
+| Expensive actions last | `blender_remesh` | Efficiency |
+
+### Data Storage
+
+Evolution data is stored in SQLite at `learning_data/pipeline_evolution.db`:
+
+```sql
+-- Evolved pipelines
+CREATE TABLE evolved_pipelines (
+    pipeline_id INTEGER PRIMARY KEY,
+    name TEXT UNIQUE,
+    actions_json TEXT,
+    parent_pipelines_json TEXT,
+    generation INTEGER,
+    created_at TEXT,
+    
+    attempts INTEGER,
+    successes INTEGER,
+    total_duration_ms REAL
+);
+
+-- Individual action statistics
+CREATE TABLE action_stats (
+    action_key TEXT PRIMARY KEY,  -- action + params hash
+    action_name TEXT,
+    params_json TEXT,
+    
+    total_uses INTEGER,
+    successes INTEGER,
+    failures INTEGER,
+    avg_contribution_score REAL
+);
+
+-- Evolution history
+CREATE TABLE evolution_history (
+    id INTEGER PRIMARY KEY,
+    operation TEXT,  -- crossover, mutation, etc.
+    parent_pipelines TEXT,
+    child_pipeline TEXT,
+    success INTEGER,
+    created_at TEXT
+);
+```
+
+### CLI Commands
+
+```bash
+# Show evolution statistics (included in learning stats)
+python run_full_test.py --learning-stats
+
+# Output includes:
+# Pipeline Evolution Statistics
+# ============================================================
+# Evolved pipelines: 23
+# Successful evolved: 18
+# Current generation: 5
+# Top evolved pipelines:
+#   evolved-gen3-abc123    87% success (45 attempts)
+#   evolved-gen4-def456    82% success (23 attempts)
+```
+
+### Example Evolved Pipeline
+
+```json
+{
+  "name": "evolved-gen3-abc123",
+  "actions": [
+    {"action": "trimesh_basic", "params": {}},
+    {"action": "fill_holes", "params": {"max_hole_size": 500}},
+    {"action": "pymeshfix_repair", "params": {}},
+    {"action": "fix_normals", "params": {}}
+  ],
+  "parent_pipelines": ["conservative-repair", "aggressive-repair"],
+  "generation": 3,
+  "attempts": 45,
+  "successes": 39,
+  "success_rate": 0.867
+}
+```
+
+Automatic Profile Discovery
+---------------------------
+
+The **Profile Discovery Engine** automatically identifies new mesh profile categories by clustering meshes with similar characteristics.
+
+### Purpose
+
+Predefined profiles (simple-solid, multi-body, fragmented, etc.) can't cover every mesh type. Profile discovery:
+1. Clusters meshes by normalized characteristics
+2. Identifies profiles with poor success rates that need splitting
+3. Discovers new profiles from failed repairs
+4. Suggests optimal pipelines for each discovered profile
+
+### Mesh Characteristics for Clustering
+
+| Characteristic | Buckets | Description |
+|----------------|---------|-------------|
+| Face count | tiny, small, medium, large, huge | Mesh complexity |
+| Body count | 1, 2-5, 6-20, 20+ | Component count |
+| Is watertight | true, false | Initial state |
+| Has degenerate faces | true, false | Mesh quality |
+| Aspect ratio | flat, normal, elongated | Shape category |
+| Issue signature | sorted issue list | Problem types |
+
+### Clustering Algorithm
+
+```python
+def create_characteristic_key(mesh_diagnostics):
+    return f"{face_bucket}|{body_bucket}|{watertight}|{degenerate}|{aspect}|{issues}"
+
+# Example keys:
+# "medium|1|false|true|normal|degenerate,holes"
+# "large|20+|false|false|flat|non_manifold"
+```
+
+Meshes with the same characteristic key are clustered together.
+
+### Discovery Thresholds
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `MIN_SAMPLES_FOR_DISCOVERY` | 50 | Minimum models before analyzing |
+| `MIN_CLUSTER_SIZE` | 10 | Minimum models to form a profile |
+| `LOW_SUCCESS_THRESHOLD` | 0.5 | Profiles below this may need splitting |
+| `HIGH_VARIANCE_THRESHOLD` | 0.3 | High variance triggers analysis |
+
+### Discovered Profile Structure
+
+```json
+{
+  "name": "discovered-large-fragmented-holes",
+  "description": "Large meshes with many bodies and holes",
+  "characteristics": {
+    "face_count_bucket": "large",
+    "body_count_bucket": "20+",
+    "is_watertight": false,
+    "has_degenerate_faces": false,
+    "issue_signature": "holes,non_manifold"
+  },
+  "total_models": 87,
+  "successful_repairs": 71,
+  "failed_repairs": 16,
+  "success_rate": 0.816,
+  "best_pipeline": "blender-remesh",
+  "best_pipeline_success_rate": 0.92,
+  "recommended_pipelines": ["blender-remesh", "pymeshfix-repair"],
+  "is_promoted": false
+}
+```
+
+### Profile Lifecycle
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                 PROFILE DISCOVERY LIFECYCLE                     │
+└─────────────────────────────────────────────────────────────────┘
+
+1. Collect mesh characteristics during repair
+         │
+         ▼
+2. Cluster by characteristic key
+         │
+         ▼
+3. Analyze clusters meeting size threshold
+         │
+         ▼
+    ┌─────────────────┐      
+    │ Success rate    │      
+    │ acceptable?     │      
+    └────────┬────────┘      
+             │               
+     YES ────┴──── NO        
+      │              │       
+      ▼              ▼       
+4a. Create        4b. Split into
+    discovered       sub-profiles
+    profile          (refine clustering)
+         │
+         ▼
+5. Track performance over time
+         │
+         ▼
+    ┌─────────────────┐
+    │ Consistently    │
+    │ high success?   │
+    └────────┬────────┘
+             │
+     YES ────┴──── NO
+      │              │
+      ▼              ▼
+6a. Promote to    6b. Keep as
+    standard          discovered
+    profile           (continue learning)
+```
+
+### Data Storage
+
+Discovery data is stored in SQLite at `learning_data/profile_discovery.db`:
+
+```sql
+-- Discovered profiles
+CREATE TABLE discovered_profiles (
+    profile_id INTEGER PRIMARY KEY,
+    name TEXT UNIQUE,
+    description TEXT,
+    characteristics_json TEXT,
+    
+    total_models INTEGER,
+    successful_repairs INTEGER,
+    failed_repairs INTEGER,
+    avg_attempts_to_fix REAL,
+    
+    best_pipeline TEXT,
+    best_pipeline_success_rate REAL,
+    recommended_pipelines_json TEXT,
+    
+    is_promoted INTEGER,
+    is_active INTEGER
+);
+
+-- Profile membership
+CREATE TABLE profile_membership (
+    model_id TEXT,
+    profile_id INTEGER,
+    characteristics_key TEXT,
+    success INTEGER,
+    pipeline_used TEXT,
+    attempts INTEGER
+);
+
+-- Characteristic clusters
+CREATE TABLE characteristic_clusters (
+    cluster_key TEXT PRIMARY KEY,
+    total_models INTEGER,
+    successes INTEGER,
+    failures INTEGER,
+    dominant_issues TEXT,
+    best_pipeline TEXT
+);
+```
+
+### CLI Commands
+
+```bash
+# Run profile discovery
+python run_full_test.py --discover-profiles --min-samples 50
+
+# Output:
+# ============================================================
+# MeshPrep Profile Discovery
+# ============================================================
+# Current state:
+#   Total clusters: 45
+#   Models clustered: 1,234
+#   Active profiles: 12
+#   Unassigned clusters: 8
+#
+# Running profile discovery (min_samples=50)...
+#
+# ✓ Discovered 3 new profiles:
+#   - discovered-large-fragmented
+#     Large meshes with many bodies and holes
+#     Models: 87, Success rate: 81.6%
+#     Best pipeline: blender-remesh
+```
+
+Learning System Integration
+---------------------------
+
+All learning components work together as an integrated system:
+
+### Data Flow
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    LEARNING SYSTEM DATA FLOW                    │
+└─────────────────────────────────────────────────────────────────┘
+
+    ┌──────────────────┐
+    │  Process Model   │
+    └────────┬─────────┘
+             │
+             ▼
+    ┌──────────────────┐
+    │ Record Outcome   │──────────────────────────────────────┐
+    └────────┬─────────┘                                      │
+             │                                                │
+    ┌────────┴────────┬──────────────────┬──────────────────┐
+    ▼                 ▼                  ▼                  ▼
+┌─────────┐    ┌─────────────┐    ┌──────────────┐    ┌─────────────┐
+│Learning │    │  Pipeline   │    │   Profile    │    │  Adaptive   │
+│ Engine  │    │  Evolution  │    │  Discovery   │    │ Thresholds  │
+└────┬────┘    └──────┬──────┘    └──────┬───────┘    └──────┬──────┘
+     │                │                  │                   │
+     │                │                  │                   │
+     ▼                ▼                  ▼                   ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                    NEXT MODEL PROCESSING                        │
+├─────────────────────────────────────────────────────────────────┤
+│ • Optimal pipeline order (Learning Engine)                      │
+│ • Evolved pipelines for failures (Pipeline Evolution)           │
+│ • Profile-specific strategies (Profile Discovery)               │
+│ • Optimized thresholds (Adaptive Thresholds)                   │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Component Responsibilities
+
+| Component | Primary Function | Key Output |
+|-----------|-----------------|------------|
+| **Learning Engine** | Track pipeline success rates | Optimal pipeline order |
+| **Pipeline Evolution** | Create new pipeline combinations | Evolved pipelines for failures |
+| **Profile Discovery** | Cluster similar meshes | New profile definitions |
+| **Adaptive Thresholds** | Optimize parameter values | Learned threshold values |
+
+### Startup Initialization
+
+When batch processing starts, all learning systems are initialized:
+
+```
+============================================================
+MeshPrep Thingi10K Full Test - POC v3
+============================================================
+[OK] Blender available for escalation
+[OK] PyMeshLab available for CTM support
+[OK] Learning engine: 5,432 models learned
+     Top pipeline: trimesh-basic-repair (87% success)
+[OK] Adaptive thresholds: 12,456 observations, 3 adjusted
+Found 10,000 total mesh files
+```
+
+### Periodic Operations
+
+| Operation | Frequency | Purpose |
+|-----------|-----------|----------|
+| Record outcomes | Every model | Update all learning databases |
+| Optimize thresholds | Every 100 models | Adjust thresholds based on data |
+| Evolve pipelines | On failures | Create new pipeline combinations |
+| Update pipeline order | Every 10 models | Re-rank pipelines by success |
+| Profile discovery | On-demand | Analyze clusters for new profiles |
+
+### Learning Data Location
+
+All learning data is stored in the `learning_data/` directory:
+
+```
+learning_data/
+├── meshprep_learning.db      # Learning engine (pipeline stats, profiles)
+├── pipeline_evolution.db     # Evolved pipelines and action stats
+├── profile_discovery.db      # Discovered profiles and clusters
+└── adaptive_thresholds.db    # Threshold values and observations
+```
+
+### Persistence and Recovery
+
+- All data is persisted to SQLite after each model
+- Batch processing auto-resumes from existing reports
+- Learning data accumulates across runs
+- Can be backed up by copying the `learning_data/` directory
+
+### Reset Options
+
+```bash
+# Reset adaptive thresholds only (preserves observations)
+python run_full_test.py --reset-thresholds
+
+# To fully reset learning data, delete the learning_data/ directory:
+# rm -rf learning_data/
+```
+
+### Benefits of Integrated Learning
+
+1. **Continuous improvement**: Each model processed improves future repairs
+2. **Adaptability**: System adapts to new mesh types automatically  
+3. **Efficiency**: Learns which pipelines to try first
+4. **Robustness**: Evolves new strategies when standard approaches fail
+5. **Transparency**: All learning is logged and can be inspected
+6. **Reproducibility**: Learning data can be exported/shared
