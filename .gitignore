@@ -59,9 +59,15 @@ Thumbs.db
 # Project specific
 *.stl
 !tests/fixtures/**/*.stl
-!poc/v2/reports/**/*.stl
+# POC reports - include small files, exclude large after.stl files
+!poc/v2/reports/**/before.stl
+!poc/v3/reports/**/before.stl
+# Exclude after.stl files as they can exceed GitHub's 100MB limit
+# poc/v2/reports/**/after.stl  # Explicitly excluded (covered by *.stl)
+# poc/v3/reports/**/after.stl  # Explicitly excluded (covered by *.stl)
 report.json
 !poc/v2/reports/**/report.json
+!poc/v3/reports/**/report.json
 report.csv
 
 # Thingi10K test fixtures - NOW SAFE TO COMMIT
