@@ -34,6 +34,57 @@ from .validation import validate_geometry
 logger = logging.getLogger(__name__)
 
 
+# Geometry loss thresholds
+MAX_FACE_LOSS_PERCENT = 50  # Reject if more than 50% faces lost
+MAX_VOLUME_LOSS_PERCENT = 40  # Reject if more than 40% volume lost
+MIN_FACES_ABSOLUTE = 20  # Reject if result has fewer than 20 faces
+MAX_FACE_INCREASE_FACTOR = 100  # Reject if faces increase by more than 100x
+
+
+def check_geometry_loss(original_mesh: trimesh.Trimesh, repaired_mesh: trimesh.Trimesh) -> tuple[bool, str]:
+    """
+    Check if repair caused unacceptable geometry loss or excessive increase.
+    
+    Args:
+        original_mesh: Original mesh before repair
+        repaired_mesh: Mesh after repair
+        
+    Returns:
+        Tuple of (is_acceptable, reason_if_not)
+    """
+    original_faces = len(original_mesh.faces)
+    result_faces = len(repaired_mesh.faces)
+    
+    # Check absolute minimum
+    if result_faces < MIN_FACES_ABSOLUTE:
+        return False, f"Result has only {result_faces} faces (minimum: {MIN_FACES_ABSOLUTE})"
+    
+    # Check face loss percentage
+    if original_faces > 0:
+        face_loss_pct = (original_faces - result_faces) / original_faces * 100
+        if face_loss_pct > MAX_FACE_LOSS_PERCENT:
+            return False, f"Face loss {face_loss_pct:.1f}% exceeds threshold {MAX_FACE_LOSS_PERCENT}%"
+        
+        # Check excessive face increase (e.g., Blender remesh creating millions of faces)
+        face_increase_factor = result_faces / original_faces
+        if face_increase_factor > MAX_FACE_INCREASE_FACTOR:
+            return False, f"Face count increased {face_increase_factor:.0f}x (max: {MAX_FACE_INCREASE_FACTOR}x)"
+    
+    # Check volume loss (if both have valid volumes)
+    try:
+        original_volume = original_mesh.volume if original_mesh.is_volume else 0
+        result_volume = repaired_mesh.volume if repaired_mesh.is_volume else 0
+        
+        if original_volume > 0 and result_volume > 0:
+            volume_loss_pct = abs(original_volume - result_volume) / original_volume * 100
+            if volume_loss_pct > MAX_VOLUME_LOSS_PERCENT:
+                return False, f"Volume change {volume_loss_pct:.1f}% exceeds threshold {MAX_VOLUME_LOSS_PERCENT}%"
+    except Exception:
+        pass  # Volume check is optional
+    
+    return True, ""
+
+
 @dataclass
 class RepairStrategy:
     """A repair strategy that maps slicer issues to actions."""
@@ -50,18 +101,18 @@ SLICER_ISSUE_MAPPINGS: Dict[str, List[RepairStrategy]] = {
     "non_manifold": [
         RepairStrategy("non_manifold", "pymeshfix_repair", {}, 1, "Full repair with PyMeshFix"),
         RepairStrategy("non_manifold", "make_manifold", {}, 2, "Make mesh manifold"),
-        RepairStrategy("non_manifold", "blender_remesh", {"voxel_size": 0.05}, 3, "Blender voxel remesh"),
+        RepairStrategy("non_manifold", "blender_remesh", {"voxel_size": "auto"}, 3, "Blender voxel remesh (auto)"),
     ],
     "holes": [
         RepairStrategy("holes", "fill_holes", {"max_hole_size": 100}, 1, "Fill small holes"),
         RepairStrategy("holes", "fill_holes", {"max_hole_size": 1000}, 2, "Fill larger holes"),
         RepairStrategy("holes", "pymeshfix_repair", {}, 3, "Full repair with PyMeshFix"),
-        RepairStrategy("holes", "blender_remesh", {"voxel_size": 0.05}, 4, "Blender voxel remesh"),
+        RepairStrategy("holes", "blender_remesh", {"voxel_size": "auto"}, 4, "Blender voxel remesh (auto)"),
     ],
     "self_intersections": [
         RepairStrategy("self_intersections", "pymeshfix_clean", {}, 1, "Clean self-intersections"),
         RepairStrategy("self_intersections", "pymeshfix_repair", {}, 2, "Full repair"),
-        RepairStrategy("self_intersections", "blender_remesh", {"voxel_size": 0.05}, 3, "Blender remesh"),
+        RepairStrategy("self_intersections", "blender_remesh", {"voxel_size": "auto"}, 3, "Blender remesh (auto)"),
     ],
     "degenerate": [
         RepairStrategy("degenerate", "trimesh_basic", {}, 1, "Basic trimesh cleanup"),
@@ -75,20 +126,19 @@ SLICER_ISSUE_MAPPINGS: Dict[str, List[RepairStrategy]] = {
     "bed_adhesion": [
         RepairStrategy("bed_adhesion", "place_on_bed", {}, 1, "Move mesh to build plate"),
         RepairStrategy("bed_adhesion", "convex_hull", {}, 2, "Replace with convex hull"),
-        RepairStrategy("bed_adhesion", "blender_remesh", {"voxel_size": 0.05}, 3, "Blender remesh"),
+        RepairStrategy("bed_adhesion", "blender_remesh", {"voxel_size": "auto"}, 3, "Blender remesh (auto)"),
     ],
     # Geometry issues - general mesh problems
     "geometry_issue": [
         RepairStrategy("geometry_issue", "place_on_bed", {}, 1, "Move mesh to build plate"),
         RepairStrategy("geometry_issue", "pymeshfix_repair", {}, 2, "Full repair with PyMeshFix"),
-        RepairStrategy("geometry_issue", "blender_remesh", {"voxel_size": 0.05}, 3, "Blender remesh"),
-        RepairStrategy("geometry_issue", "blender_remesh", {"voxel_size": 0.02}, 4, "Finer Blender remesh"),
+        RepairStrategy("geometry_issue", "blender_remesh", {"voxel_size": "auto"}, 3, "Blender remesh (auto)"),
     ],
     # Generic fallback strategies
     "unknown": [
         RepairStrategy("unknown", "trimesh_basic", {}, 1, "Basic cleanup"),
         RepairStrategy("unknown", "pymeshfix_repair", {}, 2, "Full repair"),
-        RepairStrategy("unknown", "blender_remesh", {"voxel_size": 0.05}, 3, "Blender remesh"),
+        RepairStrategy("unknown", "blender_remesh", {"voxel_size": "auto"}, 3, "Blender remesh (auto)"),
     ],
 }
 
@@ -370,11 +420,19 @@ def run_slicer_repair_loop(
             geom_valid = validate_geometry(repaired_mesh)
             attempt_result.geometry_valid = geom_valid.is_printable
             
-            if geom_valid.is_printable:
+            # Step 5b: Check for geometry loss (reject if model was destroyed)
+            geom_acceptable, geom_loss_reason = check_geometry_loss(mesh, repaired_mesh)
+            
+            if geom_valid.is_printable and geom_acceptable:
                 logger.info(f"    Repair applied, geometry valid")
                 current_mesh = repaired_mesh
                 attempt_result.success = True
                 result.issues_resolved.append(strategy.issue_type)
+            elif geom_valid.is_printable and not geom_acceptable:
+                # Geometry is technically valid but too much was lost
+                logger.warning(f"    Repair caused unacceptable geometry loss: {geom_loss_reason}")
+                attempt_result.error = f"Geometry loss: {geom_loss_reason}"
+                attempt_result.geometry_valid = False  # Mark as invalid due to loss
             else:
                 logger.warning(f"    Repair broke geometry: {geom_valid.issues}")
                 attempt_result.error = f"Geometry invalid: {geom_valid.issues}"
