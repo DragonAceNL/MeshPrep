@@ -25,13 +25,234 @@ Non-Goals
 - Target mobile platforms or provide a native macOS/Linux GUI as the primary interface in the initial release (desktop Windows GUI is required; cross-platform CLI/automation support remains a goal).
 - Guarantee that every possible corrupt mesh can be fixed; extremely damaged meshes may still require manual intervention and will be reported as failures with diagnostics.
 
-Note on advanced slicing optimization
-- Advanced slicing optimization is intentionally out of scope for the initial release, but the design must explicitly accommodate it as a planned, optional feature.
-- The system should expose clear extension points for slicer integrations and record all processing metadata (tool versions, profiles, and CLI parameters) so slicer-driven checks or optimizations can be added later without breaking reproducibility.
-- Suggested phased approach for adding slicing features later:
-  1. Validate-only integration: run a slicer in preview mode to collect diagnostics (supports, estimated filament/time, slicing errors) and include results in reports.
-  2. Slice-and-validate: produce pinned-version G-code and parse layer/preview data for programmatic checks.
-  3. Optimize-and-slice (opt-in): apply geometry transformations driven by slicer feedback (orientation, splits, thickening) and re-validate; require explicit user consent and provide diffs.
+Slicer Validation (Final Validation Step)
+------------------------------------------
+Slicer validation provides the definitive test for 3D printability by running the repaired model through an actual slicer. This catches issues that geometry-only validation cannot detect.
+
+### Why Slicer Validation?
+
+Geometry validation (watertight, manifold) is necessary but not sufficient for 3D printability:
+
+| Check | Geometry Validation | Slicer Validation |
+|-------|---------------------|-------------------|
+| Watertight | ✅ `mesh.is_watertight` | ✅ Also checks |
+| Manifold | ✅ `mesh.is_volume` | ✅ Also checks |
+| **Thin walls** | ❌ Hard to detect | ✅ Warns about walls < nozzle width |
+| **Overhangs** | ❌ Not checked | ✅ Calculates support requirements |
+| **Bridging** | ❌ Not checked | ✅ Detects unsupported spans |
+| **Printable size** | ❌ Basic bbox only | ✅ Checks against bed size |
+| **Minimum feature size** | ❌ Difficult | ✅ Knows nozzle limitations |
+| **Actually sliceable** | ❌ No guarantee | ✅ **Proves it works** |
+
+### Supported Slicers
+
+| Slicer | CLI Command | Notes |
+|--------|-------------|-------|
+| PrusaSlicer | `prusa-slicer --export-gcode` | Recommended, good error messages |
+| SuperSlicer | `superslicer --export-gcode` | Fork of PrusaSlicer |
+| OrcaSlicer | `orca-slicer --export-gcode` | Modern fork with extra features |
+| Cura | `CuraEngine slice` | Requires printer definition |
+
+### Slicer Issue Categories
+
+The slicer reports issues in categories that map to available repair actions:
+
+| Slicer Issue | Category | Potential Repair Actions |
+|--------------|----------|-------------------------|
+| "Thin walls detected" | `thin_walls` | `thicken_regions`, `blender_solidify`, `offset_surface` |
+| "Non-manifold edges" | `non_manifold` | `pymeshfix_repair`, `fix_non_manifold_edges`, `blender_remesh` |
+| "Self-intersecting faces" | `self_intersections` | `fix_self_intersections`, `blender_boolean_union` |
+| "Open edges/holes" | `holes` | `fill_holes`, `cap_holes`, `pymeshfix_repair` |
+| "Inverted normals" | `normals` | `fix_normals`, `flip_normals`, `reorient_normals` |
+| "Model too large" | `size` | `scale` (user decision required) |
+| "Disconnected parts" | `components` | `remove_small_components`, `boolean_union` |
+| "Degenerate faces" | `degenerate` | `remove_degenerate_faces`, `trimesh_basic` |
+| "Slicing failed" | `fatal` | Escalate to Blender remesh |
+
+### Iterative Slicer-Driven Repair Loop
+
+When slicer validation fails, MeshPrep attempts automatic repair using available filters:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    SLICER VALIDATION LOOP                       │
+└─────────────────────────────────────────────────────────────────┘
+
+1. Run Slicer Validation
+         │
+         ▼
+    ┌─────────┐      YES
+    │ Success?│─────────────► Done! Model is printable
+    └────┬────┘
+         │ NO
+         ▼
+2. Parse Slicer Errors/Warnings
+         │
+         ▼
+3. Map Issues to Repair Actions
+         │
+         ▼
+    ┌─────────────────┐      NO
+    │ Actions available│─────────► Mark as FAILED
+    │ for these issues?│          (include diagnostics + manual steps)
+    └────────┬────────┘
+             │ YES
+             ▼
+4. Execute Repair Actions
+         │
+         ▼
+5. Run Geometry Validation
+         │
+         ▼
+    ┌─────────┐      NO
+    │ Still OK?│─────────► Revert and try next action
+    └────┬────┘
+         │ YES
+         ▼
+6. Increment attempt counter
+         │
+         ▼
+    ┌─────────────────┐      YES
+    │ Max attempts    │─────────► Mark as FAILED
+    │ reached?        │          (exhausted all options)
+    └────────┬────────┘
+             │ NO
+             ▼
+        Go to Step 1
+```
+
+### Repair Strategy Selection
+
+For each slicer issue, MeshPrep maintains a prioritized list of repair strategies:
+
+```json
+{
+  "slicer_issue_mappings": {
+    "thin_walls": {
+      "strategies": [
+        { "action": "offset_surface", "params": { "distance": 0.2 }, "priority": 1 },
+        { "action": "blender_solidify", "params": { "thickness": 0.4 }, "priority": 2 },
+        { "action": "thicken_regions", "params": { "target_thickness": 0.4 }, "priority": 3 }
+      ],
+      "max_attempts": 3
+    },
+    "non_manifold": {
+      "strategies": [
+        { "action": "pymeshfix_repair", "params": {}, "priority": 1 },
+        { "action": "fix_non_manifold_edges", "params": {}, "priority": 2 },
+        { "action": "blender_remesh", "params": { "voxel_size": 0.05 }, "priority": 3 }
+      ],
+      "max_attempts": 3
+    },
+    "holes": {
+      "strategies": [
+        { "action": "fill_holes", "params": { "max_hole_size": 100 }, "priority": 1 },
+        { "action": "fill_holes", "params": { "max_hole_size": 1000 }, "priority": 2 },
+        { "action": "pymeshfix_repair", "params": {}, "priority": 3 },
+        { "action": "blender_remesh", "params": { "voxel_size": 0.05 }, "priority": 4 }
+      ],
+      "max_attempts": 4
+    },
+    "self_intersections": {
+      "strategies": [
+        { "action": "fix_self_intersections", "params": {}, "priority": 1 },
+        { "action": "blender_boolean_union", "params": {}, "priority": 2 },
+        { "action": "blender_remesh", "params": { "voxel_size": 0.05 }, "priority": 3 }
+      ],
+      "max_attempts": 3
+    }
+  },
+  "global_max_attempts": 10,
+  "escalate_to_blender_after": 5
+}
+```
+
+### Slicer Validation Actions
+
+#### Category: Slicer Validation
+
+| Action | Tool | Description | Parameters |
+|--------|------|-------------|------------|
+| `slicer_validate` | slicer | Run slicer validation and collect diagnostics. | `slicer` (string: "prusa", "orca", "cura"), `config` (path to printer profile) |
+| `slicer_check_printable` | slicer | Quick check if model slices without errors. | `slicer` (string), `timeout` (int, seconds) |
+| `slicer_get_warnings` | slicer | Extract warnings and issues from slicer output. | `slicer` (string) |
+| `slicer_estimate` | slicer | Get print time/filament estimates (implies successful slice). | `slicer` (string), `config` (path) |
+
+### CLI Options for Slicer Validation
+
+| Argument | Type | Required | Default | Description |
+|----------|------|----------|---------|-------------|
+| `--slicer` | choice | no | `auto` | Slicer to use: `prusa`, `orca`, `cura`, `auto` (detect), `none` (skip) |
+| `--slicer-config` | path | no | — | Path to slicer printer/profile config |
+| `--slicer-repair` | choice | no | `auto` | Slicer-driven repair mode: `auto`, `prompt`, `never` |
+| `--max-repair-attempts` | int | no | `10` | Maximum repair attempts in slicer loop |
+
+### Validation Levels
+
+MeshPrep supports three validation levels, each building on the previous:
+
+| Level | Checks | Confidence | Speed |
+|-------|--------|------------|-------|
+| **1. Basic** | `is_watertight`, `is_volume` | ~80% | Fast (ms) |
+| **2. Full Geometry** | + consistent normals, no self-intersections | ~90% | Medium (s) |
+| **3. Slicer Validated** | + successful slicer pass | ~99% | Slow (s-min) |
+
+Users can choose their desired validation level:
+- **Level 1**: Quick check, suitable for batch processing
+- **Level 2**: Default for most use cases
+- **Level 3**: Maximum confidence, recommended for final output
+
+### Reporting Slicer Results
+
+Slicer validation results are included in `report.json`:
+
+```json
+{
+  "slicer_validation": {
+    "slicer": "prusa-slicer",
+    "slicer_version": "2.7.0",
+    "success": true,
+    "attempts": 3,
+    "issues_found": [
+      { "type": "thin_walls", "message": "Wall thickness below 0.4mm", "resolved": true },
+      { "type": "non_manifold", "message": "2 non-manifold edges", "resolved": true }
+    ],
+    "repairs_applied": [
+      { "action": "offset_surface", "params": { "distance": 0.2 }, "attempt": 1 },
+      { "action": "pymeshfix_repair", "params": {}, "attempt": 2 }
+    ],
+    "final_status": "printable",
+    "estimates": {
+      "print_time_minutes": 127,
+      "filament_grams": 34.5,
+      "layer_count": 412
+    }
+  }
+}
+```
+
+### Failure Handling
+
+When slicer validation fails after exhausting all repair options:
+
+1. **Mark model as FAILED** with detailed diagnostics
+2. **List unresolved issues** from slicer
+3. **Suggest manual remediation steps**:
+   - Which issues remain and why they couldn't be auto-fixed
+   - Recommended manual edits in mesh editing software (Blender, Meshmixer)
+   - Links to relevant documentation/tutorials
+4. **Save intermediate artifacts**:
+   - Best attempt mesh (closest to printable)
+   - Full repair history
+   - Slicer error logs
+
+### Future: Advanced Slicer Integration
+
+The slicer validation framework is designed to support future enhancements:
+
+1. **Validate-only integration** (Current): Run slicer to collect diagnostics and iterate repairs.
+2. **Slice-and-validate**: Produce pinned-version G-code and parse layer/preview data for programmatic checks.
+3. **Optimize-and-slice** (opt-in): Apply geometry transformations driven by slicer feedback (orientation, splits, thickening) and re-validate; require explicit user consent and provide diffs.
 
 Requirements
 
@@ -40,10 +261,11 @@ Functional Requirements
 2. Validation checks: watertightness, manifoldness, consistent normals, component count, and bounding box sanity.
 3. Repair steps: remove degenerate faces, merge duplicate vertices, reorient normals, fill holes, remove tiny disconnected components.
 4. Escalation: if primary repairs fail, run an advanced Blender-based pipeline (if Blender present) with remeshing and boolean cleanup.
-5. Configurable filter scripts: filter scripts defined in JSON/YAML and selectable via GUI/CLI; suggested filter scripts from model scan may be created automatically.
-6. Reporting: generate CSV and JSON reports detailing diagnostics, filter script attempts, runtime, and final status for the model.
-7. Deterministic filenames: output files named with original name + filter script suffix.
-8. Logging: progress logs with per-file detail and error handling.
+5. Slicer validation: run the repaired model through a slicer (PrusaSlicer, OrcaSlicer, etc.) to verify it is truly printable. Parse slicer errors/warnings and attempt automatic repairs using available filter actions until the model passes or no repair options remain.
+6. Configurable filter scripts: filter scripts defined in JSON/YAML and selectable via GUI/CLI; suggested filter scripts from model scan may be created automatically.
+7. Reporting: generate CSV and JSON reports detailing diagnostics, filter script attempts, slicer validation results, runtime, and final status for the model.
+8. Deterministic filenames: output files named with original name + filter script suffix.
+9. Logging: progress logs with per-file detail and error handling.
 
 Non-Functional Requirements
 - Reproducibility: deterministic behavior given same inputs and filter script config.
@@ -79,16 +301,27 @@ High-level flow
    - After the full script completes, run the validation checks.
 7. Escalation and advanced repairs:
    - If validation still fails and Blender is available (or `--use-blender` set), run the Blender escalation pipeline for advanced remeshing/boolean cleanup and re-validate.
-   - If escalation is disabled or fails, mark the model as failed and include detailed diagnostics and suggested manual remediation steps in the report.
-8. Output, reporting, and reproducibility:
+   - If escalation is disabled or fails, continue to slicer validation (which may trigger additional repairs).
+8. Slicer validation and iterative repair:
+   - If a slicer is available and `--slicer` is not `none`, run slicer validation on the repaired model.
+   - Parse slicer output for errors and warnings; categorize issues (thin walls, holes, non-manifold, etc.).
+   - For each issue category, look up available repair strategies in the slicer issue mappings.
+   - If repair actions are available:
+     a. Execute the highest-priority untried action for each issue.
+     b. Re-run geometry validation to ensure the repair didn't break the mesh.
+     c. If geometry is still valid, re-run slicer validation.
+     d. Repeat until slicer passes or max attempts reached or no actions remain.
+   - If no repair actions are available or all have been exhausted, mark the model as failed and include detailed diagnostics with suggested manual remediation steps.
+   - Record all repair attempts, slicer output, and final status in the report.
+9. Output, reporting, and reproducibility:
    - Export cleaned STL with deterministic filename pattern: `<origname>__<filtername>__<timestamp>.stl`.
    - Produce `report.json` (detailed per-step diagnostics, tool versions, commands, model fingerprint) and `report.csv` summary row for the run.
    - Offer `--export-run <dir>` to bundle input sample, filter script used, `report.json`, small before/after thumbnails, and `checkenv` output for sharing/reproducibility.
-9. Logging and UI feedback:
+10. Logging and UI feedback:
    - Stream progress logs to the GUI console and save to a rotating logfile. Display clear error/warning messages and suggested next actions.
    - Provide a run summary UI showing success/failure, key diagnostics, runtime, and links to artifacts.
-10. Iterate and contribute:
-    - Allow users to save tuned presets and optionally contribute them (with metadata and tests) to the community presets repository (with PR workflow outlined in `CONTRIBUTING.md`).
+11. Iterate and contribute:
+   - Allow users to save tuned presets and optionally contribute them (with metadata and tests) to the community presets repository (with PR workflow outlined in `CONTRIBUTING.md`).
 
 Filter script representation
 - Filter scripts are first-class JSON or YAML documents that describe an ordered list of filters (actions) to run against a single model. They are the primary user-editable unit (created, imported, exported, shared). The tool runs filters in a specific order using available repair tools to produce a 3D-printable result.
@@ -362,10 +595,25 @@ The filter library is stored as a JSON file at `config/filter_library.json` with
 This file is loaded at startup and used to populate the editor's filter library UI and validate filter scripts.
 
 Validation criteria
+
+MeshPrep uses a three-level validation system:
+
+**Level 1 - Basic Geometry (Required)**
 - `is_watertight` true
+- `is_volume` true (manifold)
+
+**Level 2 - Full Geometry (Default)**
+- All Level 1 checks
 - No non-manifold edges
+- Consistent winding/normals
 - Single large component (components below volume threshold removed)
 - No self-intersections (best-effort check)
+
+**Level 3 - Slicer Validated (Recommended for final output)**
+- All Level 2 checks
+- Successful slicer pass with no errors
+- No critical warnings (thin walls, unsupported features)
+- Print time/filament estimates available
 
 CLI
 
@@ -381,6 +629,11 @@ Command-line interface specification for `auto_fix_stl.py`:
 | `--csv` | path | no | `./report.csv` | Path for CSV report output |
 | `--export-run` | path | no | — | Export reproducible run package to specified directory |
 | `--use-blender` | choice | no | `on-failure` | When to use Blender escalation: `always`, `on-failure`, `never` |
+| `--slicer` | choice | no | `auto` | Slicer to use: `prusa`, `orca`, `cura`, `auto` (detect), `none` (skip) |
+| `--slicer-config` | path | no | — | Path to slicer printer/profile config |
+| `--slicer-repair` | choice | no | `auto` | Slicer-driven repair mode: `auto`, `prompt`, `never` |
+| `--max-repair-attempts` | int | no | `10` | Maximum repair attempts in slicer validation loop |
+| `--validation-level` | choice | no | `2` | Validation level: `1` (basic), `2` (full geometry), `3` (slicer validated) |
 
 | `--overwrite` | flag | no | false | Overwrite existing output files |
 | `--verbose` | flag | no | false | Enable verbose logging |
@@ -396,6 +649,15 @@ python auto_fix_stl.py --input model.stl --filter my_filter.json
 
 # Use a named preset
 python auto_fix_stl.py --input model.stl --preset holes-only
+
+# Full slicer validation with PrusaSlicer
+python auto_fix_stl.py --input model.stl --slicer prusa --validation-level 3
+
+# Slicer validation with iterative repairs (up to 15 attempts)
+python auto_fix_stl.py --input model.stl --slicer prusa --slicer-repair auto --max-repair-attempts 15
+
+# Quick geometry-only validation (no slicer)
+python auto_fix_stl.py --input model.stl --slicer none --validation-level 2
 
 # Export run package for sharing
 python auto_fix_stl.py --input model.stl --export-run ./share/run1/
