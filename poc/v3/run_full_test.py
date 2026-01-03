@@ -14,12 +14,19 @@ Features:
 - Before/after images inline in reports
 - Summary dashboard with statistics
 - Auto-resume: automatically skips files that already have reports
+- Adaptive thresholds: learns optimal values from repair outcomes
+- Auto-optimization: thresholds are optimized every 100 models and at batch end
 
 Usage:
     python run_full_test.py                    # Run all models (auto-resumes)
     python run_full_test.py --limit 100        # Test first 100 models
     python run_full_test.py --status           # Show current progress
     python run_full_test.py --fresh            # Start fresh (ignore existing reports)
+    python run_full_test.py --learning-stats   # Show learning engine statistics
+    python run_full_test.py --threshold-stats  # Show adaptive thresholds status
+    python run_full_test.py --optimize-thresholds  # Manually optimize thresholds
+    python run_full_test.py --reset-thresholds # Reset thresholds to defaults
+    python run_full_test.py --no-auto-optimize # Disable automatic optimization
 """
 
 import argparse
@@ -70,6 +77,15 @@ from meshprep_poc.actions.blender_actions import is_blender_available
 from meshprep_poc.actions.slicer_actions import get_mesh_info_prusa, is_slicer_available
 from meshprep_poc.fingerprint import compute_file_fingerprint, compute_full_file_hash
 from meshprep_poc.learning_engine import get_learning_engine, LearningEngine
+
+# Try to import adaptive thresholds
+try:
+    from meshprep_poc.adaptive_thresholds import get_adaptive_thresholds, DEFAULT_THRESHOLDS
+    ADAPTIVE_THRESHOLDS_AVAILABLE = True
+except ImportError:
+    ADAPTIVE_THRESHOLDS_AVAILABLE = False
+    get_adaptive_thresholds = None
+    DEFAULT_THRESHOLDS = {}
 
 # Paths
 THINGI10K_PATH = Path(r"C:\Users\Dragon Ace\Source\repos\Thingi10K\raw_meshes")
@@ -270,9 +286,21 @@ def get_best_filter(mesh) -> FilterScript:
     return get_preset("conservative-repair")  # Safe default
 
 
-def check_geometry_loss(original_diag, result_mesh) -> tuple[bool, float, float]:
-    """Check if repair caused significant geometry loss."""
+def check_geometry_loss(original_diag, result_mesh, profile: str = "unknown") -> tuple[bool, float, float]:
+    """Check if repair caused significant geometry loss.
+    
+    Uses adaptive thresholds if available.
+    """
     import numpy as np
+    
+    # Get thresholds (adaptive or defaults)
+    if ADAPTIVE_THRESHOLDS_AVAILABLE:
+        thresholds = get_adaptive_thresholds()
+        volume_limit = thresholds.get("volume_loss_limit_pct", profile)
+        face_limit = thresholds.get("face_loss_limit_pct", profile)
+    else:
+        volume_limit = 30.0
+        face_limit = 40.0
     
     original_volume = original_diag.volume if original_diag.volume > 0 else 0
     result_volume = result_mesh.volume if result_mesh.is_volume else 0
@@ -287,13 +315,24 @@ def check_geometry_loss(original_diag, result_mesh) -> tuple[bool, float, float]
     if original_faces > 0:
         face_loss_pct = (original_faces - result_faces) / original_faces * 100
     
-    significant_loss = volume_loss_pct > 30 or face_loss_pct > 40
+    significant_loss = volume_loss_pct > volume_limit or face_loss_pct > face_limit
     
     return significant_loss, volume_loss_pct, face_loss_pct
 
 
-def decimate_mesh(mesh, target_faces: int = 100000):
-    """Decimate mesh to reduce face count while preserving shape."""
+def decimate_mesh(mesh, target_faces: Optional[int] = None, profile: str = "unknown"):
+    """Decimate mesh to reduce face count while preserving shape.
+    
+    Uses adaptive thresholds for target if not specified.
+    """
+    # Get target from adaptive thresholds if not specified
+    if target_faces is None:
+        if ADAPTIVE_THRESHOLDS_AVAILABLE:
+            thresholds = get_adaptive_thresholds()
+            target_faces = int(thresholds.get("decimation_target_faces", profile))
+        else:
+            target_faces = 100000
+    
     if len(mesh.faces) <= target_faces:
         return mesh
     
@@ -693,10 +732,16 @@ def process_single_model(stl_path: Path, skip_if_clean: bool = True, progress: O
         validation = validate_repair(original, repaired)
         is_printable_before_decimate = validation.geometric.is_printable
         
-        # Decimate if mesh is too large
-        if len(repaired.faces) > 100000:
+        # Decimate if mesh is too large (use adaptive threshold)
+        if ADAPTIVE_THRESHOLDS_AVAILABLE:
+            thresholds = get_adaptive_thresholds()
+            decimation_trigger = int(thresholds.get("decimation_trigger_faces", "unknown"))
+        else:
+            decimation_trigger = 100000
+        
+        if len(repaired.faces) > decimation_trigger:
             original_repaired = repaired.copy()
-            repaired = decimate_mesh(repaired, target_faces=100000)
+            repaired = decimate_mesh(repaired, profile="unknown")  # Uses adaptive target
             
             # Check if decimation broke manifold - if so, keep original large mesh
             if is_printable_before_decimate and not repaired.is_watertight:
@@ -776,6 +821,53 @@ def process_single_model(stl_path: Path, skip_if_clean: bool = True, progress: O
             learning_engine.record_result(filter_data)
         except Exception as le_error:
             logger.debug(f"Learning engine update failed: {le_error}")
+        
+        # Feed observations to adaptive thresholds engine
+        try:
+            if ADAPTIVE_THRESHOLDS_AVAILABLE:
+                adaptive = get_adaptive_thresholds()
+                profile = "unknown"  # TODO: detect profile from diagnostics
+                
+                # Calculate quality score based on geometry preservation
+                quality = 1.0
+                if vol_loss > 0:
+                    quality -= min(vol_loss / 100, 0.5)  # Up to 0.5 penalty for volume loss
+                if face_loss > 0:
+                    quality -= min(face_loss / 100, 0.3)  # Up to 0.3 penalty for face loss
+                quality = max(0, quality)
+                
+                # Record geometry loss observations
+                adaptive.record_geometry_loss(
+                    volume_loss_pct=vol_loss,
+                    face_loss_pct=face_loss,
+                    success=result.success,
+                    quality=quality,
+                    profile=profile,
+                    escalated=result.escalation_used,
+                )
+                
+                # Record decimation observations if decimation was performed
+                if result.original_faces > decimation_trigger:
+                    decimation_success = result.success and result.result_watertight
+                    adaptive.record_decimation(
+                        original_faces=result.original_faces,
+                        target_faces=int(adaptive.get("decimation_target_faces", profile)),
+                        result_faces=result.result_faces,
+                        success=decimation_success,
+                        quality=quality,
+                        profile=profile,
+                    )
+                
+                # Record repair attempt observations
+                if repair_result:
+                    adaptive.record_repair_attempts(
+                        attempts_used=repair_result.total_attempts,
+                        duration_ms=repair_result.total_duration_ms,
+                        success=result.success,
+                        profile=profile,
+                    )
+        except Exception as at_error:
+            logger.debug(f"Adaptive thresholds update failed: {at_error}")
         
         # Generate report
         generate_report(stl_path, original, repaired, result, fixed_path if result.success else None)
@@ -2005,13 +2097,14 @@ def append_to_csv(result: TestResult):
         writer.writerow(row)
 
 
-def run_batch_test(limit: Optional[int] = None, skip_existing: bool = True, ctm_priority: bool = False):
+def run_batch_test(limit: Optional[int] = None, skip_existing: bool = True, ctm_priority: bool = False, auto_optimize: bool = True):
     """Run the full batch test.
     
     Args:
         limit: Optional limit on number of files to process
         skip_existing: If True (default), skip files that already have reports
         ctm_priority: If True, process CTM meshes FIRST before other files
+        auto_optimize: If True (default), automatically optimize thresholds during processing
     """
     print("="* 60, flush=True)
     print("MeshPrep Thingi10K Full Test - POC v3", flush=True)
@@ -2055,6 +2148,23 @@ def run_batch_test(limit: Optional[int] = None, skip_existing: bool = True, ctm_
     except Exception as e:
         print(f"[WARN] Learning engine unavailable: {e}", flush=True)
         logger.warning(f"Learning engine error: {e}")
+    
+    # Initialize adaptive thresholds and show stats
+    if ADAPTIVE_THRESHOLDS_AVAILABLE:
+        try:
+            adaptive = get_adaptive_thresholds()
+            stats = adaptive.get_stats_summary()
+            if stats["total_observations"] > 0:
+                print(f"[OK] Adaptive thresholds: {stats['total_observations']:,} observations, {stats['thresholds_adjusted']} adjusted", flush=True)
+                logger.info(f"Adaptive thresholds: {stats['total_observations']} observations")
+            else:
+                print("[OK] Adaptive thresholds: Starting fresh (collecting observations)", flush=True)
+                logger.info("Adaptive thresholds: Starting fresh")
+        except Exception as e:
+            print(f"[WARN] Adaptive thresholds unavailable: {e}", flush=True)
+            logger.warning(f"Adaptive thresholds error: {e}")
+    else:
+        print("[INFO] Adaptive thresholds: Not available (using defaults)", flush=True)
     
     # Get ALL mesh files (for total count)
     all_mesh_files = get_all_mesh_files(limit=None, ctm_priority=ctm_priority)
@@ -2174,6 +2284,18 @@ def run_batch_test(limit: Optional[int] = None, skip_existing: bool = True, ctm_
             except Exception as e:
                 logger.debug(f"Failed to generate learning status page: {e}")
         
+        # Auto-optimize thresholds every 100 models
+        if auto_optimize and ADAPTIVE_THRESHOLDS_AVAILABLE and new_results_count > 0 and new_results_count % 100 == 0:
+            try:
+                adaptive = get_adaptive_thresholds()
+                adjustments = adaptive.optimize_thresholds(min_samples=20)
+                if adjustments:
+                    logger.info(f"Auto-optimized {len(adjustments)} thresholds after {new_results_count} models")
+                    for adj in adjustments:
+                        logger.info(f"  {adj['threshold']}: {adj['old_value']:.2f} -> {adj['new_value']:.2f}")
+            except Exception as e:
+                logger.debug(f"Auto-optimization failed: {e}")
+        
         # Log result
         status = "[OK]" if result.success else "[FAIL]"
         escalation = " [BLENDER]" if result.escalation_used else ""
@@ -2214,6 +2336,23 @@ def run_batch_test(limit: Optional[int] = None, skip_existing: bool = True, ctm_
     logger.info(f"Dashboard: {DASHBOARD_FILE}")
     logger.info("=" * 60)
     
+    # Final threshold optimization
+    if auto_optimize and ADAPTIVE_THRESHOLDS_AVAILABLE and new_results_count >= 20:
+        try:
+            adaptive = get_adaptive_thresholds()
+            stats = adaptive.get_stats_summary()
+            print(f"\nAdaptive thresholds: {stats['total_observations']:,} observations", flush=True)
+            
+            adjustments = adaptive.optimize_thresholds(min_samples=20)
+            if adjustments:
+                print(f"Auto-optimized {len(adjustments)} thresholds:", flush=True)
+                for adj in adjustments:
+                    print(f"  {adj['threshold']}: {adj['old_value']:.2f} -> {adj['new_value']:.2f}", flush=True)
+            else:
+                print(f"Thresholds are optimal ({stats['thresholds_adjusted']} adjusted from defaults)", flush=True)
+        except Exception as e:
+            logger.debug(f"Final optimization failed: {e}")
+    
     # Save final summary
     with open(SUMMARY_FILE, "w") as f:
         json.dump({
@@ -2241,6 +2380,41 @@ def show_status():
 
 def show_learning_stats():
     """Display detailed learning engine statistics."""
+    print("=" * 60)
+    
+    # Show adaptive thresholds stats
+    print("\n" + "=" * 60)
+    print("Adaptive Thresholds Statistics")
+    print("=" * 60)
+    
+    if ADAPTIVE_THRESHOLDS_AVAILABLE:
+        try:
+            adaptive = get_adaptive_thresholds()
+            stats = adaptive.get_stats_summary()
+            
+            print(f"\nTotal observations: {stats['total_observations']:,}")
+            print(f"Thresholds adjusted: {stats['thresholds_adjusted']} / {stats['total_thresholds']}")
+            
+            if stats['threshold_status']:
+                print(f"\nCurrent thresholds (changed from default marked with *):")
+                print(f"  {'Threshold':<35} {'Current':>12} {'Default':>12} {'Change':>10}")
+                print(f"  {'-'*35} {'-'*12} {'-'*12} {'-'*10}")
+                for t in stats['threshold_status']:
+                    marker = "*" if t['changed'] else " "
+                    change_str = f"{t['change_pct']:+.1f}%" if t['changed'] else "-"
+                    print(f"{marker} {t['name']:<35} {t['current']:>12.2f} {t['default']:>12.2f} {change_str:>10}")
+            
+            if stats['recent_adjustments']:
+                print(f"\nRecent adjustments:")
+                for adj in stats['recent_adjustments'][:5]:
+                    print(f"  {adj['threshold']}: {adj['old']:.2f} -> {adj['new']:.2f}")
+                    print(f"    Reason: {adj['reason']}")
+            
+        except Exception as e:
+            print(f"Error loading adaptive thresholds: {e}")
+    else:
+        print("\nAdaptive thresholds not available.")
+    
     print("=" * 60)
     print("MeshPrep Learning Engine Statistics")
     print("=" * 60)
@@ -2409,6 +2583,97 @@ def run_profile_discovery(min_samples: int = 50):
     print("\n" + "=" * 60)
 
 
+def optimize_adaptive_thresholds(min_samples: int = 20):
+    """Optimize adaptive thresholds based on collected observations."""
+    print("=" * 60)
+    print("MeshPrep Adaptive Thresholds Optimization")
+    print("=" * 60)
+    
+    if not ADAPTIVE_THRESHOLDS_AVAILABLE:
+        print("\nAdaptive thresholds not available.")
+        return
+    
+    try:
+        adaptive = get_adaptive_thresholds()
+        stats = adaptive.get_stats_summary()
+        
+        print(f"\nCurrent state:")
+        print(f"  Total observations: {stats['total_observations']:,}")
+        print(f"  Thresholds adjusted: {stats['thresholds_adjusted']} / {stats['total_thresholds']}")
+        
+        if stats['total_observations'] < min_samples:
+            print(f"\nNot enough observations for optimization ({stats['total_observations']} < {min_samples})")
+            print("Process more models first.")
+            return
+        
+        print(f"\nRunning optimization (min_samples={min_samples})...")
+        
+        adjustments = adaptive.optimize_thresholds(min_samples=min_samples)
+        
+        if adjustments:
+            print(f"\n✓ Made {len(adjustments)} adjustments:")
+            for adj in adjustments:
+                print(f"  {adj['threshold']}: {adj['old_value']:.2f} -> {adj['new_value']:.2f}")
+                print(f"    Reason: {adj['reason']}")
+                print(f"    Based on {adj['observations']} observations")
+        else:
+            print("\nNo adjustments needed.")
+            print("Current thresholds are optimal based on observations.")
+        
+        # Show updated stats
+        stats = adaptive.get_stats_summary()
+        print(f"\nUpdated state:")
+        print(f"  Thresholds adjusted: {stats['thresholds_adjusted']} / {stats['total_thresholds']}")
+        
+        if stats['threshold_status']:
+            print(f"\nCurrent thresholds:")
+            print(f"  {'Threshold':<35} {'Current':>12} {'Default':>12}")
+            print(f"  {'-'*35} {'-'*12} {'-'*12}")
+            for t in stats['threshold_status']:
+                if t['changed']:
+                    print(f"* {t['name']:<35} {t['current']:>12.2f} {t['default']:>12.2f}")
+        
+    except Exception as e:
+        print(f"\nError during optimization: {e}")
+        import traceback
+        traceback.print_exc()
+    
+    print("\n" + "=" * 60)
+
+
+def reset_adaptive_thresholds():
+    """Reset all adaptive thresholds to defaults."""
+    print("=" * 60)
+    print("MeshPrep Adaptive Thresholds Reset")
+    print("=" * 60)
+    
+    if not ADAPTIVE_THRESHOLDS_AVAILABLE:
+        print("\nAdaptive thresholds not available.")
+        return
+    
+    try:
+        adaptive = get_adaptive_thresholds()
+        stats = adaptive.get_stats_summary()
+        
+        print(f"\nCurrent state:")
+        print(f"  Thresholds adjusted: {stats['thresholds_adjusted']} / {stats['total_thresholds']}")
+        
+        if stats['thresholds_adjusted'] == 0:
+            print("\nNo thresholds have been adjusted from defaults.")
+            return
+        
+        print("\nResetting all thresholds to defaults...")
+        adaptive.reset_to_defaults()
+        
+        print("✓ All thresholds reset to default values.")
+        print("\nNote: Observation history is preserved for future optimization.")
+        
+    except Exception as e:
+        print(f"\nError during reset: {e}")
+    
+    print("\n" + "=" * 60)
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Run MeshPrep repair against all Thingi10K models (auto-resumes by default)"
@@ -2454,6 +2719,26 @@ def main():
         default=50,
         help="Minimum samples required before running profile discovery (default: 50)"
     )
+    parser.add_argument(
+        "--optimize-thresholds",
+        action="store_true",
+        help="Optimize adaptive thresholds based on collected observations"
+    )
+    parser.add_argument(
+        "--reset-thresholds",
+        action="store_true",
+        help="Reset all adaptive thresholds to defaults"
+    )
+    parser.add_argument(
+        "--threshold-stats",
+        action="store_true",
+        help="Show adaptive thresholds statistics only"
+    )
+    parser.add_argument(
+        "--no-auto-optimize",
+        action="store_true",
+        help="Disable automatic threshold optimization during batch processing"
+    )
     
     args = parser.parse_args()
     
@@ -2476,6 +2761,39 @@ def main():
         run_profile_discovery(min_samples=args.min_samples)
         return
     
+    if args.optimize_thresholds:
+        optimize_adaptive_thresholds(min_samples=args.min_samples)
+        return
+    
+    if args.reset_thresholds:
+        reset_adaptive_thresholds()
+        return
+    
+    if args.threshold_stats:
+        if ADAPTIVE_THRESHOLDS_AVAILABLE:
+            adaptive = get_adaptive_thresholds()
+            stats = adaptive.get_stats_summary()
+            
+            print("=" * 60)
+            print("Adaptive Thresholds Statistics")
+            print("=" * 60)
+            print(f"\nTotal observations: {stats['total_observations']:,}")
+            print(f"Thresholds adjusted: {stats['thresholds_adjusted']} / {stats['total_thresholds']}")
+            
+            if stats['threshold_status']:
+                print(f"\nCurrent thresholds:")
+                print(f"  {'Threshold':<35} {'Current':>12} {'Default':>12} {'Change':>10}")
+                print(f"  {'-'*35} {'-'*12} {'-'*12} {'-'*10}")
+                for t in stats['threshold_status']:
+                    marker = "*" if t['changed'] else " "
+                    change_str = f"{t['change_pct']:+.1f}%" if t['changed'] else "-"
+                    print(f"{marker} {t['name']:<35} {t['current']:>12.2f} {t['default']:>12.2f} {change_str:>10}")
+            
+            print("=" * 60)
+        else:
+            print("Adaptive thresholds not available.")
+        return
+    
     # If --fresh is passed, reprocess all files (but don't delete existing results)
     if args.fresh:
         logger.info("Fresh mode: will reprocess all files (existing results preserved until overwritten)")
@@ -2483,7 +2801,8 @@ def main():
     run_batch_test(
         limit=args.limit,
         skip_existing=not args.fresh,
-        ctm_priority=args.ctm_priority
+        ctm_priority=args.ctm_priority,
+        auto_optimize=not args.no_auto_optimize,
     )
 
 
