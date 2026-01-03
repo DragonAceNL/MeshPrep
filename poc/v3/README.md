@@ -45,15 +45,32 @@ Pre-check results on first 10 models:
 
 ## Quick Start
 
-### 1. Start the Live Dashboard (Optional but Recommended)
+### 1. Start the Reports Server (Required)
 
-Open a PowerShell terminal:
+The reports server serves everything from a single port - reports, dashboard, and MeshLab integration:
+
 ```powershell
 cd "C:\Users\Dragon Ace\Source\repos\MeshPrep\poc\v3"
-python -m http.server 8080
+..\v2\.venv312\Scripts\python.exe reports_server.py
 ```
 
-Then open in your browser: **http://localhost:8080/live_dashboard.html**
+This starts a server with the following URLs:
+
+| URL | Description |
+|-----|-------------|
+| http://localhost:8000/reports/ | Reports index (browse all results) |
+| http://localhost:8000/live_dashboard.html | Live dashboard (auto-updates) |
+| http://localhost:8000/dashboard | Static dashboard |
+| http://localhost:8000/progress.json | Progress data (JSON) |
+
+Features:
+- Browse the reports index
+- Download STL files
+- **Open STL files directly in MeshLab** (click the purple "MeshLab" button)
+- View live progress during test runs
+- View before/after images
+
+> **Note:** The server automatically finds MeshLab in common installation paths. If MeshLab is not found, the buttons will show a warning.
 
 ### 2. Start the Full Test
 
@@ -78,11 +95,11 @@ That's it! The test will run automatically.
 
 - ✅ **Auto-resume**: Automatically skips models that already have reports. If interrupted (power outage, crash, Ctrl+C), just run the same command again.
 - ✅ **Progress tracking**: Real-time progress with ETA displayed in dashboard
-- ✅ **Reports**: Markdown reports saved in `reports` subfolder with:
+- ✅ **Reports**: HTML reports saved in `reports` subfolder with:
   - Before/after images
   - Mesh metrics (vertices, faces, volume)
   - Watertight/manifold status
-  - Links to download original and fixed models
+  - **Direct links to open models in 3D viewer** (MeshLab, etc.)
 - ✅ **Filter scripts**: JSON files recording exactly which filter actions were applied to each model
 - ✅ **Fixed models**: Successfully repaired models saved to `Thingi10K\raw_meshes\fixed\`
 - ✅ **Blender escalation**: Difficult models automatically escalated to Blender remesh
@@ -92,7 +109,8 @@ That's it! The test will run automatically.
 
 | Output | Location |
 |--------|----------|
-| Reports (`.md`) | `C:\Users\Dragon Ace\Source\repos\Thingi10K\raw_meshes\reports\` |
+| Reports (`.html`) | `C:\Users\Dragon Ace\Source\repos\Thingi10K\raw_meshes\reports\` |
+| Reports Index | `C:\Users\Dragon Ace\Source\repos\Thingi10K\raw_meshes\reports\index.html` |
 | Before/After Images | `C:\Users\Dragon Ace\Source\repos\Thingi10K\raw_meshes\reports\images\` |
 | Filter Scripts | `C:\Users\Dragon Ace\Source\repos\Thingi10K\raw_meshes\reports\filters\` |
 | Fixed Models | `C:\Users\Dragon Ace\Source\repos\Thingi10K\raw_meshes\fixed\` |
@@ -149,14 +167,15 @@ POC v3 additionally handles:
 - Check `Thingi10K\raw_meshes\fixed\` for large files.
 
 ### Want to reprocess a specific model
-- Delete its `.md` report file from the `reports` folder and run the test again.
-- Example: Delete `reports\100027.md` to reprocess model 100027.
+- Delete its `.html` report file from the `reports` folder and run the test again.
+- Example: Delete `reports\100027.html` to reprocess model 100027.
 
 ## File Structure
 
 ```
 poc/v3/
 ├── run_full_test.py      # Main test script
+├── reports_server.py     # HTTP server with MeshLab integration
 ├── progress.json         # Current progress state
 ├── summary.json          # Final summary with results
 ├── dashboard.html        # Static dashboard (updated during run)
@@ -169,29 +188,18 @@ poc/v3/
 
 ## Example Report
 
-Each processed model gets a report like this:
+Each processed model gets an HTML report. View them at **http://localhost:8000/reports/** after starting the server.
 
-```markdown
-# 100027
+Reports include:
+- Status badge (Fixed, Failed, Already Clean, Blender escalation)
+- Filter used and duration
+- **Download buttons** for original and fixed STL files
+- **MeshLab buttons** to open files directly in MeshLab (purple buttons)
+- Side-by-side before/after images
+- Metrics table (vertices, faces, volume, watertight/manifold status)
+- MeshLab status indicator in the nav bar
 
-**Status:** SUCCESS (Blender)
-**Filter:** `blender-remesh`
-**Duration:** 51253ms
-
-## Download Models
-| Model | Link |
-|-------|------|
-| **Original** | [100027.stl](../100027.stl) |
-| **Fixed** | [100027.stl](../fixed/100027.stl) |
-| **Filter Script** | [100027.json](./filters/100027.json) |
-
-## Metrics
-| Metric | Before | After |
-|--------|--------|-------|
-| Watertight | No | Yes |
-| Manifold | No | Yes |
-| Faces | 508 | 4,979,000 |
-```
+**Note:** The MeshLab buttons require the `reports_server.py` to be running. The server will show the MeshLab path on startup.
 
 ## Example Filter Script
 

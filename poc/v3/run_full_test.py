@@ -637,11 +637,19 @@ def generate_report(stl_path: Path, original, repaired, result: TestResult, fixe
     prev_link = f'<a href="{prev_file.stem}.html">&lt; {prev_file.stem}</a>' if prev_file else '<span class="disabled">&lt; Previous</span>'
     next_link = f'<a href="{next_file.stem}.html">{next_file.stem} &gt;</a>' if next_file else '<span class="disabled">Next &gt;</span>'
     
-    # Fixed model link
+    # Fixed model link - use relative path (works when served via http server)
     if fixed_path and fixed_path.exists():
-        fixed_link = f'<a href="../fixed/{fixed_path.name}" class="download-btn">&#11015; Download Fixed</a>'
+        fixed_rel_path = f"../fixed/{fixed_path.name}"
+        fixed_link = f'''<a href="{fixed_rel_path}" class="download-btn" download>&#11015; Download Fixed</a>
+            <button class="download-btn meshlab-btn" onclick="openInMeshLab('{fixed_rel_path}')">&#128065; MeshLab</button>'''
+    elif result.precheck_skipped:
+        # Model was already clean, no need to save a fixed version
+        fixed_link = '<span class="no-file">Original is already clean</span>'
     else:
-        fixed_link = '<span class="no-file">Not saved (repair failed)</span>'
+        fixed_link = '<span class="no-file">Repair failed - no fixed model</span>'
+    
+    # Original model link - use relative path
+    original_rel_path = f'../{stl_path.name}'
     
     # Duration formatting
     duration_sec = result.duration_ms / 1000
@@ -779,7 +787,83 @@ def generate_report(stl_path: Path, original, repaired, result: TestResult, fixe
         .footer {{ color: #555; font-size: 12px; margin-top: 30px; }}
         
         a {{ color: #4fe8c4; }}
+        
+        .meshlab-btn {{
+            background: #9b59b6 !important;
+            color: white !important;
+            border: none;
+            cursor: pointer;
+        }}
+        .meshlab-btn:hover {{ background: #8e44ad !important; }}
+        
+        .meshlab-status {{
+            padding: 8px 16px;
+            border-radius: 8px;
+            font-size: 12px;
+            margin-left: 10px;
+        }}
+        .meshlab-available {{ background: #27ae60; color: white; }}
+        .meshlab-unavailable {{ background: #e74c3c; color: white; }}
     </style>
+    <script>
+        async function openInMeshLab(filePath) {{
+            const btn = event.target;
+            const originalText = btn.innerHTML;
+            btn.innerHTML = '&#8987; Opening...';
+            btn.disabled = true;
+            
+            try {{
+                const url = '/api/open-meshlab?file=' + encodeURIComponent(filePath);
+                console.log('Requesting:', url);
+                
+                const response = await fetch(url);
+                const data = await response.json();
+                console.log('Response:', data);
+                
+                if (!response.ok || !data.success) {{
+                    alert('Failed to open in MeshLab:\n\n' + (data.error || 'Unknown error'));
+                }} else {{
+                    btn.innerHTML = '&#10003; Opened!';
+                    setTimeout(() => {{ btn.innerHTML = originalText; btn.disabled = false; }}, 2000);
+                    return;
+                }}
+            }} catch (e) {{
+                console.error('Error:', e);
+                alert('Error: ' + e.message + '\n\nMake sure you are using the MeshPrep reports server:\n\ncd poc/v3\npython reports_server.py');
+            }}
+            
+            btn.innerHTML = originalText;
+            btn.disabled = false;
+        }}
+        
+        // Check MeshLab availability on page load
+        async function checkMeshLab() {{
+            try {{
+                const response = await fetch('/api/meshlab-status');
+                const data = await response.json();
+                const indicator = document.getElementById('meshlab-indicator');
+                if (indicator) {{
+                    if (data.available) {{
+                        indicator.className = 'meshlab-status meshlab-available';
+                        indicator.textContent = '\u2713 MeshLab Ready';
+                        indicator.title = 'MeshLab: ' + data.path;
+                    }} else {{
+                        indicator.className = 'meshlab-status meshlab-unavailable';
+                        indicator.textContent = '\u2717 MeshLab Not Found';
+                    }}
+                }}
+            }} catch (e) {{
+                // Server doesn't support MeshLab API
+                const indicator = document.getElementById('meshlab-indicator');
+                if (indicator) {{
+                    indicator.className = 'meshlab-status meshlab-unavailable';
+                    indicator.textContent = 'Use reports_server.py';
+                    indicator.title = 'Run: python reports_server.py';
+                }}
+            }}
+        }}
+        window.onload = checkMeshLab;
+    </script>
 </head>
 <body>
     <div class="container">
@@ -787,7 +871,8 @@ def generate_report(stl_path: Path, original, repaired, result: TestResult, fixe
             <div>{prev_link}</div>
             <div>
                 <a href="index.html">&#128209; Index</a>
-                <a href="../../../MeshPrep/poc/v3/dashboard.html">&#128202; Dashboard</a>
+                <a href="/dashboard">&#128202; Dashboard</a>
+                <span id="meshlab-indicator" class="meshlab-status">Checking MeshLab...</span>
             </div>
             <div>{next_link}</div>
         </div>
@@ -815,7 +900,8 @@ def generate_report(stl_path: Path, original, repaired, result: TestResult, fixe
         </div>
         
         <div class="downloads">
-            <a href="../{stl_path.name}" class="download-btn secondary">&#11015; Download Original</a>
+            <a href="{original_rel_path}" class="download-btn secondary" download>&#11015; Download Original</a>
+            <button class="download-btn meshlab-btn" onclick="openInMeshLab('{original_rel_path}')">&#128065; MeshLab</button>
             {fixed_link}
             <a href="filters/{stl_path.stem}.json" class="download-btn secondary">&#128196; Filter Script</a>
         </div>

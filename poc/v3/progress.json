@@ -1,18 +1,18 @@
 {
   "total_files": 9956,
-  "processed": 32,
-  "successful": 32,
+  "processed": 51,
+  "successful": 51,
   "failed": 0,
-  "escalations": 1,
+  "escalations": 8,
   "skipped": 0,
-  "precheck_skipped": 0,
-  "start_time": "2026-01-03T10:55:12.711586",
-  "last_update": "2026-01-03T10:55:19.147533",
-  "current_file": "100027",
+  "precheck_skipped": 31,
+  "start_time": "2026-01-03T11:25:32.476914",
+  "last_update": "2026-01-03T11:28:40.807140",
+  "current_file": "100500",
   "current_action": "blender_remesh",
   "current_step": 6,
   "total_steps": 10,
-  "total_duration_ms": 4756.834983825684,
-  "avg_duration_ms": 4756.834983825684,
-  "eta_seconds": 0
+  "total_duration_ms": 75637.93120718037,
+  "avg_duration_ms": 1575.7902334829244,
+  "eta_seconds": 14942.730100667723
 }

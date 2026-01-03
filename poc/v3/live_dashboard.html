@@ -114,6 +114,34 @@
             font-family: 'Consolas', monospace;
         }
         
+        .links-row {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 30px;
+            flex-wrap: wrap;
+        }
+        .link-btn {
+            display: inline-block;
+            background: #1b2b33;
+            color: #4fe8c4;
+            padding: 12px 24px;
+            border-radius: 8px;
+            text-decoration: none;
+            font-weight: bold;
+            border: 1px solid #4fe8c4;
+        }
+        .link-btn:hover {
+            background: #4fe8c4;
+            color: #0f1720;
+        }
+        .link-btn.primary {
+            background: #4fe8c4;
+            color: #0f1720;
+        }
+        .link-btn.primary:hover {
+            background: #3dd4b0;
+        }
+        
         .refresh-info {
             margin-top: 30px;
             color: #666;
@@ -129,14 +157,14 @@
         
         <div id="errorBox" class="error-box" style="display: none;">
             <h3>⚠️ Cannot Load Progress</h3>
-            <p>The dashboard cannot read the progress file directly from the browser due to security restrictions.</p>
-            <p><strong>To view live progress, you need to run a local server:</strong></p>
+            <p>The dashboard cannot read the progress file. Make sure the reports server is running.</p>
+            <p><strong>To start the server:</strong></p>
             <ol>
                 <li>Open PowerShell in <code>C:\Users\Dragon Ace\Source\repos\MeshPrep\poc\v3</code></li>
-                <li>Run: <code>python -m http.server 8080</code></li>
-                <li>Open: <a href="http://localhost:8080/live_dashboard.html" style="color: #4fe8c4;">http://localhost:8080/live_dashboard.html</a></li>
+                <li>Run: <code>..\v2\.venv312\Scripts\python.exe reports_server.py</code></li>
+                <li>Open: <a href="http://localhost:8000/live_dashboard.html" style="color: #4fe8c4;">http://localhost:8000/live_dashboard.html</a></li>
             </ol>
-            <p>Or check the static dashboard that was generated during the last run.</p>
+            <p>The server provides reports, dashboard, and MeshLab integration on a single port.</p>
         </div>
         
         <div id="mainContent" style="display: none;">
@@ -156,7 +184,10 @@
             <div class="current-file">
                 <div id="spinner" class="spinner stopped"></div>
                 <div style="flex: 1;">
-                    <div>Currently processing: <strong id="currentFile">-</strong></div>
+                    <div>
+                        Currently processing: <strong id="currentFile">-</strong>
+                        <a id="currentFileLink" href="#" style="display: none; margin-left: 10px; color: #4fe8c4; font-size: 12px;">View Report →</a>
+                    </div>
                     <div id="currentActionContainer" style="margin-top: 5px; font-size: 14px; color: #888;">
                         Action: <span id="currentAction" style="color: #4fe8c4;">-</span>
                         <span id="actionProgress" style="margin-left: 10px;"></span>
@@ -195,11 +226,17 @@
                 </div>
             </div>
             
+            <div class="links-row">
+                <a href="/reports/" class="link-btn primary">📋 Browse Reports Index</a>
+                <a href="/reports/index.html" class="link-btn">📊 Reports Table</a>
+                <a href="/dashboard" class="link-btn">📈 Static Dashboard</a>
+            </div>
+            
             <div class="info-box">
-                <h3>📁 View Reports</h3>
-                <p>Reports are saved in: <code>C:\Users\Dragon Ace\Source\repos\Thingi10K\raw_meshes\</code></p>
-                <p>Each model has a <code>.md</code> file with before/after images and metrics.</p>
-                <p>Fixed models are saved in: <code>...\raw_meshes\fixed\</code></p>
+                <h3>📁 Output Locations</h3>
+                <p><strong>Reports:</strong> <a href="/reports/" style="color: #4fe8c4;">/reports/</a> - HTML reports with before/after images</p>
+                <p><strong>Fixed Models:</strong> <a href="/fixed/" style="color: #4fe8c4;">/fixed/</a> - Successfully repaired STL files</p>
+                <p><strong>Filter Scripts:</strong> <a href="/reports/filters/" style="color: #4fe8c4;">/reports/filters/</a> - JSON files showing repair actions</p>
             </div>
         </div>
         
@@ -274,7 +311,17 @@
                 `${percentComplete.toFixed(1)}% (${p.processed.toLocaleString()} / ${p.total_files.toLocaleString()})`;
             
             // Current file
-            document.getElementById('currentFile').textContent = p.current_file || '-';
+            const currentFileEl = document.getElementById('currentFile');
+            const currentFileLink = document.getElementById('currentFileLink');
+            currentFileEl.textContent = p.current_file || '-';
+            
+            // Show link to report if file exists
+            if (p.current_file && p.current_file !== '-') {
+                currentFileLink.href = `/reports/${p.current_file}.html`;
+                currentFileLink.style.display = 'inline';
+            } else {
+                currentFileLink.style.display = 'none';
+            }
             
             // Current action
             const actionContainer = document.getElementById('currentActionContainer');
