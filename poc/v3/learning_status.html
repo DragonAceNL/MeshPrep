@@ -199,6 +199,24 @@
             text-align: center;
             margin-top: 20px;
         }
+        
+        .pkg-item {
+            background: #0f1720;
+            padding: 5px 10px;
+            border-radius: 4px;
+            font-size: 12px;
+        }
+        .pkg-item code {
+            color: #4fe8c4;
+            margin-right: 5px;
+        }
+        
+        .pipeline-sample {
+            background: #0f1720;
+            padding: 12px;
+            border-radius: 8px;
+            border-left: 3px solid #3498db;
+        }
     </style>
 </head>
 <body>
@@ -209,12 +227,100 @@
                 <a href="/dashboard">📊 Dashboard</a>
             </div>
             <div>
-                <span style="color: #888;">Last updated: 2026-01-03T21:12:24</span>
+                <span style="color: #888;">Last updated: 2026-01-04T00:00:09</span>
             </div>
         </div>
         
         <h1>🧠 MeshPrep Learning Status</h1>
         <p class="subtitle">What the system has learned from processing models</p>
+        
+        
+        <div class="section">
+            <h2>🖥️ Environment</h2>
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-value">v0.2.0</div>
+                    <div class="stat-label">MeshPrep Version</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value">3.12.9</div>
+                    <div class="stat-label">Python</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value success">Compatible</div>
+                    <div class="stat-label">Compatibility</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value">6</div>
+                    <div class="stat-label">Packages</div>
+                </div>
+            </div>
+            <div class="pkg-list" style="margin-top: 15px; display: flex; flex-wrap: wrap; gap: 10px;">
+                <span class="pkg-item"><code>trimesh</code> 4.10.1</span><span class="pkg-item"><code>pymeshfix</code> 0.17.2</span><span class="pkg-item"><code>pymeshlab</code> 2025.7</span><span class="pkg-item"><code>numpy</code> 2.4.0</span><span class="pkg-item"><code>scipy</code> 1.16.3</span><span class="pkg-item"><code>networkx</code> 3.6.1</span>
+            </div>
+        </div>
+        
+        
+        
+        <div class="section">
+            <h2>🔧 Available Pipelines</h2>
+            <p class="section-desc">Pre-configured repair pipelines ready to use</p>
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-value">59</div>
+                    <div class="stat-label">Total Pipelines</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value">26</div>
+                    <div class="stat-label">Profile Categories</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value">54</div>
+                    <div class="stat-label">Profile-Specific</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value">5</div>
+                    <div class="stat-label">Generic Fallbacks</div>
+                </div>
+            </div>
+            <h3 style="margin-top: 20px; color: #4fe8c4; font-size: 14px;">Sample Pipelines</h3>
+            <div style="display: grid; gap: 10px;">
+                
+                <div class="pipeline-sample">
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+                        <code>validate-only</code>
+                        <span style="color: #888; font-size: 12px;">clean</span>
+                    </div>
+                    <div style="font-size: 12px; color: #aaa;">validate</div>
+                </div>
+            
+                <div class="pipeline-sample">
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+                        <code>basic-cleanup</code>
+                        <span style="color: #888; font-size: 12px;">clean-minor-issues</span>
+                    </div>
+                    <div style="font-size: 12px; color: #aaa;">trimesh_basic → fix_normals</div>
+                </div>
+            
+                <div class="pipeline-sample">
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+                        <code>fill-small-holes</code>
+                        <span style="color: #888; font-size: 12px;">holes</span>
+                    </div>
+                    <div style="font-size: 12px; color: #aaa;">trimesh_basic → fill_holes → fix_normals</div>
+                </div>
+            
+                <div class="pipeline-sample">
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+                        <code>fill-medium-holes</code>
+                        <span style="color: #888; font-size: 12px;">holes</span>
+                    </div>
+                    <div style="font-size: 12px; color: #aaa;">trimesh_basic → fill_holes → fix_normals</div>
+                </div>
+            
+            </div>
+        </div>
+        
         
         
         <div class="section">

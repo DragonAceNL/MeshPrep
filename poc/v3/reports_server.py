@@ -27,7 +27,10 @@ import urllib.parse
 from pathlib import Path
 
 # Configuration
-THINGI10K_PATH = Path(r"C:\Users\Dragon Ace\Source\repos\Thingi10K\raw_meshes")
+THINGI10K_BASE = Path(r"C:\Users\Dragon Ace\Source\repos\Thingi10K")
+THINGI10K_RAW_MESHES = THINGI10K_BASE / "raw_meshes"
+THINGI10K_REPORTS = THINGI10K_BASE / "reports"
+THINGI10K_FIXED = THINGI10K_BASE / "fixed"
 POC_V3_PATH = Path(r"C:\Users\Dragon Ace\Source\repos\MeshPrep\poc\v3")
 MESHLAB_PATHS = [
     r"C:\Program Files\VCG\MeshLab\meshlab.exe",
@@ -59,7 +62,24 @@ class MeshLabHandler(http.server.SimpleHTTPRequestHandler):
         path = urllib.parse.unquote(path)
         
         # Route based on path prefix
-        if path.startswith('/MeshPrep/') or path.startswith('/poc/'):
+        if path.startswith('/reports/') or path == '/reports':
+            # Serve from Thingi10K/reports/ directory
+            if path == '/reports':
+                return str(THINGI10K_REPORTS)
+            rel_path = path[len('/reports/'):]
+            return str(THINGI10K_REPORTS / rel_path)
+        elif path.startswith('/fixed/'):
+            # Serve from Thingi10K/fixed/ directory
+            rel_path = path[len('/fixed/'):]
+            return str(THINGI10K_FIXED / rel_path)
+        elif path.startswith('/raw_meshes/') or path.startswith('/meshes/'):
+            # Serve from Thingi10K/raw_meshes/ directory
+            if path.startswith('/raw_meshes/'):
+                rel_path = path[len('/raw_meshes/'):]
+            else:
+                rel_path = path[len('/meshes/'):]
+            return str(THINGI10K_RAW_MESHES / rel_path)
+        elif path.startswith('/MeshPrep/') or path.startswith('/poc/'):
             # Serve from POC v3 directory (for dashboard, progress.json, etc.)
             if path.startswith('/MeshPrep/poc/v3/'):
                 rel_path = path[len('/MeshPrep/poc/v3/'):]
@@ -89,13 +109,16 @@ class MeshLabHandler(http.server.SimpleHTTPRequestHandler):
                 except Exception:
                     pass
             return str(status_path)
-        elif path.startswith('/progress.json'):
+        elif path.startswith('/progress.json') or path == '/progress':
             return str(POC_V3_PATH / 'progress.json')
+        elif path == '/' or path == '':
+            # Root - show reports index
+            return str(THINGI10K_REPORTS)
         else:
-            # Default: serve from Thingi10K raw_meshes
+            # Default: serve from Thingi10K base for backward compatibility
             if path.startswith('/'):
                 path = path[1:]
-            return str(THINGI10K_PATH / path)
+            return str(THINGI10K_BASE / path)
     
     def do_GET(self):
         """Handle GET requests."""
@@ -171,21 +194,21 @@ class MeshLabHandler(http.server.SimpleHTTPRequestHandler):
         
         # Handle relative paths (from reports)
         if file_path.startswith("../"):
-            # Relative to reports folder - need to resolve from raw_meshes
+            # Relative to reports folder - need to resolve from base
             rel_path = file_path.replace("../", "", 1)  # Remove first ../
-            full_path = THINGI10K_PATH / rel_path
+            full_path = THINGI10K_BASE / rel_path
         elif file_path.startswith("/"):
             # Absolute path from server root
-            full_path = THINGI10K_PATH / file_path.lstrip("/")
+            full_path = THINGI10K_BASE / file_path.lstrip("/")
         else:
-            full_path = THINGI10K_PATH / file_path
+            full_path = THINGI10K_BASE / file_path
         
         full_path = full_path.resolve()
         print(f"[MeshLab] Resolved path: {full_path}")
         
         # Security check: ensure file is within allowed directory
         try:
-            full_path.relative_to(THINGI10K_PATH.resolve())
+            full_path.relative_to(THINGI10K_BASE.resolve())
         except ValueError:
             self.send_json_error(403, f"Access denied: file outside allowed directory")
             return
@@ -260,15 +283,20 @@ def main():
         print("[WARN] MeshLab not found - 'Open in MeshLab' will not work")
     
     # Check paths
-    if not THINGI10K_PATH.exists():
-        print(f"[ERROR] Thingi10K path not found: {THINGI10K_PATH}")
+    if not THINGI10K_BASE.exists():
+        print(f"[ERROR] Thingi10K path not found: {THINGI10K_BASE}")
         sys.exit(1)
+    
+    if not THINGI10K_REPORTS.exists():
+        print(f"[WARN] Reports path not found: {THINGI10K_REPORTS}")
+        print("       Reports will be created when you run the test.")
     
     if not POC_V3_PATH.exists():
         print(f"[WARN] POC v3 path not found: {POC_V3_PATH}")
     
-    print(f"[OK] Serving reports from: {THINGI10K_PATH}")
-    print(f"[OK] Serving dashboard from: {POC_V3_PATH}")
+    print(f"[OK] Serving from: {THINGI10K_BASE}")
+    print(f"[OK] Reports: {THINGI10K_REPORTS}")
+    print(f"[OK] Dashboard: {POC_V3_PATH}")
     print()
     print("=" * 60)
     print(f"Server running at: http://localhost:{args.port}/")
@@ -279,6 +307,10 @@ def main():
     print(f"  Static Dashboard: http://localhost:{args.port}/dashboard")
     print(f"  Learning Status:  http://localhost:{args.port}/learning")
     print(f"  Progress JSON:    http://localhost:{args.port}/progress.json")
+    print()
+    print("Additional paths:")
+    print(f"  Raw Meshes:       http://localhost:{args.port}/raw_meshes/")
+    print(f"  Fixed Meshes:     http://localhost:{args.port}/fixed/")
     print("=" * 60)
     print()
     print("Press Ctrl+C to stop")

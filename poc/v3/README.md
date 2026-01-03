@@ -65,6 +65,8 @@ This starts a server with the following URLs:
 | http://localhost:8000/dashboard | Static dashboard |
 | http://localhost:8000/learning | Learning engine status page |
 | http://localhost:8000/progress.json | Progress data (JSON) |
+| http://localhost:8000/raw_meshes/ | Original STL files |
+| http://localhost:8000/fixed/ | Repaired STL files |
 
 Features:
 - Browse the reports index

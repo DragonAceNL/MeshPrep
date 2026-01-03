@@ -1,4 +1,4 @@
-# Copyright 2025 Allard Peper (Dragon Ace / DragonAceNL)
+﻿# Copyright 2025 Allard Peper (Dragon Ace / DragonAceNL)
 # Licensed under the Apache License, Version 2.0 (see LICENSE).
 # This file is part of MeshPrep — https://github.com/DragonAceNL/MeshPrep
 
@@ -40,6 +40,27 @@ except ImportError:
     EVOLUTION_AVAILABLE = False
     get_evolution_engine = None
 
+# Try to import reproducibility module
+try:
+    from meshprep_poc.reproducibility import (
+        capture_environment,
+        check_compatibility,
+        ReproducibilityLevel,
+        get_meshprep_version,
+    )
+    REPRODUCIBILITY_AVAILABLE = True
+except ImportError:
+    REPRODUCIBILITY_AVAILABLE = False
+
+# Try to import filter pipelines
+try:
+    from meshprep_poc.filter_pipelines import PROFILE_PIPELINES, GENERIC_PIPELINES
+    PIPELINES_AVAILABLE = True
+except ImportError:
+    PIPELINES_AVAILABLE = False
+    PROFILE_PIPELINES = {}
+    GENERIC_PIPELINES = []
+
 # Try to import profile discovery
 try:
     from meshprep_poc.profile_discovery import get_discovery_engine
@@ -59,7 +80,53 @@ def get_learning_data() -> Dict[str, Any]:
         "learning_engine": None,
         "evolution_engine": None,
         "detailed_analysis": None,
+        "environment": None,
+        "available_pipelines": None,
     }
+    
+    # Get environment info
+    if REPRODUCIBILITY_AVAILABLE:
+        try:
+            snapshot = capture_environment(ReproducibilityLevel.STANDARD, include_external=False)
+            compat = check_compatibility()
+            data["environment"] = {
+                "meshprep_version": snapshot.meshprep_version,
+                "python_version": snapshot.python_version,
+                "platform": snapshot.platform_info,
+                "packages": snapshot.package_versions,
+                "compatible": compat.compatible,
+                "issues": len(compat.issues),
+            }
+        except Exception as e:
+            data["environment"] = {"error": str(e)}
+    
+    # Get available pipelines
+    if PIPELINES_AVAILABLE:
+        try:
+            profile_count = len(PROFILE_PIPELINES)
+            total_pipelines = sum(len(pipes) for pipes in PROFILE_PIPELINES.values())
+            generic_count = len(GENERIC_PIPELINES)
+            
+            # Get some sample pipelines
+            sample_pipelines = []
+            for profile, pipes in list(PROFILE_PIPELINES.items())[:3]:
+                for pipe in pipes[:2]:
+                    sample_pipelines.append({
+                        "profile": profile,
+                        "name": pipe.name,
+                        "actions": [a["action"] for a in pipe.actions],
+                        "priority": pipe.priority,
+                    })
+            
+            data["available_pipelines"] = {
+                "profile_categories": profile_count,
+                "total_profile_pipelines": total_pipelines,
+                "generic_pipelines": generic_count,
+                "total": total_pipelines + generic_count,
+                "samples": sample_pipelines,
+            }
+        except Exception as e:
+            data["available_pipelines"] = {"error": str(e)}
     
     # Get learning engine stats
     try:
@@ -296,6 +363,97 @@ def get_learning_data() -> Dict[str, Any]:
 
 def generate_status_page(data: Dict[str, Any]) -> str:
     """Generate the HTML status page."""
+    
+    # Environment section
+    env_html = ""
+    if data.get("environment") and "error" not in data["environment"]:
+        env = data["environment"]
+        compat_class = "success" if env["compatible"] else "danger"
+        compat_text = "Compatible" if env["compatible"] else "Issues Found"
+        
+        # Build package list
+        pkg_items = ""
+        for pkg, ver in env.get("packages", {}).items():
+            pkg_items += f'<span class="pkg-item"><code>{pkg}</code> {ver}</span>'
+        
+        env_html = f'''
+        <div class="section">
+            <h2>🖥️ Environment</h2>
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-value">v{env["meshprep_version"]}</div>
+                    <div class="stat-label">MeshPrep Version</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value">{env["python_version"]}</div>
+                    <div class="stat-label">Python</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value {compat_class}">{compat_text}</div>
+                    <div class="stat-label">Compatibility</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value">{len(env.get("packages", {}))}</div>
+                    <div class="stat-label">Packages</div>
+                </div>
+            </div>
+            <div class="pkg-list" style="margin-top: 15px; display: flex; flex-wrap: wrap; gap: 10px;">
+                {pkg_items}
+            </div>
+        </div>
+        '''
+    else:
+        env_html = ''
+    
+    # Available pipelines section
+    pipelines_html = ""
+    if data.get("available_pipelines") and "error" not in data["available_pipelines"]:
+        ap = data["available_pipelines"]
+        
+        # Build sample pipelines list
+        samples_html = ""
+        for p in ap.get("samples", []):
+            actions_str = " → ".join(p["actions"])
+            samples_html += f'''
+                <div class="pipeline-sample">
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+                        <code>{p["name"]}</code>
+                        <span style="color: #888; font-size: 12px;">{p["profile"]}</span>
+                    </div>
+                    <div style="font-size: 12px; color: #aaa;">{actions_str}</div>
+                </div>
+            '''
+        
+        pipelines_html = f'''
+        <div class="section">
+            <h2>🔧 Available Pipelines</h2>
+            <p class="section-desc">Pre-configured repair pipelines ready to use</p>
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-value">{ap["total"]}</div>
+                    <div class="stat-label">Total Pipelines</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value">{ap["profile_categories"]}</div>
+                    <div class="stat-label">Profile Categories</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value">{ap["total_profile_pipelines"]}</div>
+                    <div class="stat-label">Profile-Specific</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value">{ap["generic_pipelines"]}</div>
+                    <div class="stat-label">Generic Fallbacks</div>
+                </div>
+            </div>
+            <h3 style="margin-top: 20px; color: #4fe8c4; font-size: 14px;">Sample Pipelines</h3>
+            <div style="display: grid; gap: 10px;">
+                {samples_html}
+            </div>
+        </div>
+        '''
+    else:
+        pipelines_html = ''
     
     # Learning engine section
     learning_html = ""
@@ -994,6 +1152,24 @@ def generate_status_page(data: Dict[str, Any]) -> str:
             text-align: center;
             margin-top: 20px;
         }}
+        
+        .pkg-item {{
+            background: #0f1720;
+            padding: 5px 10px;
+            border-radius: 4px;
+            font-size: 12px;
+        }}
+        .pkg-item code {{
+            color: #4fe8c4;
+            margin-right: 5px;
+        }}
+        
+        .pipeline-sample {{
+            background: #0f1720;
+            padding: 12px;
+            border-radius: 8px;
+            border-left: 3px solid #3498db;
+        }}
     </style>
 </head>
 <body>
@@ -1010,6 +1186,10 @@ def generate_status_page(data: Dict[str, Any]) -> str:
         
         <h1>🧠 MeshPrep Learning Status</h1>
         <p class="subtitle">What the system has learned from processing models</p>
+        
+        {env_html}
+        
+        {pipelines_html}
         
         {learning_html}
         
