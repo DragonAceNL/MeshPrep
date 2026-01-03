@@ -15,4 +15,10 @@ from .pymeshfix_actions import *
 from .blender_actions import *
 from .slicer_actions import *
 
+# PyMeshLab actions (optional - requires pymeshlab package)
+try:
+    from .pymeshlab_actions import *
+except ImportError:
+    pass  # pymeshlab not installed
+
 __all__ = ["ActionRegistry", "register_action"]

@@ -2328,15 +2328,23 @@ Found 10,000 total mesh files
 
 ### Learning Data Location
 
-All learning data is stored in the `learning_data/` directory:
+All learning data is stored in the `learning_data/` directory at the **repository root**:
 
 ```
-learning_data/
-├── meshprep_learning.db      # Learning engine (pipeline stats, profiles)
-├── pipeline_evolution.db     # Evolved pipelines and action stats
-├── profile_discovery.db      # Discovered profiles and clusters
-└── adaptive_thresholds.db    # Threshold values and observations
+MeshPrep/
+├── learning_data/                # Learning data (repo root level)
+│   ├── meshprep_learning.db      # Learning engine (pipeline stats, profiles)
+│   ├── pipeline_evolution.db     # Evolved pipelines and action stats
+│   ├── profile_discovery.db      # Discovered profiles and clusters
+│   ├── adaptive_thresholds.db    # Threshold values and observations
+│   └── learning_detailed_log.db  # Detailed logging for debugging
+├── poc/
+│   ├── v2/meshprep_poc/          # Core implementation (reusable library)
+│   └── v3/                       # Test wrapper (batch testing only)
+└── ...
 ```
+
+**Note**: The `poc/v3/` directory is a **test wrapper only** - it uses the implementation from `poc/v2/meshprep_poc/`. All learning data is stored at the repo root so it can be shared across different test runs and versions.
 
 ### Persistence and Recovery
 

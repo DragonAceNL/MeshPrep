@@ -439,3 +439,295 @@ def action_blender_decimate(mesh: trimesh.Trimesh, params: dict) -> trimesh.Trim
     return run_blender_script(mesh, "decimate", {
         "ratio": params.get("ratio", 0.5)
     })
+
+
+@register_action(
+    name="blender_smooth",
+    description="Apply Blender's smooth modifier",
+    parameters={"iterations": 5, "factor": 0.5},
+    risk_level="medium"
+)
+def action_blender_smooth(mesh: trimesh.Trimesh, params: dict) -> trimesh.Trimesh:
+    """
+    Apply smoothing using Blender's smooth modifier.
+    """
+    if not is_blender_available():
+        logger.warning("Blender not available, returning original mesh")
+        return mesh.copy()
+    
+    return run_blender_script(mesh, "smooth", {
+        "iterations": params.get("iterations", 5),
+        "factor": params.get("factor", 0.5)
+    })
+
+
+@register_action(
+    name="blender_solidify",
+    description="Add thickness to thin surfaces using Blender's solidify modifier",
+    parameters={"thickness": 0.1, "offset": 0.0},
+    risk_level="medium"
+)
+def action_blender_solidify(mesh: trimesh.Trimesh, params: dict) -> trimesh.Trimesh:
+    """
+    Add thickness using Blender's solidify modifier.
+    
+    Useful for thickening thin surfaces to make them printable.
+    """
+    if not is_blender_available():
+        logger.warning("Blender not available, returning original mesh")
+        return mesh.copy()
+    
+    return run_blender_script(mesh, "solidify", {
+        "thickness": params.get("thickness", 0.1),
+        "offset": params.get("offset", 0.0)
+    })
+
+
+@register_action(
+    name="blender_triangulate",
+    description="Triangulate all faces (ensure STL compatibility)",
+    parameters={},
+    risk_level="low"
+)
+def action_blender_triangulate(mesh: trimesh.Trimesh, params: dict) -> trimesh.Trimesh:
+    """
+    Triangulate all faces using Blender.
+    
+    Converts all polygons to triangles for STL export.
+    """
+    if not is_blender_available():
+        logger.warning("Blender not available, returning original mesh")
+        return mesh.copy()
+    
+    return run_blender_script(mesh, "triangulate", {})
+
+
+@register_action(
+    name="blender_subdivide",
+    description="Subdivide mesh using Blender's subdivision surface modifier",
+    parameters={"levels": 1, "simple": False},
+    risk_level="medium"
+)
+def action_blender_subdivide(mesh: trimesh.Trimesh, params: dict) -> trimesh.Trimesh:
+    """
+    Subdivide mesh using Blender's subdivision surface.
+    
+    Args:
+        mesh: Input mesh
+        params:
+            - levels: Subdivision levels (default: 1)
+            - simple: Use simple subdivision without smoothing (default: False)
+    """
+    if not is_blender_available():
+        logger.warning("Blender not available, returning original mesh")
+        return mesh.copy()
+    
+    return run_blender_script(mesh, "subdivide", {
+        "levels": params.get("levels", 1),
+        "simple": params.get("simple", False)
+    })
+
+
+@register_action(
+    name="blender_recalculate_normals",
+    description="Recalculate normals to point outward using Blender",
+    parameters={"inside": False},
+    risk_level="low"
+)
+def action_blender_recalculate_normals(mesh: trimesh.Trimesh, params: dict) -> trimesh.Trimesh:
+    """
+    Recalculate normals using Blender.
+    
+    More robust than trimesh for complex geometry.
+    """
+    if not is_blender_available():
+        logger.warning("Blender not available, returning original mesh")
+        return mesh.copy()
+    
+    return run_blender_script(mesh, "recalculate_normals", {
+        "inside": params.get("inside", False)
+    })
+
+
+@register_action(
+    name="blender_remove_doubles",
+    description="Merge duplicate vertices using Blender",
+    parameters={"threshold": 0.0001},
+    risk_level="low"
+)
+def action_blender_remove_doubles(mesh: trimesh.Trimesh, params: dict) -> trimesh.Trimesh:
+    """
+    Remove duplicate vertices using Blender.
+    
+    Blender's implementation can handle edge cases better than trimesh.
+    """
+    if not is_blender_available():
+        logger.warning("Blender not available, returning original mesh")
+        return mesh.copy()
+    
+    return run_blender_script(mesh, "remove_doubles", {
+        "threshold": params.get("threshold", 0.0001)
+    })
+
+
+@register_action(
+    name="blender_dissolve_degenerate",
+    description="Dissolve degenerate geometry using Blender",
+    parameters={"threshold": 0.0001},
+    risk_level="medium"
+)
+def action_blender_dissolve_degenerate(mesh: trimesh.Trimesh, params: dict) -> trimesh.Trimesh:
+    """
+    Dissolve degenerate geometry using Blender.
+    
+    Removes degenerate faces and edges more aggressively than trimesh.
+    """
+    if not is_blender_available():
+        logger.warning("Blender not available, returning original mesh")
+        return mesh.copy()
+    
+    return run_blender_script(mesh, "dissolve_degenerate", {
+        "threshold": params.get("threshold", 0.0001)
+    })
+
+
+@register_action(
+    name="blender_separate_loose",
+    description="Separate disconnected components using Blender",
+    parameters={},
+    risk_level="low"
+)
+def action_blender_separate_loose(mesh: trimesh.Trimesh, params: dict) -> trimesh.Trimesh:
+    """
+    Separate loose parts using Blender.
+    
+    Returns all parts as a single mesh, but with clean separation.
+    """
+    if not is_blender_available():
+        logger.warning("Blender not available, returning original mesh")
+        return mesh.copy()
+    
+    return run_blender_script(mesh, "separate_loose", {})
+
+
+@register_action(
+    name="blender_limited_dissolve",
+    description="Simplify mesh by dissolving edges between flat faces",
+    parameters={"angle_limit": 5.0},
+    risk_level="medium"
+)
+def action_blender_limited_dissolve(mesh: trimesh.Trimesh, params: dict) -> trimesh.Trimesh:
+    """
+    Limited dissolve using Blender.
+    
+    Simplifies the mesh by dissolving edges between faces that
+    are nearly coplanar. Reduces face count without changing shape.
+    
+    Args:
+        mesh: Input mesh
+        params:
+            - angle_limit: Maximum angle (degrees) between faces to dissolve (default: 5.0)
+    """
+    if not is_blender_available():
+        logger.warning("Blender not available, returning original mesh")
+        return mesh.copy()
+    
+    return run_blender_script(mesh, "limited_dissolve", {
+        "angle_limit": params.get("angle_limit", 5.0)
+    })
+
+
+@register_action(
+    name="blender_bisect",
+    description="Cut mesh along a plane using Blender",
+    parameters={"plane_co": [0, 0, 0], "plane_no": [0, 0, 1], "fill": True},
+    risk_level="medium"
+)
+def action_blender_bisect(mesh: trimesh.Trimesh, params: dict) -> trimesh.Trimesh:
+    """
+    Bisect mesh along a plane using Blender.
+    
+    Cuts the mesh along a plane and optionally fills the cut.
+    
+    Args:
+        mesh: Input mesh
+        params:
+            - plane_co: Point on the cutting plane [x, y, z]
+            - plane_no: Normal of the cutting plane [x, y, z]
+            - fill: Fill the cut faces (default: True)
+    """
+    if not is_blender_available():
+        logger.warning("Blender not available, returning original mesh")
+        return mesh.copy()
+    
+    return run_blender_script(mesh, "bisect", {
+        "plane_co": params.get("plane_co", [0, 0, 0]),
+        "plane_no": params.get("plane_no", [0, 0, 1]),
+        "fill": params.get("fill", True)
+    })
+
+
+@register_action(
+    name="blender_convex_hull",
+    description="Generate convex hull using Blender",
+    parameters={},
+    risk_level="high"
+)
+def action_blender_convex_hull(mesh: trimesh.Trimesh, params: dict) -> trimesh.Trimesh:
+    """
+    Generate convex hull using Blender.
+    
+    Creates the smallest convex shape that contains all vertices.
+    """
+    if not is_blender_available():
+        logger.warning("Blender not available, returning original mesh")
+        return mesh.copy()
+    
+    return run_blender_script(mesh, "convex_hull", {})
+
+
+@register_action(
+    name="blender_mirror",
+    description="Mirror mesh along an axis using Blender",
+    parameters={"axis": "X", "bisect": True},
+    risk_level="medium"
+)
+def action_blender_mirror(mesh: trimesh.Trimesh, params: dict) -> trimesh.Trimesh:
+    """
+    Mirror mesh using Blender's mirror modifier.
+    
+    Args:
+        mesh: Input mesh
+        params:
+            - axis: Axis to mirror along ("X", "Y", or "Z")
+            - bisect: Cut mesh at mirror plane first (default: True)
+    """
+    if not is_blender_available():
+        logger.warning("Blender not available, returning original mesh")
+        return mesh.copy()
+    
+    return run_blender_script(mesh, "mirror", {
+        "axis": params.get("axis", "X"),
+        "bisect": params.get("bisect", True)
+    })
+
+
+@register_action(
+    name="blender_weld",
+    description="Weld nearby vertices using Blender's weld modifier",
+    parameters={"distance": 0.001},
+    risk_level="medium"
+)
+def action_blender_weld(mesh: trimesh.Trimesh, params: dict) -> trimesh.Trimesh:
+    """
+    Weld vertices using Blender's weld modifier.
+    
+    More sophisticated vertex welding than simple merge by distance.
+    """
+    if not is_blender_available():
+        logger.warning("Blender not available, returning original mesh")
+        return mesh.copy()
+    
+    return run_blender_script(mesh, "weld", {
+        "distance": params.get("distance", 0.001)
+    })
