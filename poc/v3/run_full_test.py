@@ -1352,6 +1352,21 @@ def generate_dashboard(progress: Progress, results: List[TestResult]):
         h1 {{ color: #4fe8c4; margin-bottom: 10px; }}
         .subtitle {{ color: #888; margin-bottom: 30px; }}
         
+        .nav-links {{
+            margin-bottom: 20px;
+        }}
+        .nav-links a {{
+            color: #4fe8c4;
+            text-decoration: none;
+            padding: 8px 16px;
+            background: #1b2b33;
+            border-radius: 6px;
+            margin-right: 10px;
+        }}
+        .nav-links a:hover {{
+            background: #2a3a43;
+        }}
+        
         .stats-grid {{
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
@@ -1440,6 +1455,12 @@ def generate_dashboard(progress: Progress, results: List[TestResult]):
             Last Update: {progress.last_update[:19] if progress.last_update else 'Never'}
             <span class="eta">| ETA: {str(timedelta(seconds=int(progress.eta_seconds))) if progress.eta_seconds > 0 else 'Calculating...'}</span>
         </p>
+        
+        <div class="nav-links">
+            <a href="/reports/index.html">📋 Reports Index</a>
+            <a href="/learning">🧠 Learning Status</a>
+            <a href="/live">📺 Live Dashboard</a>
+        </div>
         
         <div class="progress-bar">
             <div class="progress-fill" style="width: {progress.percent_complete:.1f}%">
@@ -2146,6 +2167,12 @@ def run_batch_test(limit: Optional[int] = None, skip_existing: bool = True, ctm_
         if i % 10 == 0:
             generate_dashboard(progress, results)
             generate_reports_index(results)
+            # Also update learning status page
+            try:
+                from generate_learning_status import generate_learning_status_page
+                generate_learning_status_page()
+            except Exception as e:
+                logger.debug(f"Failed to generate learning status page: {e}")
         
         # Log result
         status = "[OK]" if result.success else "[FAIL]"
@@ -2253,6 +2280,35 @@ def show_learning_stats():
     except Exception as e:
         print(f"Error loading learning stats: {e}")
     
+    # Show evolution stats if available
+    print("\n" + "=" * 60)
+    print("Pipeline Evolution Statistics")
+    print("=" * 60)
+    
+    try:
+        from meshprep_poc.pipeline_evolution import get_evolution_engine
+        evolution = get_evolution_engine()
+        evo_stats = evolution.get_stats_summary()
+        
+        print(f"\nEvolved pipelines: {evo_stats['total_evolved_pipelines']}")
+        print(f"Successful evolved: {evo_stats['successful_evolved_pipelines']}")
+        print(f"Actions tracked: {evo_stats['tracked_actions']}")
+        print(f"Current generation: {evo_stats['current_generation']}")
+        
+        if evo_stats['top_evolved_pipelines']:
+            print(f"\nTop evolved pipelines:")
+            print(f"  {'Pipeline':<40} {'Success':>8} {'Attempts':>10}")
+            print(f"  {'-'*40} {'-'*8} {'-'*10}")
+            for p in evo_stats['top_evolved_pipelines']:
+                print(f"  {p['name']:<40} {p['success_rate']*100:>7.1f}% {p['attempts']:>10}")
+        else:
+            print("\nNo evolved pipelines yet. They will be generated when standard pipelines fail.")
+        
+    except ImportError:
+        print("\nEvolution engine not available.")
+    except Exception as e:
+        print(f"Error loading evolution stats: {e}")
+    
     print("=" * 60)
 
 
@@ -2285,6 +2341,11 @@ def main():
         action="store_true",
         help="Show learning engine statistics"
     )
+    parser.add_argument(
+        "--generate-status-page",
+        action="store_true",
+        help="Generate HTML learning status page"
+    )
     
     args = parser.parse_args()
     
@@ -2294,6 +2355,13 @@ def main():
     
     if args.learning_stats:
         show_learning_stats()
+        return
+    
+    if args.generate_status_page:
+        from generate_learning_status import generate_learning_status_page
+        page_path = generate_learning_status_page()
+        print(f"\nStatus page generated: {page_path}")
+        print(f"Open in browser or serve with: python reports_server.py")
         return
     
     # If --fresh is passed, reprocess all files (but don't delete existing results)

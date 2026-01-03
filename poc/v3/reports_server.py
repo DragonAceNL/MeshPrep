@@ -79,6 +79,16 @@ class MeshLabHandler(http.server.SimpleHTTPRequestHandler):
             return str(POC_V3_PATH / path[1:])  # Remove leading /
         elif path.startswith('/live_dashboard') or path == '/live':
             return str(POC_V3_PATH / 'live_dashboard.html')
+        elif path.startswith('/learning') or path == '/learning-status':
+            # Learning status page - generate fresh if doesn't exist or requested
+            status_path = POC_V3_PATH / 'learning_status.html'
+            if not status_path.exists():
+                try:
+                    from generate_learning_status import generate_learning_status_page
+                    generate_learning_status_page()
+                except Exception:
+                    pass
+            return str(status_path)
         elif path.startswith('/progress.json'):
             return str(POC_V3_PATH / 'progress.json')
         else:
@@ -101,6 +111,11 @@ class MeshLabHandler(http.server.SimpleHTTPRequestHandler):
             self.handle_meshlab_status()
             return
         
+        # API endpoint to regenerate learning status page
+        if parsed.path == "/api/refresh-learning-status":
+            self.handle_refresh_learning_status()
+            return
+        
         # Default: serve static files
         super().do_GET()
     
@@ -113,6 +128,29 @@ class MeshLabHandler(http.server.SimpleHTTPRequestHandler):
         }
         
         self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.end_headers()
+        self.wfile.write(json.dumps(response).encode())
+    
+    def handle_refresh_learning_status(self):
+        """Regenerate the learning status page."""
+        try:
+            from generate_learning_status import generate_learning_status_page
+            page_path = generate_learning_status_page()
+            response = {
+                "success": True,
+                "path": str(page_path),
+                "message": "Learning status page regenerated"
+            }
+            self.send_response(200)
+        except Exception as e:
+            response = {
+                "success": False,
+                "error": str(e)
+            }
+            self.send_response(500)
+        
         self.send_header("Content-Type", "application/json")
         self.send_header("Access-Control-Allow-Origin", "*")
         self.end_headers()

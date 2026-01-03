@@ -541,9 +541,21 @@ class LearningEngine:
         """
         Get recommended pipeline order for a model based on its characteristics.
         
+        Uses a smart multi-factor scoring approach:
+        1. Issue-specific recommendations (what worked for these exact issues)
+        2. Mesh-profile recommendations (what worked for similar meshes)
+        3. Characteristic matching (face_count, body_count buckets)
+        4. Global efficiency ranking (fallback)
+        5. Exploration factor (occasionally retry underperformers on new data)
+        
+        This is NOT simple elimination - it considers:
+        - A pipeline that failed on fragmented models might work on simple ones
+        - New models with different characteristics deserve fresh chances
+        - Undert-tested pipelines get exploration bonus
+        
         Args:
             issues: List of issues detected in the model
-            diagnostics: Optional mesh diagnostics
+            diagnostics: Optional mesh diagnostics (faces, body_count, etc.)
             
         Returns:
             Ordered list of pipeline names to try
@@ -551,23 +563,128 @@ class LearningEngine:
         self._refresh_cache()
         
         if not self._optimal_pipeline_order:
-            return []
+            return []  # No learning data yet
         
-        # Start with issue-specific recommendations
-        recommended = []
-        if self._issue_to_pipeline_map:
-            for issue in issues:
-                if issue in self._issue_to_pipeline_map:
-                    for pipeline in self._issue_to_pipeline_map[issue]:
-                        if pipeline not in recommended:
-                            recommended.append(pipeline)
+        # Build a scoring dict for each pipeline
+        pipeline_scores: Dict[str, float] = {}
         
-        # Add remaining pipelines in optimal order
-        for pipeline in self._optimal_pipeline_order:
-            if pipeline not in recommended:
-                recommended.append(pipeline)
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            
+            # =================================================================
+            # Factor 1: Issue-specific success rates (weight: 3.0)
+            # What has worked best for these specific issues?
+            # =================================================================
+            issue_pattern = self._get_issue_pattern_key(issues)
+            
+            cursor.execute("""
+                SELECT pipeline_name,
+                       CAST(successes AS REAL) / NULLIF(successes + failures, 0) as success_rate,
+                       successes + failures as sample_size
+                FROM pattern_pipeline_results
+                WHERE pattern_key = ?
+                  AND successes + failures >= 3
+            """, (issue_pattern,))
+            
+            for row in cursor.fetchall():
+                name = row["pipeline_name"]
+                rate = row["success_rate"] or 0
+                sample_size = row["sample_size"]
+                # Weight by confidence (more samples = more trust)
+                confidence = min(sample_size / 20.0, 1.0)  # Cap at 20 samples
+                pipeline_scores[name] = pipeline_scores.get(name, 0) + (rate * 3.0 * confidence)
+            
+            # =================================================================
+            # Factor 2: Mesh characteristic matching (weight: 2.0)
+            # What worked for meshes with similar face_count/body_count?
+            # This allows retrying pipelines that failed on DIFFERENT mesh types
+            # =================================================================
+            if diagnostics:
+                body_bucket = self._get_body_count_bucket(diagnostics.get("body_count", 1))
+                face_bucket = self._get_face_count_bucket(diagnostics.get("faces", 0))
+                
+                for char in [body_bucket, face_bucket]:
+                    cursor.execute("""
+                        SELECT pipeline_name,
+                               CAST(successes AS REAL) / NULLIF(successes + failures, 0) as success_rate,
+                               successes + failures as sample_size
+                        FROM pipeline_mesh_stats
+                        WHERE characteristic = ?
+                          AND successes + failures >= 5
+                    """, (char,))
+                    
+                    for row in cursor.fetchall():
+                        name = row["pipeline_name"]
+                        rate = row["success_rate"] or 0
+                        confidence = min(row["sample_size"] / 30.0, 1.0)
+                        pipeline_scores[name] = pipeline_scores.get(name, 0) + (rate * 2.0 * confidence)
+            
+            # =================================================================
+            # Factor 3: Profile-based winners (weight: 2.5)
+            # What pipeline most often wins for this mesh profile?
+            # =================================================================
+            if diagnostics:
+                profile = self._detect_profile(diagnostics)
+                
+                cursor.execute("""
+                    SELECT winning_pipeline, COUNT(*) as wins
+                    FROM model_results
+                    WHERE profile = ?
+                      AND success = 1
+                      AND winning_pipeline != ''
+                    GROUP BY winning_pipeline
+                    ORDER BY wins DESC
+                    LIMIT 5
+                """, (profile,))
+                
+                rows = cursor.fetchall()
+                total_wins = sum(row["wins"] for row in rows)
+                
+                for row in rows:
+                    name = row["winning_pipeline"]
+                    win_ratio = row["wins"] / max(total_wins, 1)
+                    pipeline_scores[name] = pipeline_scores.get(name, 0) + (win_ratio * 2.5)
+            
+            # =================================================================
+            # Factor 4: Global efficiency (weight: 1.0)
+            # Fallback to overall efficiency ranking
+            # =================================================================
+            for i, name in enumerate(self._optimal_pipeline_order):
+                # Higher ranked = higher score (inverse of position)
+                rank_score = 1.0 / (i + 1)
+                pipeline_scores[name] = pipeline_scores.get(name, 0) + rank_score
+            
+            # =================================================================
+            # Factor 5: Exploration bonus (weight: 0.5)
+            # Give a small bonus to pipelines we haven't tried much
+            # This prevents getting stuck in local optima and allows
+            # "retrying" pipelines that might work on different models
+            # =================================================================
+            cursor.execute("""
+                SELECT pipeline_name, total_attempts
+                FROM pipeline_stats
+                WHERE total_attempts < 20
+            """)
+            
+            for row in cursor.fetchall():
+                name = row["pipeline_name"]
+                # Less attempts = higher exploration bonus
+                exploration_bonus = 0.5 * (1.0 - row["total_attempts"] / 20.0)
+                pipeline_scores[name] = pipeline_scores.get(name, 0) + exploration_bonus
         
-        return recommended
+        # Sort by score (highest first)
+        sorted_pipelines = sorted(
+            pipeline_scores.keys(),
+            key=lambda p: pipeline_scores.get(p, 0),
+            reverse=True
+        )
+        
+        # Add any remaining pipelines from optimal order that weren't scored
+        for name in self._optimal_pipeline_order:
+            if name not in sorted_pipelines:
+                sorted_pipelines.append(name)
+        
+        return sorted_pipelines
     
     def get_success_probability(
         self,

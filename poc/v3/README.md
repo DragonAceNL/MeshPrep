@@ -164,12 +164,88 @@ Learning data is stored in SQLite database: `learning_data/meshprep_learning.db`
 |-----|---------------|----------------------|
 | 1st | 0 models | Default pipeline order |
 | 2nd | 50+ models | Pipelines reordered by learned success rates |
-| 3rd+ | 1000+ models | Issue-specific pipeline recommendations |
+| 3rd+ | 1000+ models | Issue-specific + profile-specific recommendations |
 
 **After ~50 models**, the learning engine starts reordering pipelines:
 - Pipelines with higher success rates are tried first
 - Issue-specific best pipelines are prioritized
 - Slow pipelines (like Blender) are moved down if faster ones work
+
+### Smart Learning (Not Simple Elimination)
+
+The learning engine uses **multi-factor scoring**, not simple elimination:
+
+| Factor | Weight | Purpose |
+|--------|--------|--------|
+| Issue-specific success | 3.0x | What worked for these exact issues? |
+| Mesh characteristic match | 2.0x | What worked for similar face_count/body_count? |
+| Profile-based winners | 2.5x | What pipeline wins most for this profile? |
+| Global efficiency | 1.0x | Fallback to overall ranking |
+| Exploration bonus | 0.5x | Retry under-tested pipelines |
+
+**Example:** If `pymeshfix` failed on fragmented models but works on simple ones:
+- For new **simple** model → `pymeshfix` recommended first
+- For new **fragmented** model → `blender-remesh` recommended first
+- The engine learned that the **same pipeline** behaves differently based on mesh characteristics!
+
+### Evolutionary Pipeline Discovery (NEW)
+
+When all 59 predefined pipelines fail, the system can **generate new pipeline combinations**:
+
+```
+Standard Pipeline Failed → Evolution Engine Activates
+                              ↓
+                    1. Try existing successful evolved pipelines
+                              ↓
+                    2. Generate NEW combination from best actions
+                              ↓
+                    3. Track success/failure for learning
+                              ↓
+                    4. Successful combinations are saved
+```
+
+**How it works:**
+- Tracks individual action success rates by issue type
+- Combines successful actions from different pipelines
+- Uses genetic algorithm concepts (selection, crossover, mutation)
+- Exploration rate (30%) ensures random new combinations are tried
+- Successful evolved pipelines can be promoted to standard library
+
+**Example evolved pipeline:**
+```
+Generated: evolved-pymeshfix_repair-combo-a3f8c2d1
+  Actions: fix_normals → fill_holes(500) → pymeshfix_repair
+  Success rate: 67%
+  Generation: 3 (evolved from gen 2 parents)
+```
+
+View evolution stats with:
+```bash
+python run_full_test.py --learning-stats
+```
+
+### Learning Status Dashboard
+
+A comprehensive HTML dashboard shows everything the system has learned:
+
+```bash
+# Generate the status page
+python run_full_test.py --generate-status-page
+
+# Or access via the reports server
+python reports_server.py
+# Then open: http://localhost:8000/learning
+```
+
+The status page shows:
+- **Learning Engine Summary**: Models processed, pipelines tracked, issue patterns
+- **Pipeline Performance**: Success rates for each repair pipeline
+- **Best Pipeline Per Issue**: Which pipeline works best for specific issues
+- **Model Profile Statistics**: Success rates by mesh characteristics
+- **Evolution Summary**: Generated pipelines, generations, action stats
+- **Individual Action Performance**: Success rates for repair actions
+- **Best Actions Per Issue**: Which actions work for specific problems
+- **Evolved Pipeline Combinations**: New pipelines discovered through evolution
 
 ## Output Locations
 

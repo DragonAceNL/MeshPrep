@@ -38,6 +38,15 @@ from .filter_pipelines import (
 )
 from .validation import validate_geometry
 
+# Import pipeline evolution (optional - won't fail if not available)
+try:
+    from .pipeline_evolution import get_evolution_engine, EvolvedPipeline
+    EVOLUTION_AVAILABLE = True
+except ImportError:
+    EVOLUTION_AVAILABLE = False
+    get_evolution_engine = None
+    EvolvedPipeline = None
+
 logger = logging.getLogger(__name__)
 
 
@@ -533,6 +542,176 @@ def run_slicer_repair_loop(
         
         attempt_result.duration_ms = (time.perf_counter() - attempt_start) * 1000
         result.attempts.append(attempt_result)
+    
+    # =========================================================================
+    # STEP 4: Try evolved pipelines if standard ones failed
+    # =========================================================================
+    if not result.success and EVOLUTION_AVAILABLE:
+        evolution_engine = get_evolution_engine()
+        
+        # Check if we should try evolution
+        if evolution_engine.should_try_evolution(issues, list(attempted_pipelines), result.total_attempts):
+            logger.info(f"  Standard pipelines exhausted, trying evolved pipelines...")
+            
+            # Try existing successful evolved pipelines first
+            evolved_candidates = evolution_engine.get_evolved_pipelines_for_issues(
+                issues, max_pipelines=3, min_success_rate=0.4
+            )
+            
+            for evolved in evolved_candidates:
+                if evolved.name in attempted_pipelines:
+                    continue
+                
+                result.total_attempts += 1
+                attempted_pipelines.add(evolved.name)
+                
+                action_names = [a["action"] for a in evolved.actions]
+                logger.info(f"  Attempt {result.total_attempts}: [EVOLVED] {evolved.name}")
+                logger.info(f"    Actions: {'  '.join(action_names)}")
+                logger.info(f"    Success rate: {evolved.success_rate*100:.1f}%")
+                
+                if progress_callback:
+                    progress_callback(result.total_attempts, f"[EVOLVED] {evolved.name}", max_attempts)
+                
+                attempt_start = time.perf_counter()
+                attempt_result = RepairAttempt(
+                    attempt_number=result.total_attempts,
+                    pipeline_name=f"[EVOLVED] {evolved.name}",
+                    pipeline_actions=action_names,
+                    success=False,
+                    duration_ms=0,
+                )
+                
+                try:
+                    working_mesh = original_mesh.copy()
+                    
+                    for action_def in evolved.actions:
+                        action_name = action_def["action"]
+                        action_params = action_def.get("params", {})
+                        working_mesh = ActionRegistry.execute(action_name, working_mesh, action_params)
+                    
+                    repaired_mesh = working_mesh
+                    geom_valid = validate_geometry(repaired_mesh)
+                    geom_acceptable, _ = check_geometry_loss(original_mesh, repaired_mesh)
+                    
+                    if geom_valid.is_printable and geom_acceptable:
+                        slicer_result = validate_mesh(repaired_mesh, slicer=slicer, timeout=timeout, strict=True)
+                        
+                        if slicer_result.success:
+                            logger.info(f"    V EVOLVED PIPELINE SUCCESS!")
+                            result.success = True
+                            result.final_mesh = repaired_mesh
+                            result.final_slicer_result = slicer_result
+                            result.issues_resolved.append(f"[EVOLVED] {evolved.name}")
+                            attempt_result.success = True
+                            
+                            # Record success for learning
+                            evolution_engine.record_pipeline_result(
+                                evolved.name, success=True,
+                                duration_ms=(time.perf_counter() - attempt_start) * 1000
+                            )
+                            break
+                        else:
+                            evolution_engine.record_pipeline_result(
+                                evolved.name, success=False,
+                                duration_ms=(time.perf_counter() - attempt_start) * 1000
+                            )
+                except Exception as e:
+                    logger.warning(f"    Evolved pipeline failed: {e}")
+                    attempt_result.error = str(e)
+                
+                attempt_result.duration_ms = (time.perf_counter() - attempt_start) * 1000
+                result.attempts.append(attempt_result)
+                
+                if result.success:
+                    break
+            
+            # If still not successful, try generating a NEW evolved pipeline
+            if not result.success and result.total_attempts < max_attempts:
+                logger.info(f"  Generating new evolved pipeline...")
+                
+                # Get diagnostics for smarter generation
+                diagnostics = {
+                    "faces": len(original_mesh.faces),
+                    "vertices": len(original_mesh.vertices),
+                    "body_count": len(original_mesh.split(only_watertight=False)) if hasattr(original_mesh, 'split') else 1,
+                    "is_watertight": original_mesh.is_watertight,
+                }
+                
+                new_evolved = evolution_engine.generate_evolved_pipeline(
+                    issues=issues,
+                    diagnostics=diagnostics,
+                    exploration_rate=0.3,  # Higher exploration for failed cases
+                )
+                
+                if new_evolved and new_evolved.name not in attempted_pipelines:
+                    result.total_attempts += 1
+                    attempted_pipelines.add(new_evolved.name)
+                    
+                    action_names = [a["action"] for a in new_evolved.actions]
+                    logger.info(f"  Attempt {result.total_attempts}: [NEW EVOLVED] {new_evolved.name}")
+                    logger.info(f"    Actions: {'  '.join(action_names)}")
+                    
+                    if progress_callback:
+                        progress_callback(result.total_attempts, f"[NEW] {new_evolved.name}", max_attempts)
+                    
+                    attempt_start = time.perf_counter()
+                    attempt_result = RepairAttempt(
+                        attempt_number=result.total_attempts,
+                        pipeline_name=f"[NEW EVOLVED] {new_evolved.name}",
+                        pipeline_actions=action_names,
+                        success=False,
+                        duration_ms=0,
+                    )
+                    
+                    try:
+                        working_mesh = original_mesh.copy()
+                        
+                        for action_def in new_evolved.actions:
+                            action_name = action_def["action"]
+                            action_params = action_def.get("params", {})
+                            working_mesh = ActionRegistry.execute(action_name, working_mesh, action_params)
+                            
+                            # Record individual action results for learning
+                            evolution_engine.record_action_result(
+                                action_def, success=True, duration_ms=0, issues=issues
+                            )
+                        
+                        repaired_mesh = working_mesh
+                        geom_valid = validate_geometry(repaired_mesh)
+                        geom_acceptable, _ = check_geometry_loss(original_mesh, repaired_mesh)
+                        
+                        if geom_valid.is_printable and geom_acceptable:
+                            slicer_result = validate_mesh(repaired_mesh, slicer=slicer, timeout=timeout, strict=True)
+                            
+                            if slicer_result.success:
+                                logger.info(f"    V NEW EVOLVED PIPELINE SUCCESS!")
+                                result.success = True
+                                result.final_mesh = repaired_mesh
+                                result.final_slicer_result = slicer_result
+                                result.issues_resolved.append(f"[NEW EVOLVED] {new_evolved.name}")
+                                attempt_result.success = True
+                                
+                                evolution_engine.record_pipeline_result(
+                                    new_evolved.name, success=True,
+                                    duration_ms=(time.perf_counter() - attempt_start) * 1000
+                                )
+                            else:
+                                evolution_engine.record_pipeline_result(
+                                    new_evolved.name, success=False,
+                                    duration_ms=(time.perf_counter() - attempt_start) * 1000
+                                )
+                    except Exception as e:
+                        logger.warning(f"    New evolved pipeline failed: {e}")
+                        attempt_result.error = str(e)
+                        # Record action failure
+                        for action_def in new_evolved.actions:
+                            evolution_engine.record_action_result(
+                                action_def, success=False, duration_ms=0, issues=issues
+                            )
+                    
+                    attempt_result.duration_ms = (time.perf_counter() - attempt_start) * 1000
+                    result.attempts.append(attempt_result)
     
     result.total_duration_ms = (time.perf_counter() - start_time) * 1000
     
