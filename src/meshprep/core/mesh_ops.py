@@ -7,6 +7,9 @@ Mesh loading, saving, and diagnostics using trimesh.
 
 This module provides the core mesh I/O operations and diagnostic
 computations used throughout MeshPrep.
+
+For comprehensive format support, see mesh_loader.py which provides
+automatic format detection and conversion for 40+ file formats.
 """
 
 from dataclasses import dataclass
@@ -17,6 +20,16 @@ import logging
 
 import numpy as np
 import trimesh
+
+# Re-export from mesh_loader for convenience
+from .mesh_loader import (
+    load_mesh as load_mesh_universal,
+    convert_to_stl,
+    LoadResult,
+    get_supported_extensions,
+    is_format_supported,
+    list_supported_formats,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -127,10 +140,10 @@ class MeshDiagnostics:
 
 def load_mesh(path: Union[str, Path]) -> trimesh.Trimesh:
     """
-    Load a mesh from file.
+    Load a mesh from any supported format.
     
-    Supports STL (ASCII and binary), OBJ, PLY, and other formats
-    supported by trimesh.
+    Supports 40+ formats including STL, OBJ, PLY, 3MF, CTM, GLTF/GLB,
+    STEP, IGES, and many more. See mesh_loader.py for full list.
     
     Args:
         path: Path to mesh file
@@ -141,33 +154,14 @@ def load_mesh(path: Union[str, Path]) -> trimesh.Trimesh:
     Raises:
         FileNotFoundError: If file does not exist
         ValueError: If file cannot be loaded as a mesh
+        
+    Note:
+        For detailed loading information (original format, conversion
+        method, etc.), use load_mesh_universal() which returns a
+        LoadResult object.
     """
-    path = Path(path)
-    
-    if not path.exists():
-        raise FileNotFoundError(f"Mesh file not found: {path}")
-    
-    logger.info(f"Loading mesh from: {path}")
-    
-    try:
-        mesh = trimesh.load(str(path), force='mesh')
-    except Exception as e:
-        raise ValueError(f"Failed to load mesh: {e}") from e
-    
-    # If it's a Scene (multiple objects), concatenate them
-    if isinstance(mesh, trimesh.Scene):
-        geometries = list(mesh.geometry.values())
-        if len(geometries) == 0:
-            raise ValueError("No geometry found in file")
-        elif len(geometries) == 1:
-            mesh = geometries[0]
-        else:
-            logger.info(f"Concatenating {len(geometries)} geometries from scene")
-            mesh = trimesh.util.concatenate(geometries)
-    
-    logger.info(f"Loaded mesh: {len(mesh.vertices)} vertices, {len(mesh.faces)} faces")
-    
-    return mesh
+    result = load_mesh_universal(path)
+    return result.mesh
 
 
 def save_mesh(

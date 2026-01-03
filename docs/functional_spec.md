@@ -39,10 +39,10 @@ MeshPrep leverages `trimesh` and `meshio` to support a wide range of 3D file for
 
 | Format | Extensions | Tool | Notes |
 |--------|------------|------|-------|
-| **CTM** | `.ctm` | openctm* | OpenCTM compressed mesh (common on Sketchfab, CGTrader) |
+| **CTM** | `.ctm` | pymeshlab | OpenCTM compressed mesh (common on Sketchfab, CGTrader) |
 | **Draco** | `.drc` | trimesh* | Google's compressed mesh format |
 
-*Note: CTM requires optional `python-openctm` package. Draco requires `trimesh[easy]` or DracoPy.
+*Note: CTM is supported via PyMeshLab (MeshLab's Python bindings). Draco requires `trimesh[easy]` or DracoPy.
 
 ### CAD & Engineering Formats
 
@@ -88,11 +88,13 @@ MeshPrep leverages `trimesh` and `meshio` to support a wide range of 3D file for
 ### Format-Specific Notes
 
 #### CTM (OpenCTM)
-CTM files are commonly found on 3D model marketplaces like Sketchfab and CGTrader. They offer excellent compression (often 10-20x smaller than STL) but require the optional `python-openctm` package:
+CTM files are commonly found on 3D model marketplaces like Sketchfab and CGTrader. They offer excellent compression (often 10-20x smaller than STL) and are supported via PyMeshLab:
 
 ```bash
-pip install python-openctm
+pip install pymeshlab
 ```
+
+PyMeshLab provides the MeshLab engine as a Python library, which is the reference implementation for CTM and supports all compression modes (RAW, MG1, MG2).
 
 #### STEP/IGES (CAD Files)
 CAD formats like STEP and IGES are parametric and contain exact geometry (curves, surfaces). Converting to STL involves tessellation, which MeshPrep handles automatically. For best results:
@@ -151,7 +153,7 @@ The report includes the original format for traceability:
     "converted_from": "ctm",
     "original_vertices": 12450,
     "original_faces": 24896,
-    "conversion_notes": "Loaded via python-openctm"
+    "conversion_notes": "Loaded via PyMeshLab (MeshLab Python bindings)"
   }
 }
 ```
@@ -161,8 +163,8 @@ The report includes the original format for traceability:
 For maximum format support, install optional dependencies:
 
 ```bash
-# CTM support
-pip install python-openctm
+# CTM support (via PyMeshLab - MeshLab Python bindings)
+pip install pymeshlab
 
 # CAD format support (STEP, IGES, BREP)
 pip install trimesh[easy]  # Includes OpenCASCADE bindings

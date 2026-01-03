@@ -79,11 +79,19 @@ def load_mesh(path: Path) -> trimesh.Trimesh:
     Load a mesh from file.
     
     Args:
-        path: Path to STL/OBJ/PLY file
+        path: Path to STL/OBJ/PLY/CTM file
         
     Returns:
         trimesh.Trimesh object
     """
+    path = Path(path)
+    ext = path.suffix.lower()
+    
+    # CTM files require PyMeshLab (MeshLab's Python bindings)
+    if ext == '.ctm':
+        return _load_ctm_with_pymeshlab(path)
+    
+    # Standard formats - use trimesh
     mesh = trimesh.load(str(path), force='mesh')
     
     # If it's a Scene, extract the geometry
@@ -95,6 +103,43 @@ def load_mesh(path: Path) -> trimesh.Trimesh:
             mesh = trimesh.util.concatenate(list(mesh.geometry.values()))
     
     return mesh
+
+
+def _load_ctm_with_pymeshlab(path: Path) -> trimesh.Trimesh:
+    """
+    Load a CTM file using PyMeshLab.
+    
+    PyMeshLab provides MeshLab's mesh processing capabilities as a Python library.
+    MeshLab is the reference implementation for CTM and supports all compression
+    modes (RAW, MG1, MG2 with LZMA compression).
+    
+    Args:
+        path: Path to CTM file
+        
+    Returns:
+        trimesh.Trimesh object
+    """
+    try:
+        import pymeshlab
+    except ImportError:
+        raise ImportError(
+            "CTM format requires pymeshlab package. "
+            "Install with: pip install pymeshlab"
+        )
+    
+    # Create a MeshSet and load the CTM file
+    ms = pymeshlab.MeshSet()
+    ms.load_new_mesh(str(path))
+    
+    # Get the current mesh
+    mesh = ms.current_mesh()
+    
+    # Extract vertices and faces as numpy arrays
+    vertices = mesh.vertex_matrix()
+    faces = mesh.face_matrix()
+    
+    # Create and return trimesh object
+    return trimesh.Trimesh(vertices=vertices, faces=faces)
 
 
 def save_mesh(mesh: trimesh.Trimesh, path: Path, file_type: str = "stl") -> None:

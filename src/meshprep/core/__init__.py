@@ -20,6 +20,13 @@ from .mesh_ops import (
     compute_fingerprint,
     format_diagnostics,
     print_diagnostics,
+    # New universal loader exports
+    load_mesh_universal,
+    convert_to_stl,
+    LoadResult,
+    get_supported_extensions,
+    is_format_supported,
+    list_supported_formats,
 )
 
 from .validation import (
@@ -58,6 +65,13 @@ __all__ = [
     "compute_fingerprint",
     "format_diagnostics",
     "print_diagnostics",
+    # Universal loader
+    "load_mesh_universal",
+    "convert_to_stl",
+    "LoadResult",
+    "get_supported_extensions",
+    "is_format_supported",
+    "list_supported_formats",
     # Validation
     "GeometricValidation",
     "FidelityValidation", 

@@ -69,6 +69,7 @@ from meshprep_poc.actions.slicer_actions import get_mesh_info_prusa, is_slicer_a
 
 # Paths
 THINGI10K_PATH = Path(r"C:\Users\Dragon Ace\Source\repos\Thingi10K\raw_meshes")
+CTM_MESHES_PATH = Path(r"C:\Users\Dragon Ace\Source\repos\Thingi10K\ctm_meshes")
 REPORTS_PATH = Path(r"C:\Users\Dragon Ace\Source\repos\Thingi10K\raw_meshes\reports")
 FILTERS_PATH = Path(r"C:\Users\Dragon Ace\Source\repos\Thingi10K\raw_meshes\reports\filters")
 FIXED_OUTPUT_PATH = Path(r"C:\Users\Dragon Ace\Source\repos\Thingi10K\raw_meshes\fixed")
@@ -76,6 +77,9 @@ PROGRESS_FILE = Path(__file__).parent / "progress.json"
 SUMMARY_FILE = Path(__file__).parent / "summary.json"
 RESULTS_CSV = Path(__file__).parent / "results.csv"
 DASHBOARD_FILE = Path(__file__).parent / "dashboard.html"
+
+# Supported mesh formats
+SUPPORTED_FORMATS = {".stl", ".ctm", ".obj", ".ply", ".3mf", ".off"}
 
 # Ensure output directories exist
 REPORTS_PATH.mkdir(parents=True, exist_ok=True)
@@ -186,17 +190,41 @@ def save_progress(progress: Progress):
         json.dump(asdict(progress), f, indent=2)
 
 
-def get_all_stl_files(limit: Optional[int] = None) -> List[Path]:
-    """Get all STL files from Thingi10K."""
-    if not THINGI10K_PATH.exists():
-        raise FileNotFoundError(f"Thingi10K path not found: {THINGI10K_PATH}")
+def get_all_mesh_files(limit: Optional[int] = None, include_ctm: bool = False) -> List[Path]:
+    """Get all mesh files from Thingi10K and optionally CTM meshes.
     
-    stl_files = sorted(THINGI10K_PATH.glob("*.stl"))
+    Args:
+        limit: Optional limit on number of files to return
+        include_ctm: If True, include CTM meshes from the ctm_meshes directory
+    """
+    mesh_files = []
+    
+    # Get STL files from Thingi10K
+    if THINGI10K_PATH.exists():
+        stl_files = list(THINGI10K_PATH.glob("*.stl"))
+        mesh_files.extend(stl_files)
+        logger.info(f"Found {len(stl_files):,} STL files in Thingi10K")
+    else:
+        logger.warning(f"Thingi10K path not found: {THINGI10K_PATH}")
+    
+    # Get CTM files if requested
+    if include_ctm and CTM_MESHES_PATH.exists():
+        ctm_files = list(CTM_MESHES_PATH.rglob("*.ctm"))
+        mesh_files.extend(ctm_files)
+        logger.info(f"Found {len(ctm_files):,} CTM files in ctm_meshes")
+    
+    # Sort all files
+    mesh_files = sorted(mesh_files, key=lambda p: p.stem)
     
     if limit:
-        stl_files = stl_files[:limit]
+        mesh_files = mesh_files[:limit]
     
-    return stl_files
+    return mesh_files
+
+
+def get_all_stl_files(limit: Optional[int] = None) -> List[Path]:
+    """Get all STL files from Thingi10K (legacy function, use get_all_mesh_files)."""
+    return get_all_mesh_files(limit=limit, include_ctm=False)
 
 
 def get_best_filter(mesh) -> FilterScript:
@@ -1644,12 +1672,13 @@ def append_to_csv(result: TestResult):
         writer.writerow(row)
 
 
-def run_batch_test(limit: Optional[int] = None, skip_existing: bool = True):
+def run_batch_test(limit: Optional[int] = None, skip_existing: bool = True, include_ctm: bool = False):
     """Run the full batch test.
     
     Args:
         limit: Optional limit on number of files to process
         skip_existing: If True (default), skip files that already have reports
+        include_ctm: If True, include CTM meshes from the ctm_meshes directory
     """
     print("="* 60, flush=True)
     print("MeshPrep Thingi10K Full Test - POC v3", flush=True)
@@ -1667,16 +1696,33 @@ def run_batch_test(limit: Optional[int] = None, skip_existing: bool = True):
         print("[WARN] Blender not available - some models may fail", flush=True)
         logger.warning("[WARN] Blender not available - some models may fail")
     
-    # Get ALL STL files (for total count)
-    all_stl_files = get_all_stl_files(limit=None)
-    total_stl_count = len(all_stl_files)
+    # Check PyMeshLab for CTM support
+    if include_ctm:
+        try:
+            import pymeshlab
+            print("[OK] PyMeshLab available for CTM support", flush=True)
+            logger.info("[OK] PyMeshLab available for CTM support")
+        except ImportError:
+            print("[ERROR] PyMeshLab not installed - CTM files will fail", flush=True)
+            print("        Install with: pip install pymeshlab", flush=True)
+            logger.error("PyMeshLab not installed - CTM files will fail")
+            return
+    
+    # Get ALL mesh files (for total count)
+    all_mesh_files = get_all_mesh_files(limit=None, include_ctm=include_ctm)
+    total_mesh_count = len(all_mesh_files)
     
     # Get files to consider (with optional limit)
-    files_to_consider = get_all_stl_files(limit)
-    print(f"Found {total_stl_count:,} total STL files", flush=True)
+    files_to_consider = get_all_mesh_files(limit, include_ctm=include_ctm)
+    print(f"Found {total_mesh_count:,} total mesh files", flush=True)
+    if include_ctm:
+        ctm_count = sum(1 for f in all_mesh_files if f.suffix.lower() == '.ctm')
+        stl_count = total_mesh_count - ctm_count
+        print(f"  - STL files: {stl_count:,}", flush=True)
+        print(f"  - CTM files: {ctm_count:,}", flush=True)
     if limit:
         print(f"Processing first {len(files_to_consider):,} files (--limit {limit})", flush=True)
-    logger.info(f"Found {total_stl_count:,} STL files")
+    logger.info(f"Found {total_mesh_count:,} mesh files")
     
     # Check for already processed files
     processed_ids = get_processed_files()
@@ -1706,7 +1752,7 @@ def run_batch_test(limit: Optional[int] = None, skip_existing: bool = True):
     
     # Initialize progress - use total count, not limited count
     progress = Progress(
-        total_files=total_stl_count,
+        total_files=total_mesh_count,
         processed=len(processed_ids),  # Start from existing report count
         successful=len(processed_ids),  # Assume existing are successful
         start_time=datetime.now().isoformat(),
@@ -1854,6 +1900,11 @@ def main():
         action="store_true",
         help="Show current progress status"
     )
+    parser.add_argument(
+        "--ctm",
+        action="store_true",
+        help="Include CTM meshes from ctm_meshes directory (requires pymeshlab)"
+    )
     
     args = parser.parse_args()
     
@@ -1865,7 +1916,7 @@ def main():
     if args.fresh:
         logger.info("Fresh mode: will reprocess all files (existing results preserved until overwritten)")
     
-    run_batch_test(limit=args.limit, skip_existing=not args.fresh)
+    run_batch_test(limit=args.limit, skip_existing=not args.fresh, include_ctm=args.ctm)
 
 
 if __name__ == "__main__":
