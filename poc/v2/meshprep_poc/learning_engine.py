@@ -251,11 +251,25 @@ class LearningEngine:
         """Create a consistent key from a list of issues."""
         return ",".join(sorted(set(issues))) if issues else "none"
     
-    def _detect_profile(self, diagnostics: Optional[Dict[str, Any]]) -> str:
-        """Detect mesh profile from diagnostics."""
+    def _detect_profile(self, diagnostics: Optional[Dict[str, Any]], issues: List[str] = None) -> str:
+        """Detect mesh profile from diagnostics.
+        
+        First checks discovered profiles, then falls back to hardcoded rules.
+        """
         if not diagnostics:
             return "unknown"
         
+        # Try to get a discovered profile first
+        try:
+            from .profile_discovery import get_discovery_engine
+            discovery = get_discovery_engine()
+            discovered = discovery.get_profile_for_mesh(diagnostics, issues)
+            if discovered:
+                return f"discovered:{discovered.name}"
+        except Exception as e:
+            logger.debug(f"Profile discovery lookup failed: {e}")
+        
+        # Fall back to hardcoded rules
         body_count = diagnostics.get("body_count", 1)
         face_count = diagnostics.get("faces", 0)
         is_watertight = diagnostics.get("is_watertight", False)
@@ -291,11 +305,13 @@ class LearningEngine:
             # Extract key info
             model_id = filter_data.get("model_id", f"model_{datetime.now().timestamp()}")
             fingerprint = filter_data.get("model_fingerprint", "")
-            profile = self._detect_profile(before_diag)
             
             precheck_info = precheck.get("mesh_info", {}) or {}
             issues = precheck_info.get("issues", []) if precheck_info else []
             issue_pattern = self._get_issue_pattern_key(issues)
+            
+            # Detect profile (now uses issues for discovered profile matching)
+            profile = self._detect_profile(before_diag, issues)
             
             attempts = repair_attempts.get("attempts", [])
             total_attempts = repair_attempts.get("total_attempts", len(attempts))
@@ -482,6 +498,21 @@ class LearningEngine:
                         ON CONFLICT(profile_name, issue_type) DO UPDATE SET
                             count = count + 1
                     """, (profile, issue))
+            
+            # 10. Feed data to profile discovery engine
+            try:
+                from .profile_discovery import get_discovery_engine
+                discovery = get_discovery_engine()
+                discovery.record_model(
+                    model_id=model_id,
+                    diagnostics=before_diag,
+                    issues=issues,
+                    success=success,
+                    pipeline_used=winning_pipeline or "none",
+                    attempts=total_attempts,
+                )
+            except Exception as disc_error:
+                logger.debug(f"Profile discovery recording failed: {disc_error}")
             
             # Invalidate cache
             self._cache_valid = False
@@ -821,7 +852,46 @@ class LearningEngine:
                 "optimal_pipeline_order": (self._optimal_pipeline_order or [])[:5],
                 "top_pipelines": top_pipelines,
                 "profile_summary": profile_summary,
+                "discovered_profiles": self._get_discovered_profile_summary(),
             }
+    
+    def _get_discovered_profile_summary(self) -> Dict[str, Any]:
+        """Get summary of discovered profiles."""
+        try:
+            from .profile_discovery import get_discovery_engine
+            discovery = get_discovery_engine()
+            return discovery.get_stats_summary()
+        except Exception as e:
+            logger.debug(f"Could not get discovered profile summary: {e}")
+            return {"error": str(e)}
+    
+    def run_profile_discovery(self, min_samples: int = 50) -> List[Dict[str, Any]]:
+        """Run profile discovery on accumulated data.
+        
+        Args:
+            min_samples: Minimum samples required before running discovery
+            
+        Returns:
+            List of newly discovered profiles as dictionaries
+        """
+        try:
+            from .profile_discovery import get_discovery_engine
+            discovery = get_discovery_engine()
+            profiles = discovery.run_discovery(min_samples=min_samples)
+            return [
+                {
+                    "name": p.name,
+                    "description": p.description,
+                    "total_models": p.total_models,
+                    "success_rate": p.success_rate,
+                    "best_pipeline": p.best_pipeline,
+                    "recommended_pipelines": p.recommended_pipelines,
+                }
+                for p in profiles
+            ]
+        except Exception as e:
+            logger.warning(f"Profile discovery failed: {e}")
+            return []
     
     def get_detailed_pipeline_stats(self) -> List[Dict[str, Any]]:
         """Get detailed statistics for all pipelines."""

@@ -2309,7 +2309,104 @@ def show_learning_stats():
     except Exception as e:
         print(f"Error loading evolution stats: {e}")
     
+    # Show profile discovery stats
+    print("\n" + "=" * 60)
+    print("Profile Discovery Statistics")
     print("=" * 60)
+    
+    try:
+        from meshprep_poc.profile_discovery import get_discovery_engine
+        discovery = get_discovery_engine()
+        stats = discovery.get_stats_summary()
+        
+        print(f"\nClusters: {stats['total_clusters']}")
+        print(f"Models clustered: {stats['total_models_clustered']:,}")
+        print(f"Active discovered profiles: {stats['active_profiles']}")
+        print(f"Models with profiles: {stats.get('models_with_profiles', 0):,}")
+        print(f"Unassigned clusters: {stats['unassigned_clusters']}")
+        
+        if stats.get('top_profiles'):
+            print(f"\nTop discovered profiles:")
+            print(f"  {'Name':<40} {'Models':>8} {'Success':>8}")
+            print(f"  {'-'*40} {'-'*8} {'-'*8}")
+            for p in stats['top_profiles'][:5]:
+                print(f"  {p['name']:<40} {p['total_models']:>8} {p['success_rate']*100:>7.1f}%")
+        else:
+            print("\nNo discovered profiles yet. Run --discover-profiles after processing enough models.")
+        
+    except ImportError:
+        print("\nProfile discovery not available.")
+    except Exception as e:
+        print(f"Error loading profile discovery stats: {e}")
+    
+    print("=" * 60)
+
+
+def run_profile_discovery(min_samples: int = 50):
+    """Run profile discovery to create new profiles from clustered data."""
+    print("=" * 60)
+    print("MeshPrep Profile Discovery")
+    print("=" * 60)
+    
+    try:
+        from meshprep_poc.profile_discovery import get_discovery_engine
+        
+        discovery = get_discovery_engine()
+        stats = discovery.get_stats_summary()
+        
+        print(f"\nCurrent state:")
+        print(f"  Total clusters: {stats['total_clusters']}")
+        print(f"  Models clustered: {stats['total_models_clustered']:,}")
+        print(f"  Active profiles: {stats['active_profiles']}")
+        print(f"  Unassigned clusters: {stats['unassigned_clusters']}")
+        print(f"  Unassigned models: {stats.get('unassigned_models', 0):,}")
+        
+        if stats['total_models_clustered'] < min_samples:
+            print(f"\nNot enough samples for discovery ({stats['total_models_clustered']} < {min_samples})")
+            print("Process more models first.")
+            return
+        
+        print(f"\nRunning profile discovery (min_samples={min_samples})...")
+        
+        profiles = discovery.run_discovery(min_samples=min_samples)
+        
+        if profiles:
+            print(f"\n✓ Discovered {len(profiles)} new profiles:")
+            for p in profiles:
+                print(f"  - {p.name}")
+                print(f"    {p.description}")
+                print(f"    Models: {p.total_models}, Success rate: {p.success_rate*100:.1f}%")
+                if p.best_pipeline:
+                    print(f"    Best pipeline: {p.best_pipeline}")
+        else:
+            print("\nNo new profiles discovered.")
+            print("This could mean:")
+            print("  - All clusters are already assigned to profiles")
+            print("  - No clusters meet the minimum size requirements")
+        
+        # Show updated stats
+        stats = discovery.get_stats_summary()
+        print(f"\nUpdated state:")
+        print(f"  Active profiles: {stats['active_profiles']}")
+        print(f"  Models with profiles: {stats.get('models_with_profiles', 0):,}")
+        print(f"  Avg profile success rate: {stats.get('avg_profile_success_rate', 0)*100:.0f}%")
+        
+        if stats.get('top_profiles'):
+            print(f"\nTop profiles:")
+            print(f"  {'Name':<40} {'Models':>8} {'Success':>8}")
+            print(f"  {'-'*40} {'-'*8} {'-'*8}")
+            for p in stats['top_profiles'][:5]:
+                print(f"  {p['name']:<40} {p['total_models']:>8} {p['success_rate']*100:>7.1f}%")
+        
+    except ImportError:
+        print("\nProfile discovery engine not available.")
+        print("Make sure meshprep_poc.profile_discovery is importable.")
+    except Exception as e:
+        print(f"\nError during profile discovery: {e}")
+        import traceback
+        traceback.print_exc()
+    
+    print("\n" + "=" * 60)
 
 
 def main():
@@ -2346,6 +2443,17 @@ def main():
         action="store_true",
         help="Generate HTML learning status page"
     )
+    parser.add_argument(
+        "--discover-profiles",
+        action="store_true",
+        help="Run profile discovery to create new profiles from clustered data"
+    )
+    parser.add_argument(
+        "--min-samples",
+        type=int,
+        default=50,
+        help="Minimum samples required before running profile discovery (default: 50)"
+    )
     
     args = parser.parse_args()
     
@@ -2362,6 +2470,10 @@ def main():
         page_path = generate_learning_status_page()
         print(f"\nStatus page generated: {page_path}")
         print(f"Open in browser or serve with: python reports_server.py")
+        return
+    
+    if args.discover_profiles:
+        run_profile_discovery(min_samples=args.min_samples)
         return
     
     # If --fresh is passed, reprocess all files (but don't delete existing results)

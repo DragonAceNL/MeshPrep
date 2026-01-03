@@ -47,6 +47,17 @@ except ImportError:
     get_evolution_engine = None
     EvolvedPipeline = None
 
+# Import detailed learning logger (optional)
+try:
+    import sys
+    from pathlib import Path
+    sys.path.insert(0, str(Path(__file__).parent.parent.parent / "v3"))
+    from detailed_learning_logger import get_detailed_logger
+    DETAILED_LOGGING_AVAILABLE = True
+except ImportError:
+    DETAILED_LOGGING_AVAILABLE = False
+    get_detailed_logger = None
+
 logger = logging.getLogger(__name__)
 
 
@@ -56,6 +67,73 @@ MAX_VOLUME_LOSS_PERCENT = 40  # Reject if more than 40% volume lost
 MIN_FACES_ABSOLUTE = 20  # Reject if result has fewer than 20 faces
 MAX_FACE_INCREASE_FACTOR = 100  # Reject if faces increase by more than 100x
 
+
+def _extract_mesh_state(mesh: trimesh.Trimesh) -> dict:
+    """Extract mesh state for logging."""
+    try:
+        body_count = len(mesh.split(only_watertight=False))
+    except:
+        body_count = 1
+    
+    return {
+        "faces": len(mesh.faces),
+        "vertices": len(mesh.vertices),
+        "is_watertight": mesh.is_watertight,
+        "volume": float(mesh.volume) if mesh.is_watertight else 0,
+        "body_count": body_count,
+    }
+
+
+def _log_action_execution(
+    model_id: str,
+    pipeline_name: str,
+    attempt_number: int,
+    action_index: int,
+    action_def: dict,
+    mesh_before: trimesh.Trimesh,
+    mesh_after: trimesh.Trimesh,
+    duration_ms: float,
+    success: bool,
+    error_message: str = None,
+) -> None:
+    """Log detailed action execution for learning algorithm improvement."""
+    if not DETAILED_LOGGING_AVAILABLE:
+        return
+    
+    try:
+        detailed_logger = get_detailed_logger()
+        
+        before_state = _extract_mesh_state(mesh_before)
+        after_state = _extract_mesh_state(mesh_after)
+        
+        # Determine error category
+        error_category = None
+        if error_message:
+            if "timeout" in error_message.lower():
+                error_category = "timeout"
+            elif "memory" in error_message.lower():
+                error_category = "memory"
+            elif "geometry" in error_message.lower() or "loss" in error_message.lower():
+                error_category = "geometry_loss"
+            else:
+                error_category = "crash"
+        
+        detailed_logger.log_action_result(
+            model_id=model_id,
+            pipeline_name=pipeline_name,
+            attempt_number=attempt_number,
+            action_index=action_index,
+            action_name=action_def["action"],
+            action_params=action_def.get("params", {}),
+            duration_ms=duration_ms,
+            success=success,
+            error_message=error_message,
+            error_category=error_category,
+            mesh_before=before_state,
+            mesh_after=after_state,
+        )
+    except Exception as e:
+        logger.debug(f"Failed to log action details: {e}")
 
 def check_geometry_loss(original_mesh: trimesh.Trimesh, repaired_mesh: trimesh.Trimesh) -> tuple[bool, str]:
     """
@@ -482,13 +560,43 @@ def run_slicer_repair_loop(
             # ALWAYS start from the ORIGINAL mesh!
             working_mesh = original_mesh.copy()
             
+            # Generate a model_id for logging
+            model_id = f"model_{hash(id(original_mesh))}"
+            
             # Execute each action in the pipeline sequentially
-            for action_def in pipeline.actions:
+            for action_idx, action_def in enumerate(pipeline.actions):
                 action_name = action_def["action"]
                 action_params = action_def.get("params", {})
                 
                 logger.debug(f"      Executing: {action_name} {action_params}")
-                working_mesh = ActionRegistry.execute(action_name, working_mesh, action_params)
+                
+                # Capture mesh state before action
+                mesh_before = working_mesh.copy()
+                action_start = time.perf_counter()
+                action_error = None
+                action_success = True
+                
+                try:
+                    working_mesh = ActionRegistry.execute(action_name, working_mesh, action_params)
+                except Exception as e:
+                    action_error = str(e)
+                    action_success = False
+                    raise
+                finally:
+                    action_duration = (time.perf_counter() - action_start) * 1000
+                    # Log action execution details
+                    _log_action_execution(
+                        model_id=model_id,
+                        pipeline_name=pipeline.name,
+                        attempt_number=attempt_num,
+                        action_index=action_idx,
+                        action_def=action_def,
+                        mesh_before=mesh_before,
+                        mesh_after=working_mesh if action_success else mesh_before,
+                        duration_ms=action_duration,
+                        success=action_success,
+                        error_message=action_error,
+                    )
             
             repaired_mesh = working_mesh
             

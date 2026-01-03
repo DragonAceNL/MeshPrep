@@ -24,6 +24,14 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "v2"))
 
 from meshprep_poc.learning_engine import get_learning_engine
 
+# Try to import detailed learning logger
+try:
+    from detailed_learning_logger import get_detailed_logger, DetailedLearningLogger
+    DETAILED_LOGGING_AVAILABLE = True
+except ImportError:
+    DETAILED_LOGGING_AVAILABLE = False
+    get_detailed_logger = None
+
 # Try to import evolution engine
 try:
     from meshprep_poc.pipeline_evolution import get_evolution_engine
@@ -31,6 +39,14 @@ try:
 except ImportError:
     EVOLUTION_AVAILABLE = False
     get_evolution_engine = None
+
+# Try to import profile discovery
+try:
+    from meshprep_poc.profile_discovery import get_discovery_engine
+    PROFILE_DISCOVERY_AVAILABLE = True
+except ImportError:
+    PROFILE_DISCOVERY_AVAILABLE = False
+    get_discovery_engine = None
 
 # Output path
 STATUS_PAGE_PATH = Path(__file__).parent / "learning_status.html"
@@ -42,6 +58,7 @@ def get_learning_data() -> Dict[str, Any]:
         "generated_at": datetime.now().isoformat(),
         "learning_engine": None,
         "evolution_engine": None,
+        "detailed_analysis": None,
     }
     
     # Get learning engine stats
@@ -253,6 +270,26 @@ def get_learning_data() -> Dict[str, Any]:
             data["evolution_engine"] = {"error": str(e)}
     else:
         data["evolution_engine"] = {"error": "Evolution engine not available"}
+    
+    # Get detailed analysis data
+    if DETAILED_LOGGING_AVAILABLE:
+        try:
+            detailed_logger = get_detailed_logger()
+            data["detailed_analysis"] = detailed_logger.get_analysis_summary()
+        except Exception as e:
+            data["detailed_analysis"] = {"error": str(e)}
+    else:
+        data["detailed_analysis"] = {"error": "Detailed logging not available"}
+    
+    # Get profile discovery data
+    if PROFILE_DISCOVERY_AVAILABLE:
+        try:
+            discovery = get_discovery_engine()
+            data["profile_discovery"] = discovery.get_stats_summary()
+        except Exception as e:
+            data["profile_discovery"] = {"error": str(e)}
+    else:
+        data["profile_discovery"] = {"error": "Profile discovery not available"}
     
     return data
 
@@ -551,6 +588,210 @@ def generate_status_page(data: Dict[str, Any]) -> str:
         </div>
         """
     
+    # Detailed analysis section
+    detailed_html = ""
+    if data.get("detailed_analysis") and "error" not in data["detailed_analysis"]:
+        da = data["detailed_analysis"]
+        
+        detailed_html += """
+        <div class="section">
+            <h2>🔬 Detailed Action Analysis</h2>
+            <p class="section-desc">Granular action-level data for algorithm improvement.</p>
+        """
+        
+        # Problematic actions
+        if da.get("problematic_actions"):
+            detailed_html += """
+            <h3>⚠️ Most Problematic Actions (High Break Rate)</h3>
+            <p class="section-desc">Actions that frequently make meshes worse.</p>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Action</th>
+                        <th>Break Rate</th>
+                        <th>Fix Rate</th>
+                        <th>Times Tried</th>
+                    </tr>
+                </thead>
+                <tbody>
+            """
+            for a in da["problematic_actions"]:
+                break_class = "danger" if (a["break_rate"] or 0) > 0.3 else "warning" if (a["break_rate"] or 0) > 0.1 else "success"
+                detailed_html += f"""
+                    <tr>
+                        <td><code>{a['action_name']}</code></td>
+                        <td class="{break_class}">{(a['break_rate'] or 0)*100:.1f}%</td>
+                        <td>{(a['fix_rate'] or 0)*100:.1f}%</td>
+                        <td>{a['total']}</td>
+                    </tr>
+                """
+            detailed_html += """
+                </tbody>
+            </table>
+            """
+        
+        # Common failure modes
+        if da.get("common_failure_modes"):
+            detailed_html += """
+            <h3>❌ Common Failure Modes</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Failure Type</th>
+                        <th>Stage</th>
+                        <th>Count</th>
+                    </tr>
+                </thead>
+                <tbody>
+            """
+            for f in da["common_failure_modes"]:
+                detailed_html += f"""
+                    <tr>
+                        <td><code>{f['failure_type']}</code></td>
+                        <td>{f['failure_stage']}</td>
+                        <td>{f['count']}</td>
+                    </tr>
+                """
+            detailed_html += """
+                </tbody>
+            </table>
+            """
+        
+        # Success by body count
+        if da.get("success_by_body_count"):
+            detailed_html += """
+            <h3>📊 Success Rate by Body Count</h3>
+            <p class="section-desc">How mesh fragmentation affects repair success.</p>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Body Count</th>
+                        <th>Total Models</th>
+                        <th>Success Rate</th>
+                    </tr>
+                </thead>
+                <tbody>
+            """
+            for s in da["success_by_body_count"]:
+                rate_class = "success" if (s["success_rate"] or 0) >= 0.7 else "warning" if (s["success_rate"] or 0) >= 0.4 else "danger"
+                detailed_html += f"""
+                    <tr>
+                        <td>{s['body_bucket']}</td>
+                        <td>{s['total']}</td>
+                        <td class="{rate_class}">{(s['success_rate'] or 0)*100:.1f}%</td>
+                    </tr>
+                """
+            detailed_html += """
+                </tbody>
+            </table>
+            """
+        
+        detailed_html += "</div>"
+    else:
+        error = data.get("detailed_analysis", {}).get("error", "Not available")
+        detailed_html = f"""
+        <div class="section">
+            <h2>🔬 Detailed Action Analysis</h2>
+            <div class="info-box">
+                Detailed analysis: {error}
+                <br><br>
+                Run batch tests to collect action-level data for algorithm improvement.
+            </div>
+        </div>
+        """
+    
+    # Discovered profiles section
+    discovered_profiles_html = ""
+    if data.get("profile_discovery") and "error" not in data["profile_discovery"]:
+        dp = data["profile_discovery"]
+        
+        discovered_profiles_html += f"""
+        <div class="section">
+            <h2>\U0001F50D Discovered Profiles</h2>
+            <p class="section-desc">Automatically discovered mesh profile categories through clustering</p>
+            
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-value">{dp.get('active_profiles', 0)}</div>
+                    <div class="stat-label">Active Profiles</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value">{dp.get('total_clusters', 0)}</div>
+                    <div class="stat-label">Clusters</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value">{dp.get('models_with_profiles', 0):,}</div>
+                    <div class="stat-label">Models Assigned</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value">{dp.get('avg_profile_success_rate', 0)*100:.0f}%</div>
+                    <div class="stat-label">Avg Success</div>
+                </div>
+            </div>
+        """
+        
+        if dp.get("top_profiles"):
+            discovered_profiles_html += """
+            <h3>Top Discovered Profiles</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Profile Name</th>
+                        <th>Models</th>
+                        <th>Success Rate</th>
+                        <th>Best Pipeline</th>
+                    </tr>
+                </thead>
+                <tbody>
+            """
+            for p in dp["top_profiles"]:
+                rate_class = "success" if p["success_rate"] >= 0.7 else "warning" if p["success_rate"] >= 0.4 else "danger"
+                discovered_profiles_html += f"""
+                    <tr>
+                        <td><code>{p['name']}</code></td>
+                        <td>{p['total_models']:,}</td>
+                        <td class="{rate_class}">{p['success_rate']*100:.1f}%</td>
+                        <td>{p['best_pipeline'] or 'N/A'}</td>
+                    </tr>
+                """
+            discovered_profiles_html += """
+                </tbody>
+            </table>
+            """
+        
+        # Show unassigned clusters waiting for discovery
+        if dp.get("unassigned_clusters", 0) > 0:
+            discovered_profiles_html += f"""
+            <div class="info-box" style="margin-top: 15px;">
+                <strong>{dp['unassigned_clusters']}</strong> clusters with 
+                <strong>{dp.get('unassigned_models', 0):,}</strong> models awaiting profile assignment.
+                Run profile discovery to create new profiles.
+            </div>
+            """
+        
+        discovered_profiles_html += "</div>"
+    else:
+        error = data.get("profile_discovery", {}).get("error", "Not available")
+        dp_data = data.get("profile_discovery", {})
+        if dp_data.get("total_clusters", 0) == 0:
+            discovered_profiles_html = f"""
+            <div class="section">
+                <h2>\U0001F50D Discovered Profiles</h2>
+                <div class="info-box">
+                    No profiles discovered yet. Process more models to enable automatic profile discovery.
+                </div>
+            </div>
+            """
+        else:
+            discovered_profiles_html = f"""
+            <div class="section">
+                <h2>\U0001F50D Discovered Profiles</h2>
+                <div class="info-box">
+                    Profile discovery: {error}
+                </div>
+            </div>
+            """
+    
     # Generate full HTML
     html = f"""<!DOCTYPE html>
 <html>
@@ -773,6 +1014,10 @@ def generate_status_page(data: Dict[str, Any]) -> str:
         {learning_html}
         
         {evolution_html}
+        
+        {detailed_html}
+        
+        {discovered_profiles_html}
         
         <p class="refresh-note">This page auto-refreshes every 60 seconds. <a href="javascript:location.reload()">Refresh now</a></p>
     </div>
