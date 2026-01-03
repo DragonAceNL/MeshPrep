@@ -27,9 +27,13 @@ Non-Goals
 
 Slicer Validation (Final Validation Step)
 ------------------------------------------
-Slicer validation provides the definitive test for 3D printability by running the repaired model through an actual slicer. This catches issues that geometry-only validation cannot detect.
+Slicer validation is the **recommended final validation step** that provides the definitive test for 3D printability. By default, every model processed by MeshPrep is validated through an actual slicer to ensure it is truly printable. This catches issues that geometry-only validation cannot detect.
 
-### Why Slicer Validation?
+**Design Philosophy**: MeshPrep prioritizes quality over speed. A model is not considered "fixed" until it successfully passes slicer validation. While this adds processing time, it guarantees that output models are actually printable. Users who have validated filter scripts can optionally skip slicer validation for faster batch processing.
+
+**Slicer Validation Status in Reports**: When slicer validation is skipped, the output report and filter script metadata will clearly indicate `"slicer_validated": false`. This ensures transparency about the validation level of any exported model or shared filter script.
+
+### Why Slicer Validation is Recommended
 
 Geometry validation (watertight, manifold) is necessary but not sufficient for 3D printability:
 
@@ -182,25 +186,38 @@ For each slicer issue, MeshPrep maintains a prioritized list of repair strategie
 
 | Argument | Type | Required | Default | Description |
 |----------|------|----------|---------|-------------|
-| `--slicer` | choice | no | `auto` | Slicer to use: `prusa`, `orca`, `cura`, `auto` (detect), `none` (skip) |
+| `--slicer` | choice | no | `auto` | Slicer to use: `prusa`, `orca`, `cura`, `auto` (detect first available) |
 | `--slicer-config` | path | no | — | Path to slicer printer/profile config |
 | `--slicer-repair` | choice | no | `auto` | Slicer-driven repair mode: `auto`, `prompt`, `never` |
 | `--max-repair-attempts` | int | no | `10` | Maximum repair attempts in slicer loop |
+| `--skip-slicer-validation` | flag | no | false | Skip slicer validation (only use with trusted filter scripts) |
+| `--trust-filter-script` | flag | no | false | Trust the filter script and skip slicer validation (alias for --skip-slicer-validation) |
+
+**Note**: Slicer validation is **always enabled by default**. The `--skip-slicer-validation` flag should only be used when applying a known-good filter script that has already been validated.
 
 ### Validation Levels
 
-MeshPrep supports three validation levels, each building on the previous:
+MeshPrep uses a three-level validation system. **Level 3 (Slicer Validated) is the default and required for all output**:
 
-| Level | Checks | Confidence | Speed |
-|-------|--------|------------|-------|
-| **1. Basic** | `is_watertight`, `is_volume` | ~80% | Fast (ms) |
-| **2. Full Geometry** | + consistent normals, no self-intersections | ~90% | Medium (s) |
-| **3. Slicer Validated** | + successful slicer pass | ~99% | Slow (s-min) |
+| Level | Checks | Confidence | Speed | When to Use |
+|-------|--------|------------|-------|-------------|
+| **1. Basic** | `is_watertight`, `is_volume` | ~80% | Fast (ms) | Internal checkpoints only |
+| **2. Full Geometry** | + consistent normals, no self-intersections | ~90% | Medium (s) | Internal checkpoints only |
+| **3. Slicer Validated** | + successful slicer pass | **~99%** | Slow (s-min) | **Default for all output** |
 
-Users can choose their desired validation level:
-- **Level 1**: Quick check, suitable for batch processing
-- **Level 2**: Default for most use cases
-- **Level 3**: Maximum confidence, recommended for final output
+**Important**: Levels 1 and 2 are used as internal checkpoints during the repair process. The final output is always validated at Level 3 unless explicitly skipped with `--skip-slicer-validation` (only recommended when using a proven filter script).
+
+### When Slicer Validation Can Be Skipped
+
+Slicer validation can be skipped **only** in these scenarios:
+
+1. **Using a verified filter script**: When applying a filter script that has been previously validated and shared by the community, users can skip re-validation for faster processing.
+2. **Batch processing with known-good presets**: When processing many similar models with a proven preset.
+3. **Development/testing**: When iterating on filter scripts during development.
+
+To skip slicer validation, use: `--skip-slicer-validation` or `--trust-filter-script`
+
+**Warning**: Skipping slicer validation means the output is not guaranteed to be printable. The report will clearly indicate that slicer validation was skipped.
 
 ### Reporting Slicer Results
 
@@ -246,6 +263,58 @@ When slicer validation fails after exhausting all repair options:
    - Full repair history
    - Slicer error logs
 
+### Sharing Validated Filter Scripts
+
+Once a filter script has been validated through the slicer validation process, it can be shared with the community. This allows others to:
+
+1. **Skip the validation process**: Use `--trust-filter-script` to apply the proven filter script without re-running slicer validation.
+2. **Save processing time**: Avoid the iterative repair loop for similar models.
+3. **Build on proven solutions**: Start from a working filter script and customize as needed.
+
+**Filter Script Validation Status**:
+
+Filter scripts include a `validation` section in their metadata:
+
+```json
+{
+  "name": "multi-component-fix",
+  "version": "1.0.0",
+  "meta": {
+    "author": "community_user",
+    "description": "Fixes multi-component models with holes",
+    "slicer_validated": true,
+    "validation_details": {
+      "slicer": "prusa-slicer",
+      "slicer_version": "2.7.0",
+      "validated_on": "2025-01-15T10:30:00Z",
+      "test_models": ["model1.stl", "model2.stl"],
+      "success_rate": "100%"
+    }
+  },
+  "actions": [...]
+}
+```
+
+**When slicer validation is skipped**, the filter script will show:
+
+```json
+{
+  "meta": {
+    "slicer_validated": false,
+    "validation_note": "Slicer validation was skipped. Print success not guaranteed."
+  }
+}
+```
+
+**Trust Levels**:
+
+| Trust Level | Description | Can Skip Slicer Validation? |
+|-------------|-------------|-----------------------------|
+| `unvalidated` | New or modified filter script | No |
+| `self-validated` | Validated by the author | Yes (with warning) |
+| `community-validated` | Validated by multiple users | Yes |
+| `official` | Part of MeshPrep's built-in presets | Yes |
+
 ### Future: Advanced Slicer Integration
 
 The slicer validation framework is designed to support future enhancements:
@@ -261,7 +330,7 @@ Functional Requirements
 2. Validation checks: watertightness, manifoldness, consistent normals, component count, and bounding box sanity.
 3. Repair steps: remove degenerate faces, merge duplicate vertices, reorient normals, fill holes, remove tiny disconnected components.
 4. Escalation: if primary repairs fail, run an advanced Blender-based pipeline (if Blender present) with remeshing and boolean cleanup.
-5. Slicer validation: run the repaired model through a slicer (PrusaSlicer, OrcaSlicer, etc.) to verify it is truly printable. Parse slicer errors/warnings and attempt automatic repairs using available filter actions until the model passes or no repair options remain.
+5. **Slicer validation (strongly recommended)**: run the repaired model through a slicer (PrusaSlicer, OrcaSlicer, etc.) to verify it is truly printable. Parse slicer errors/warnings and attempt automatic repairs using available filter actions until the model passes or no repair options remain. Slicer validation is enabled by default and strongly recommended. When skipped, the report and filter script metadata will indicate `"slicer_validated": false`.
 6. Configurable filter scripts: filter scripts defined in JSON/YAML and selectable via GUI/CLI; suggested filter scripts from model scan may be created automatically.
 7. Reporting: generate CSV and JSON reports detailing diagnostics, filter script attempts, slicer validation results, runtime, and final status for the model.
 8. Deterministic filenames: output files named with original name + filter script suffix.
@@ -629,11 +698,12 @@ Command-line interface specification for `auto_fix_stl.py`:
 | `--csv` | path | no | `./report.csv` | Path for CSV report output |
 | `--export-run` | path | no | — | Export reproducible run package to specified directory |
 | `--use-blender` | choice | no | `on-failure` | When to use Blender escalation: `always`, `on-failure`, `never` |
-| `--slicer` | choice | no | `auto` | Slicer to use: `prusa`, `orca`, `cura`, `auto` (detect), `none` (skip) |
+| `--slicer` | choice | no | `auto` | Slicer to use: `prusa`, `orca`, `cura`, `auto` (detect first available) |
 | `--slicer-config` | path | no | — | Path to slicer printer/profile config |
 | `--slicer-repair` | choice | no | `auto` | Slicer-driven repair mode: `auto`, `prompt`, `never` |
 | `--max-repair-attempts` | int | no | `10` | Maximum repair attempts in slicer validation loop |
-| `--validation-level` | choice | no | `2` | Validation level: `1` (basic), `2` (full geometry), `3` (slicer validated) |
+| `--skip-slicer-validation` | flag | no | false | Skip slicer validation (only use with trusted filter scripts) |
+| `--trust-filter-script` | flag | no | false | Trust the filter script and skip slicer validation |
 
 | `--overwrite` | flag | no | false | Overwrite existing output files |
 | `--verbose` | flag | no | false | Enable verbose logging |
@@ -641,25 +711,28 @@ Command-line interface specification for `auto_fix_stl.py`:
 
 Examples:
 ```bash
-# Auto-detect profile and repair
+# Auto-detect profile and repair (includes slicer validation by default)
 python auto_fix_stl.py --input model.stl --output ./clean/
 
-# Use a specific filter script
+# Use a specific filter script (still validates with slicer)
 python auto_fix_stl.py --input model.stl --filter my_filter.json
 
-# Use a named preset
+# Use a named preset (still validates with slicer)
 python auto_fix_stl.py --input model.stl --preset holes-only
 
-# Full slicer validation with PrusaSlicer
-python auto_fix_stl.py --input model.stl --slicer prusa --validation-level 3
+# Use PrusaSlicer specifically for validation
+python auto_fix_stl.py --input model.stl --slicer prusa
 
-# Slicer validation with iterative repairs (up to 15 attempts)
-python auto_fix_stl.py --input model.stl --slicer prusa --slicer-repair auto --max-repair-attempts 15
+# Allow more repair attempts before giving up
+python auto_fix_stl.py --input model.stl --max-repair-attempts 15
 
-# Quick geometry-only validation (no slicer)
-python auto_fix_stl.py --input model.stl --slicer none --validation-level 2
+# Skip slicer validation when using a trusted/proven filter script (faster)
+python auto_fix_stl.py --input model.stl --preset community-verified --trust-filter-script
 
-# Export run package for sharing
+# Batch processing with a known-good preset (skip validation for speed)
+python auto_fix_stl.py --input model.stl --preset proven-preset --skip-slicer-validation
+
+# Export run package for sharing (includes full slicer validation)
 python auto_fix_stl.py --input model.stl --export-run ./share/run1/
 ```
 
