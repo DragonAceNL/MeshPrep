@@ -1201,8 +1201,86 @@ def generate_dashboard(progress: Progress, results: List[TestResult]):
         f.write(html)
 
 
-def generate_reports_index(results: List[TestResult]):
-    """Generate an index.html in the reports folder for easy navigation."""
+def load_results_from_reports() -> List[TestResult]:
+    """Load test results from existing HTML reports and filter JSON files."""
+    results = []
+    
+    # Get all HTML reports (excluding index.html)
+    for html_file in REPORTS_PATH.glob("*.html"):
+        if html_file.stem == "index":
+            continue
+        
+        file_id = html_file.stem
+        filter_json = FILTERS_PATH / f"{file_id}.json"
+        
+        # Try to load from filter JSON which has more accurate data
+        if filter_json.exists():
+            try:
+                with open(filter_json, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                
+                result = TestResult(
+                    file_id=file_id,
+                    file_path=str(THINGI10K_PATH / f"{file_id}.stl"),
+                    success=True,  # If report exists, assume success
+                    filter_used=data.get("filter_name", "unknown"),
+                    escalation_used=data.get("escalated_to_blender", False),
+                    precheck_skipped=data.get("precheck_skipped", False),
+                    precheck_passed=data.get("precheck_passed", False),
+                    timestamp=data.get("timestamp", ""),
+                )
+                results.append(result)
+            except Exception as e:
+                logger.warning(f"Failed to load filter JSON for {file_id}: {e}")
+                # Create minimal result
+                results.append(TestResult(
+                    file_id=file_id,
+                    file_path=str(THINGI10K_PATH / f"{file_id}.stl"),
+                    success=True,
+                    filter_used="unknown",
+                ))
+        else:
+            # No filter JSON - try to parse HTML for status
+            try:
+                with open(html_file, 'r', encoding='utf-8') as f:
+                    html_content = f.read()
+                
+                # Check if it's an "Already Clean" report
+                is_clean = 'Already Clean' in html_content or 'already clean' in html_content.lower()
+                is_skipped = 'skipped' in html_content.lower() or 'none (already clean)' in html_content.lower()
+                
+                results.append(TestResult(
+                    file_id=file_id,
+                    file_path=str(THINGI10K_PATH / f"{file_id}.stl"),
+                    success=True,
+                    filter_used="none (already clean)" if (is_clean or is_skipped) else "unknown",
+                    precheck_skipped=(is_clean or is_skipped),
+                ))
+            except Exception as e:
+                logger.warning(f"Failed to parse HTML for {file_id}: {e}")
+                results.append(TestResult(
+                    file_id=file_id,
+                    file_path=str(THINGI10K_PATH / f"{file_id}.stl"),
+                    success=True,
+                    filter_used="unknown",
+                ))
+    
+    return results
+
+
+def generate_reports_index(results: List[TestResult] = None):
+    """Generate an index.html in the reports folder for easy navigation.
+    
+    If results is None or empty, loads results from existing report files.
+    """
+    # If no results passed, load from existing reports
+    if not results:
+        results = load_results_from_reports()
+    
+    if not results:
+        logger.warning("No results to generate index from")
+        return
+    
     index_path = REPORTS_PATH / "index.html"
     
     # Sort results by file_id
@@ -1621,6 +1699,11 @@ def run_batch_test(limit: Optional[int] = None, skip_existing: bool = True):
         logger.info("All files already processed! Use --fresh to reprocess.")
         return
     
+    # Load existing results from reports (for index regeneration)
+    existing_results = load_results_from_reports()
+    existing_ids = {r.file_id for r in existing_results}
+    logger.info(f"Loaded {len(existing_results)} existing results from reports")
+    
     # Initialize progress - use total count, not limited count
     progress = Progress(
         total_files=total_stl_count,
@@ -1631,9 +1714,11 @@ def run_batch_test(limit: Optional[int] = None, skip_existing: bool = True):
     
     # Save initial progress immediately so dashboard shows correct state
     save_progress(progress)
-    generate_dashboard(progress, [])
+    generate_dashboard(progress, existing_results)  # Use existing results for initial dashboard
     
-    results: List[TestResult] = []
+    # Start with existing results, new results will be added
+    results: List[TestResult] = list(existing_results)
+    new_results_count = 0  # Track only new results for progress display
     
     # Process each file (only files that need processing)
     for i, stl_path in enumerate(to_process):
@@ -1643,19 +1728,20 @@ def run_batch_test(limit: Optional[int] = None, skip_existing: bool = True):
         progress.current_file = file_id
         progress.processed += 1
         
-        # Calculate ETA
-        if len(results) > 0 and progress.avg_duration_ms > 0:
-            remaining = len(to_process) - len(results)
+        # Calculate ETA based on new results only
+        if new_results_count > 0 and progress.avg_duration_ms > 0:
+            remaining = len(to_process) - new_results_count
             progress.eta_seconds = (remaining * progress.avg_duration_ms) / 1000
         
         # Log progress
         eta_str = str(timedelta(seconds=int(progress.eta_seconds))) if progress.eta_seconds > 0 else "calculating..."
-        print(f"[{len(results)+1}/{len(to_process)}] Processing {file_id}... (ETA: {eta_str})", flush=True)
+        print(f"[{new_results_count+1}/{len(to_process)}] Processing {file_id}... (ETA: {eta_str})", flush=True)
         logger.info(f"[{i+1}/{len(to_process)}] Processing {file_id}...")
         
         # Process
         result = process_single_model(stl_path, progress=progress)
         results.append(result)
+        new_results_count += 1
         
         # Append to CSV for incremental export
         append_to_csv(result)
@@ -1673,7 +1759,8 @@ def run_batch_test(limit: Optional[int] = None, skip_existing: bool = True):
             progress.precheck_skipped += 1
         
         progress.total_duration_ms += result.duration_ms
-        progress.avg_duration_ms = progress.total_duration_ms / len(results)
+        if new_results_count > 0:
+            progress.avg_duration_ms = progress.total_duration_ms / new_results_count
         
         # Save progress after every file (for live dashboard)
         save_progress(progress)
