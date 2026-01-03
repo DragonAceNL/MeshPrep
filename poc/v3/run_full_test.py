@@ -72,6 +72,7 @@ FILTERS_PATH = Path(r"C:\Users\Dragon Ace\Source\repos\Thingi10K\raw_meshes\repo
 FIXED_OUTPUT_PATH = Path(r"C:\Users\Dragon Ace\Source\repos\Thingi10K\raw_meshes\fixed")
 PROGRESS_FILE = Path(__file__).parent / "progress.json"
 SUMMARY_FILE = Path(__file__).parent / "summary.json"
+RESULTS_CSV = Path(__file__).parent / "results.csv"
 DASHBOARD_FILE = Path(__file__).parent / "dashboard.html"
 
 # Ensure output directories exist
@@ -108,6 +109,16 @@ class TestResult:
     # Geometry change
     volume_change_pct: float = 0
     face_change_pct: float = 0
+    
+    # Additional diagnostics
+    original_components: int = 0
+    original_holes: int = 0
+    result_components: int = 0
+    result_holes: int = 0
+    
+    # File sizes (bytes)
+    original_file_size: int = 0
+    fixed_file_size: int = 0
     
     timestamp: str = field(default_factory=lambda: datetime.now().isoformat())
 
@@ -305,6 +316,18 @@ def process_single_model(stl_path: Path) -> TestResult:
         result.original_volume = original_diag.volume
         result.original_watertight = original_diag.is_watertight
         result.original_manifold = original_diag.is_volume
+        result.original_file_size = stl_path.stat().st_size
+        
+        # Additional diagnostics
+        try:
+            result.original_components = len(original.split(only_watertight=False))
+        except:
+            result.original_components = 1
+        try:
+            # Count boundary edges (holes)
+            result.original_holes = len(original.faces[original.facets_boundary]) if hasattr(original, 'facets_boundary') else 0
+        except:
+            result.original_holes = 0
         
         # Select filter
         filter_script = get_best_filter(original)
@@ -368,6 +391,16 @@ def process_single_model(stl_path: Path) -> TestResult:
         result.result_watertight = repaired.is_watertight
         result.result_manifold = repaired.is_volume
         
+        # Result diagnostics
+        try:
+            result.result_components = len(repaired.split(only_watertight=False))
+        except:
+            result.result_components = 1
+        try:
+            result.result_holes = len(repaired.faces[repaired.facets_boundary]) if hasattr(repaired, 'facets_boundary') else 0
+        except:
+            result.result_holes = 0
+        
         # Success based on FINAL mesh state (not pre-decimation)
         result.success = repaired.is_watertight and repaired.is_volume
         result.duration_ms = (time.time() - start_time) * 1000
@@ -376,6 +409,7 @@ def process_single_model(stl_path: Path) -> TestResult:
         fixed_path = FIXED_OUTPUT_PATH / f"{file_id}.stl"
         if result.success:
             save_mesh(repaired, fixed_path)
+            result.fixed_file_size = fixed_path.stat().st_size
             logger.info(f"  Saved fixed model to {fixed_path}")
         
         # Save filter script used
@@ -778,6 +812,64 @@ def get_processed_files() -> set:
     return processed
 
 
+def append_to_csv(result: TestResult):
+    """Append a single result to the CSV file."""
+    import csv
+    
+    # Define CSV columns
+    columns = [
+        'file_id', 'success', 'filter_used', 'escalation_used', 'duration_ms',
+        'original_vertices', 'original_faces', 'original_volume', 
+        'original_watertight', 'original_manifold',
+        'result_vertices', 'result_faces', 'result_volume',
+        'result_watertight', 'result_manifold',
+        'volume_change_pct', 'face_change_pct',
+        'original_components', 'original_holes',
+        'result_components', 'result_holes',
+        'original_file_size', 'fixed_file_size',
+        'error', 'timestamp'
+    ]
+    
+    # Check if file exists (write header if not)
+    write_header = not RESULTS_CSV.exists()
+    
+    with open(RESULTS_CSV, 'a', newline='', encoding='utf-8') as f:
+        writer = csv.DictWriter(f, fieldnames=columns)
+        
+        if write_header:
+            writer.writeheader()
+        
+        # Convert result to dict and write
+        row = {
+            'file_id': result.file_id,
+            'success': result.success,
+            'filter_used': result.filter_used,
+            'escalation_used': result.escalation_used,
+            'duration_ms': result.duration_ms,
+            'original_vertices': result.original_vertices,
+            'original_faces': result.original_faces,
+            'original_volume': result.original_volume,
+            'original_watertight': result.original_watertight,
+            'original_manifold': result.original_manifold,
+            'result_vertices': result.result_vertices,
+            'result_faces': result.result_faces,
+            'result_volume': result.result_volume,
+            'result_watertight': result.result_watertight,
+            'result_manifold': result.result_manifold,
+            'volume_change_pct': result.volume_change_pct,
+            'face_change_pct': result.face_change_pct,
+            'original_components': result.original_components,
+            'original_holes': result.original_holes,
+            'result_components': result.result_components,
+            'result_holes': result.result_holes,
+            'original_file_size': result.original_file_size,
+            'fixed_file_size': result.fixed_file_size,
+            'error': result.error or '',
+            'timestamp': result.timestamp
+        }
+        writer.writerow(row)
+
+
 def run_batch_test(limit: Optional[int] = None, resume: bool = True):
     """Run the full batch test.
     
@@ -801,10 +893,16 @@ def run_batch_test(limit: Optional[int] = None, resume: bool = True):
         print("[WARN] Blender not available - some models may fail", flush=True)
         logger.warning("[WARN] Blender not available - some models may fail")
     
-    # Get all files
-    all_files = get_all_stl_files(limit)
-    print(f"Found {len(all_files):,} STL files", flush=True)
-    logger.info(f"Found {len(all_files):,} STL files")
+    # Get ALL STL files (for total count)
+    all_stl_files = get_all_stl_files(limit=None)
+    total_stl_count = len(all_stl_files)
+    
+    # Get files to consider (with optional limit)
+    files_to_consider = get_all_stl_files(limit)
+    print(f"Found {total_stl_count:,} total STL files", flush=True)
+    if limit:
+        print(f"Processing first {len(files_to_consider):,} files (--limit {limit})", flush=True)
+    logger.info(f"Found {total_stl_count:,} STL files")
     
     # Always check for already processed files (auto-resume)
     processed_ids = get_processed_files()
@@ -813,7 +911,7 @@ def run_batch_test(limit: Optional[int] = None, resume: bool = True):
         logger.info(f"Found {len(processed_ids):,} existing reports - will skip those")
     
     # Count how many we'll actually process
-    to_process = [f for f in all_files if f.stem not in processed_ids]
+    to_process = [f for f in files_to_consider if f.stem not in processed_ids]
     print(f"Will process {len(to_process):,} new files", flush=True)
     logger.info(f"Will process {len(to_process):,} new files")
     
@@ -822,27 +920,27 @@ def run_batch_test(limit: Optional[int] = None, resume: bool = True):
         logger.info("All files already processed! Use --fresh to reprocess.")
         return
     
-    # Initialize progress
+    # Initialize progress - use total count, not limited count
     progress = Progress(
-        total_files=len(all_files),
+        total_files=total_stl_count,
+        processed=len(processed_ids),  # Start from existing report count
+        successful=len(processed_ids),  # Assume existing are successful
         start_time=datetime.now().isoformat(),
     )
     
+    # Save initial progress immediately so dashboard shows correct state
+    save_progress(progress)
+    generate_dashboard(progress, [])
+    
     results: List[TestResult] = []
     
-    # Process each file
-    for i, stl_path in enumerate(all_files):
+    # Process each file (only files that need processing)
+    for i, stl_path in enumerate(to_process):
         file_id = stl_path.stem
-        
-        # Skip if already processed (resume mode)
-        if file_id in processed_ids:
-            progress.skipped += 1
-            progress.processed += 1
-            continue
         
         # Update progress
         progress.current_file = file_id
-        progress.processed = i + 1
+        progress.processed += 1
         
         # Calculate ETA
         if len(results) > 0 and progress.avg_duration_ms > 0:
@@ -852,11 +950,14 @@ def run_batch_test(limit: Optional[int] = None, resume: bool = True):
         # Log progress
         eta_str = str(timedelta(seconds=int(progress.eta_seconds))) if progress.eta_seconds > 0 else "calculating..."
         print(f"[{len(results)+1}/{len(to_process)}] Processing {file_id}... (ETA: {eta_str})", flush=True)
-        logger.info(f"[{i+1}/{len(all_files)}] Processing {file_id}...")
+        logger.info(f"[{i+1}/{len(to_process)}] Processing {file_id}...")
         
         # Process
         result = process_single_model(stl_path)
         results.append(result)
+        
+        # Append to CSV for incremental export
+        append_to_csv(result)
         
         # Update stats
         if result.success:
@@ -870,9 +971,11 @@ def run_batch_test(limit: Optional[int] = None, resume: bool = True):
         progress.total_duration_ms += result.duration_ms
         progress.avg_duration_ms = progress.total_duration_ms / len(results)
         
-        # Save progress and dashboard every 10 files
+        # Save progress after every file (for live dashboard)
+        save_progress(progress)
+        
+        # Update dashboard every 10 files (slower operation)
         if i % 10 == 0:
-            save_progress(progress)
             generate_dashboard(progress, results)
         
         # Log result

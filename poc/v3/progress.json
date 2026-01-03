@@ -1,14 +1,14 @@
 {
   "total_files": 9956,
-  "processed": 11,
-  "successful": 7,
-  "failed": 0,
-  "escalations": 0,
-  "skipped": 4,
-  "start_time": "2026-01-02T21:24:44.839829",
-  "last_update": "2026-01-02T21:24:48.578305",
-  "current_file": "100036",
-  "total_duration_ms": 794.5983409881592,
-  "avg_duration_ms": 113.51404871259417,
-  "eta_seconds": 1218.5567401250203
+  "processed": 645,
+  "successful": 613,
+  "failed": 32,
+  "escalations": 53,
+  "skipped": 0,
+  "start_time": "2026-01-02T21:42:56.431341",
+  "last_update": "2026-01-03T07:09:56.812330",
+  "current_file": "1088054",
+  "total_duration_ms": 32117817.01207161,
+  "avg_duration_ms": 49795.065134994744,
+  "eta_seconds": 428861.14191574184
 }

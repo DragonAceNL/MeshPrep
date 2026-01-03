@@ -57,6 +57,7 @@ That's it! The test will run automatically.
 | Before/After Images | `C:\Users\Dragon Ace\Source\repos\Thingi10K\raw_meshes\reports\images\` |
 | Filter Scripts | `C:\Users\Dragon Ace\Source\repos\Thingi10K\raw_meshes\reports\filters\` |
 | Fixed Models | `C:\Users\Dragon Ace\Source\repos\Thingi10K\raw_meshes\fixed\` |
+| **Results CSV** | `poc\v3\results.csv` - All results in one file for analysis |
 | Progress File | `poc\v3\progress.json` |
 | Dashboard | `poc\v3\dashboard.html` (static) or `live_dashboard.html` (live) |
 | Logs | `poc\v3\logs\` |
