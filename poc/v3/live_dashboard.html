@@ -240,10 +240,11 @@
             const percentComplete = p.total_files > 0 ? (p.processed / p.total_files * 100) : 0;
             const successRate = p.processed > 0 ? (p.successful / p.processed * 100) : 0;
             
-            // Check if running (updated in last 60 seconds)
+            // Check if running (updated in last 5 minutes - Blender can take a while)
             const lastUpdate = new Date(p.last_update);
             const now = new Date();
-            const isRunning = (now - lastUpdate) < 60000;
+            const secondsSinceUpdate = (now - lastUpdate) / 1000;
+            const isRunning = secondsSinceUpdate < 300;  // 5 minutes timeout
             const isComplete = p.processed >= p.total_files && p.total_files > 0;
             
             // Status badge
@@ -275,23 +276,34 @@
             // Current file
             document.getElementById('currentFile').textContent = p.current_file || '-';
             
-            // Current action (NEW)
+            // Current action
             const actionContainer = document.getElementById('currentActionContainer');
             const currentAction = document.getElementById('currentAction');
             const actionProgress = document.getElementById('actionProgress');
             
-            if (p.current_action && isRunning) {
+            // Always show current action if it exists (even if stopped)
+            if (p.current_action) {
                 actionContainer.style.display = 'block';
                 currentAction.textContent = p.current_action;
+                
+                let progressText = '';
                 if (p.current_step && p.total_steps) {
-                    actionProgress.textContent = `(step ${p.current_step} of ${p.total_steps})`;
-                } else {
-                    actionProgress.textContent = '';
+                    progressText = `(step ${p.current_step} of ${p.total_steps})`;
                 }
-            } else {
-                actionContainer.style.display = isRunning ? 'block' : 'none';
-                currentAction.textContent = isRunning ? 'Waiting...' : '-';
+                
+                // Show elapsed time for long-running actions (> 30 seconds)
+                if (secondsSinceUpdate > 30) {
+                    const elapsed = formatDuration(secondsSinceUpdate);
+                    progressText += ` — running for ${elapsed}`;
+                }
+                
+                actionProgress.textContent = progressText;
+            } else if (isRunning) {
+                actionContainer.style.display = 'block';
+                currentAction.textContent = 'Waiting...';
                 actionProgress.textContent = '';
+            } else {
+                actionContainer.style.display = 'none';
             }
             
             // Stats
