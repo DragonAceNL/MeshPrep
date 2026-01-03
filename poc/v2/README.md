@@ -66,16 +66,52 @@ Example difference:
 ```
 Model: 100036.stl (has 46 open edges)
 
-STRICT MODE: FAIL
-  manifold: False
-  open_edges: 46
-  is_clean: False
-
-SLICE MODE: PASS
-  (slicer auto-fixed issues internally)
+STRICT MODE: FAIL (correctly detects issues)
+SLICE MODE:  PASS (slicer auto-fixed internally)
 ```
 
 With STRICT mode, MeshPrep ensures the mesh itself is clean, not just that one particular slicer can work around issues.
+
+### STRICT Pre-Check in Repair Loop
+
+The `run_slicer_repair_loop()` function now includes a **STRICT pre-check** before any repair:
+
+```python
+from meshprep_poc.slicer_repair_loop import run_slicer_repair_loop
+
+result = run_slicer_repair_loop(
+    mesh=mesh,
+    slicer="auto",
+    max_attempts=10,
+    skip_if_clean=True,  # Skip repair if already clean
+)
+
+# Result fields:
+result.precheck_passed   # True if model was already clean
+result.precheck_skipped  # True if we skipped repair due to precheck
+result.precheck_mesh_info  # MeshInfo from pre-check
+```
+
+Benefits:
+1. **Saves time** - Clean models are skipped in ~500ms
+2. **Prevents damage** - No risk of repair breaking a good model
+3. **Clear audit trail** - Know exactly what was done
+
+### Example Output
+
+```
+# Clean model - skipped:
+Model: 100028.stl
+PRE-CHECK PASSED: Model already clean (manifold, no holes)
+Duration: 531ms
+
+# Broken model - repaired:
+Model: 100036.stl  
+PRE-CHECK: Issues detected: ['non-manifold', 'open_edges (46)']
+Attempt 1-4: Various repairs tried
+Attempt 5: Slicer validation PASSED
+Duration: 3032ms
+```
 
 ### Supported Slicers
 

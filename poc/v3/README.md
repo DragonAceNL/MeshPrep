@@ -2,11 +2,33 @@
 
 ## Overview
 
-This POC runs automatic mesh repair against all ~10,000 models in the Thingi10K dataset, generating detailed reports with before/after comparisons.
+POC v3 is a **batch testing wrapper** around the POC v2 repair pipeline. It runs automatic repair against all ~10,000 models in the Thingi10K dataset, generating detailed reports with before/after comparisons.
+
+**Note:** All repair logic lives in POC v2. POC v3 only handles:
+- Batch processing and progress tracking
+- Report generation (markdown + images)
+- Dashboard updates
+- CSV export
+
+## Architecture
+
+```
+POC v3 (run_full_test.py)
+    │
+    ├── Loads STL files from Thingi10K
+    │
+    └── Calls POC v2 for repair:
+        │
+        └── slicer_repair_loop.run_slicer_repair_loop()
+            │
+            ├── STRICT pre-check (skip if clean)
+            ├── Iterative repair attempts
+            └── Slicer validation after each repair
+```
 
 ## NEW: STRICT Slicer Pre-Check
 
-POC v3 now includes a **STRICT pre-check** using PrusaSlicer's `--info` command **before** attempting any repair. This:
+The POC v2 repair loop now includes a **STRICT pre-check** using PrusaSlicer's `--info` command **before** attempting any repair. This:
 
 1. **Skips already-clean models** - No unnecessary repair that might break good models
 2. **Detects exact issues** - manifold status, open edges, reversed facets
@@ -90,19 +112,23 @@ Based on test results:
 
 **Note**: Blender escalations can take 30 seconds to 8+ minutes each depending on model complexity.
 
-## Repair Pipeline
+## Repair Pipeline (via POC v2)
 
-1. **STRICT Pre-check** (NEW) - Run `prusa-slicer --info` to check if model is already clean
+POC v3 calls `run_slicer_repair_loop()` from POC v2 which handles:
+
+1. **STRICT Pre-check** - Run `prusa-slicer --info` to check if model is already clean
    - If CLEAN (manifold, no open edges, no reversed facets) → **Skip repair**, mark success
-   - If HAS ISSUES → Continue with repair
-2. **Load mesh** and compute diagnostics
-3. **Run conservative-repair** filter (trimesh + pymeshfix)
-4. **Check results**:
-   - If watertight & manifold → Success
-   - If geometry loss > 30% or not printable → Escalate to Blender
-5. **Blender remesh** (if needed) - voxel remesh at 0.05 size
-6. **Decimate** if > 100k faces (keeps original if decimation breaks manifold)
-7. **Save** fixed model and generate report
+   - If HAS ISSUES → Continue with repair loop
+2. **Iterative repair loop** - Try repair actions based on detected issues
+   - Maps slicer issues to repair strategies (holes → fill_holes, non-manifold → pymeshfix, etc.)
+   - Validates with slicer after each attempt
+3. **Blender escalation** - After 5 attempts, escalate to Blender remesh
+4. **Success validation** - Final STRICT slicer check confirms mesh is truly clean
+
+POC v3 additionally handles:
+- **Decimation** - Reduce large meshes from Blender to ~100k faces
+- **Reporting** - Generate markdown reports with before/after images
+- **Fixed model export** - Save successful repairs to `fixed/` directory
 
 ## Troubleshooting
 

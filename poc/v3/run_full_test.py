@@ -63,6 +63,7 @@ from meshprep_poc.filter_script import (
     FilterScript,
     get_preset,
 )
+from meshprep_poc.slicer_repair_loop import run_slicer_repair_loop, SlicerRepairResult
 from meshprep_poc.actions.blender_actions import is_blender_available
 from meshprep_poc.actions.slicer_actions import get_mesh_info_prusa, is_slicer_available
 
@@ -282,7 +283,7 @@ def decimate_mesh(mesh, target_faces: int = 100000):
 
 
 def save_filter_script(file_id: str, filter_script: FilterScript, escalated: bool = False):
-    """Save the filter script used for a model."""
+    """Save the filter script used for a model (legacy)."""
     # Ensure filters directory exists
     FILTERS_PATH.mkdir(parents=True, exist_ok=True)
     
@@ -308,6 +309,37 @@ def save_filter_script(file_id: str, filter_script: FilterScript, escalated: boo
         json.dump(filter_data, f, indent=2)
 
 
+def save_filter_info(file_id: str, filter_used: str, escalated: bool, repair_result: Optional[SlicerRepairResult] = None):
+    """Save filter/repair info for a model."""
+    # Ensure filters directory exists
+    FILTERS_PATH.mkdir(parents=True, exist_ok=True)
+    
+    filter_path = FILTERS_PATH / f"{file_id}.json"
+    
+    # Build filter data
+    filter_data = {
+        "model_id": file_id,
+        "filter_name": filter_used,
+        "escalated_to_blender": escalated,
+        "repair_loop_used": repair_result is not None,
+        "precheck_passed": repair_result.precheck_passed if repair_result else False,
+        "precheck_skipped": repair_result.precheck_skipped if repair_result else False,
+        "total_attempts": repair_result.total_attempts if repair_result else 0,
+        "attempts": [
+            {
+                "action": a.strategy.action,
+                "params": a.strategy.params,
+                "success": a.success,
+            }
+            for a in (repair_result.attempts if repair_result else [])
+        ],
+        "timestamp": datetime.now().isoformat()
+    }
+    
+    with open(filter_path, "w", encoding="utf-8") as f:
+        json.dump(filter_data, f, indent=2)
+
+
 # Global progress reference for callback
 _current_progress: Optional[Progress] = None
 
@@ -323,7 +355,12 @@ def update_action_progress(action_index: int, action_name: str, total_actions: i
 
 
 def process_single_model(stl_path: Path, skip_if_clean: bool = True, progress: Optional[Progress] = None) -> TestResult:
-    """Process a single model and return result.
+    """Process a single model using the POC v2 slicer repair loop.
+    
+    This is a thin wrapper around the v2 repair loop that:
+    1. Loads the mesh
+    2. Runs the slicer repair loop (which includes STRICT pre-check)
+    3. Captures metrics and generates reports
     
     Args:
         stl_path: Path to the STL file
@@ -341,45 +378,6 @@ def process_single_model(stl_path: Path, skip_if_clean: bool = True, progress: O
     )
     
     try:
-        # PRE-CHECK: Run STRICT slicer validation BEFORE any repair
-        # This detects models that are already clean and don't need repair
-        if skip_if_clean and is_slicer_available():
-            precheck = get_mesh_info_prusa(stl_path, timeout=30)
-            if precheck.mesh_info and precheck.mesh_info.is_clean:
-                # Model is already clean! Skip repair.
-                logger.info(f"  PRE-CHECK PASSED: Model already clean (manifold, no holes)")
-                result.precheck_passed = True
-                result.precheck_skipped = True
-                result.success = True
-                result.filter_used = "none (already clean)"
-                result.duration_ms = (time.time() - start_time) * 1000
-                
-                # Still load mesh to get metrics
-                original = load_mesh(stl_path)
-                original_diag = compute_diagnostics(original)
-                result.original_vertices = original_diag.vertex_count
-                result.original_faces = original_diag.face_count
-                result.original_volume = original_diag.volume
-                result.original_watertight = original_diag.is_watertight
-                result.original_manifold = original_diag.is_volume
-                result.original_file_size = stl_path.stat().st_size
-                
-                # Result = Original (no changes)
-                result.result_vertices = result.original_vertices
-                result.result_faces = result.original_faces
-                result.result_volume = result.original_volume
-                result.result_watertight = result.original_watertight
-                result.result_manifold = result.original_manifold
-                
-                # Generate report showing it was skipped
-                generate_report(stl_path, original, original, result, None)
-                return result
-            else:
-                # Model has issues, will proceed with repair
-                issues = precheck.mesh_info.issues if precheck.mesh_info else ["unknown"]
-                logger.info(f"  PRE-CHECK: Issues detected: {issues[:3]}")
-                result.precheck_passed = False
-        
         # Load mesh
         original = load_mesh(stl_path)
         original_diag = compute_diagnostics(original)
@@ -396,55 +394,99 @@ def process_single_model(stl_path: Path, skip_if_clean: bool = True, progress: O
             result.original_components = len(original.split(only_watertight=False))
         except:
             result.original_components = 1
-        try:
-            # Count boundary edges (holes)
-            result.original_holes = len(original.faces[original.facets_boundary]) if hasattr(original, 'facets_boundary') else 0
-        except:
-            result.original_holes = 0
         
-        # Select filter
-        filter_script = get_best_filter(original)
-        result.filter_used = filter_script.name
+        # =====================================================================
+        # Use POC v2 slicer repair loop (includes STRICT pre-check)
+        # =====================================================================
+        repair_result = run_slicer_repair_loop(
+            mesh=original,
+            slicer="auto",
+            max_attempts=10,
+            escalate_to_blender_after=5,
+            timeout=120,
+            skip_if_clean=skip_if_clean,
+            progress_callback=update_action_progress,
+        )
         
-        # Run repair
-        runner = FilterScriptRunner(stop_on_error=False)
-        repair_result = runner.run(filter_script, original, progress_callback=update_action_progress)
+        # Capture pre-check results from repair loop
+        result.precheck_passed = repair_result.precheck_passed
+        result.precheck_skipped = repair_result.precheck_skipped
         
-        if not repair_result.success or repair_result.final_mesh is None:
-            result.success = False
-            result.error = repair_result.error or "Repair failed"
-            result.duration_ms = (time.time() - start_time) * 1000
+        if repair_result.precheck_skipped:
+            # Model was already clean - no repair needed
+            logger.info(f"  PRE-CHECK PASSED: Model already clean (from v2 repair loop)")
+            result.success = True
+            result.filter_used = "none (already clean)"
+            result.duration_ms = repair_result.total_duration_ms
+            
+            # Result = Original (no changes)
+            result.result_vertices = result.original_vertices
+            result.result_faces = result.original_faces
+            result.result_volume = result.original_volume
+            result.result_watertight = result.original_watertight
+            result.result_manifold = result.original_manifold
+            
+            # Generate report showing it was skipped
+            generate_report(stl_path, original, original, result, None)
             return result
         
-        repaired = repair_result.final_mesh
+        # Repair was attempted
+        if repair_result.success and repair_result.final_mesh is not None:
+            repaired = repair_result.final_mesh
+            result.filter_used = "slicer-repair-loop"
+            
+            # Check if Blender escalation was used
+            for attempt in repair_result.attempts:
+                if "blender" in attempt.strategy.action:
+                    result.escalation_used = True
+                    result.filter_used = f"slicer-repair-loop (blender)"
+                    break
+        else:
+            # Repair failed, fall back to conservative filter script approach
+            logger.info(f"  Slicer repair loop failed, trying filter script approach...")
+            filter_script = get_best_filter(original)
+            result.filter_used = filter_script.name
+            
+            runner = FilterScriptRunner(stop_on_error=False)
+            filter_result = runner.run(filter_script, original, progress_callback=update_action_progress)
+            
+            if not filter_result.success or filter_result.final_mesh is None:
+                result.success = False
+                result.error = filter_result.error or repair_result.error or "Repair failed"
+                result.duration_ms = (time.time() - start_time) * 1000
+                
+                # Generate failed report
+                generate_report(stl_path, original, original, result, None)
+                return result
+            
+            repaired = filter_result.final_mesh
+            
+            # Check for geometry loss and escalate if needed
+            validation = validate_repair(original, repaired)
+            significant_loss, vol_loss, face_loss = check_geometry_loss(original_diag, repaired)
+            
+            needs_escalation = (
+                not validation.geometric.is_printable or
+                significant_loss
+            )
+            
+            if needs_escalation and is_blender_available():
+                logger.info(f"  Escalating to Blender...")
+                escalation_script = get_preset("blender-remesh")
+                escalation_result = runner.run(escalation_script, original, progress_callback=update_action_progress)
+                
+                if escalation_result.success and escalation_result.final_mesh is not None:
+                    repaired = escalation_result.final_mesh
+                    result.filter_used = "blender-remesh"
+                    result.escalation_used = True
         
-        # Check for geometry loss
+        # Calculate geometry changes
         significant_loss, vol_loss, face_loss = check_geometry_loss(original_diag, repaired)
         result.volume_change_pct = vol_loss
         result.face_change_pct = face_loss
         
-        # Validate
-        validation = validate_repair(original, repaired)
-        
-        # Check if escalation needed
-        needs_escalation = (
-            not validation.geometric.is_printable or
-            significant_loss
-        )
-        
-        if needs_escalation and is_blender_available():
-            logger.info(f"  Escalating to Blender...")
-            escalation_script = get_preset("blender-remesh")
-            escalation_result = runner.run(escalation_script, original, progress_callback=update_action_progress)
-            
-            if escalation_result.success and escalation_result.final_mesh is not None:
-                repaired = escalation_result.final_mesh
-                filter_script = escalation_script  # Update to use escalation script
-                result.filter_used = "blender-remesh"
-                result.escalation_used = True
-                validation = validate_repair(original, repaired)
-        
         # Capture printability status BEFORE decimation
+        validation = validate_repair(original, repaired)
         is_printable_before_decimate = validation.geometric.is_printable
         
         # Decimate if mesh is too large
@@ -469,12 +511,8 @@ def process_single_model(stl_path: Path, skip_if_clean: bool = True, progress: O
             result.result_components = len(repaired.split(only_watertight=False))
         except:
             result.result_components = 1
-        try:
-            result.result_holes = len(repaired.faces[repaired.facets_boundary]) if hasattr(repaired, 'facets_boundary') else 0
-        except:
-            result.result_holes = 0
         
-        # Success based on FINAL mesh state (not pre-decimation)
+        # Success based on FINAL mesh state
         result.success = repaired.is_watertight and repaired.is_volume
         result.duration_ms = (time.time() - start_time) * 1000
         
@@ -485,8 +523,8 @@ def process_single_model(stl_path: Path, skip_if_clean: bool = True, progress: O
             result.fixed_file_size = fixed_path.stat().st_size
             logger.info(f"  Saved fixed model to {fixed_path}")
         
-        # Save filter script used
-        save_filter_script(file_id, filter_script, result.escalation_used)
+        # Save filter info (simplified since we use repair loop now)
+        save_filter_info(file_id, result.filter_used, result.escalation_used, repair_result)
         
         # Generate report
         generate_report(stl_path, original, repaired, result, fixed_path if result.success else None)

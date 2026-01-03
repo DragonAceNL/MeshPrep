@@ -21,7 +21,10 @@ import trimesh
 from .actions import ActionRegistry
 from .actions.slicer_actions import (
     validate_mesh,
+    validate_stl_file,
+    get_mesh_info_prusa,
     SlicerResult,
+    MeshInfo,
     is_slicer_available,
     SLICER_ERROR_PATTERNS,
 )
@@ -115,12 +118,25 @@ class SlicerRepairResult:
     final_slicer_result: Optional[SlicerResult] = None
     error: Optional[str] = None
     
+    # Pre-check results (STRICT validation before any repair)
+    precheck_passed: bool = False  # True if model was already clean
+    precheck_skipped: bool = False  # True if we skipped repair due to precheck
+    precheck_mesh_info: Optional[MeshInfo] = None  # Mesh info from pre-check
+    
     def to_dict(self) -> dict:
         """Convert to dictionary for JSON export."""
         return {
             "success": self.success,
             "total_attempts": self.total_attempts,
             "total_duration_ms": self.total_duration_ms,
+            "precheck_passed": self.precheck_passed,
+            "precheck_skipped": self.precheck_skipped,
+            "precheck_mesh_info": {
+                "manifold": self.precheck_mesh_info.manifold,
+                "open_edges": self.precheck_mesh_info.open_edges,
+                "is_clean": self.precheck_mesh_info.is_clean,
+                "issues": self.precheck_mesh_info.issues,
+            } if self.precheck_mesh_info else None,
             "issues_found": self.issues_found,
             "issues_resolved": self.issues_resolved,
             "attempts": [
@@ -212,15 +228,18 @@ def run_slicer_repair_loop(
     max_attempts: int = 10,
     escalate_to_blender_after: int = 5,
     timeout: int = 120,
+    skip_if_clean: bool = True,
+    progress_callback: Optional[callable] = None,
 ) -> SlicerRepairResult:
     """
     Run the iterative slicer-driven repair loop.
     
     This function:
-    1. Validates the mesh with a slicer
-    2. If it fails, parses the errors and maps to repair actions
-    3. Tries repair actions in priority order
-    4. Repeats until success or max attempts reached
+    1. Pre-checks the mesh with STRICT slicer validation (no auto-repair)
+    2. If already clean, returns immediately without repair
+    3. If it fails, parses the errors and maps to repair actions
+    4. Tries repair actions in priority order
+    5. Repeats until success or max attempts reached
     
     Args:
         mesh: Input mesh to repair
@@ -228,6 +247,8 @@ def run_slicer_repair_loop(
         max_attempts: Maximum repair attempts
         escalate_to_blender_after: Number of attempts before escalating to Blender
         timeout: Slicer timeout in seconds
+        skip_if_clean: If True, skip repair if pre-check passes (default: True)
+        progress_callback: Optional callback(attempt_num, action_name, total_attempts)
         
     Returns:
         SlicerRepairResult with repair details
@@ -244,6 +265,35 @@ def run_slicer_repair_loop(
         result.error = f"No slicer available (tried: {slicer})"
         return result
     
+    # =========================================================================
+    # STEP 0: PRE-CHECK - Run STRICT slicer validation BEFORE any repair
+    # This detects models that are already clean and don't need repair
+    # =========================================================================
+    if skip_if_clean:
+        logger.info("Running STRICT pre-check (no auto-repair)...")
+        precheck_result = validate_mesh(mesh, slicer=slicer, timeout=timeout, strict=True)
+        result.precheck_mesh_info = precheck_result.mesh_info
+        
+        if precheck_result.success and precheck_result.mesh_info and precheck_result.mesh_info.is_clean:
+            # Model is already clean! Skip repair entirely.
+            logger.info("  PRE-CHECK PASSED: Model already clean (manifold, no holes, no reversed facets)")
+            result.success = True
+            result.precheck_passed = True
+            result.precheck_skipped = True
+            result.final_mesh = mesh.copy()
+            result.final_slicer_result = precheck_result
+            result.total_duration_ms = (time.perf_counter() - start_time) * 1000
+            return result
+        else:
+            # Model has issues, will proceed with repair
+            issues = precheck_result.mesh_info.issues if precheck_result.mesh_info else ["unknown"]
+            logger.info(f"  PRE-CHECK: Issues detected: {issues}")
+            result.precheck_passed = False
+            result.issues_found.extend(issues)
+    
+    # =========================================================================
+    # STEP 1+: Iterative repair loop
+    # =========================================================================
     current_mesh = mesh.copy()
     attempted_actions = set()
     
@@ -295,6 +345,10 @@ def run_slicer_repair_loop(
         # Step 4: Try the next repair strategy
         strategy = strategies[0]
         logger.info(f"  Trying repair: {strategy.action} {strategy.params}")
+        
+        # Call progress callback if provided
+        if progress_callback:
+            progress_callback(attempt_num, strategy.action, max_attempts)
         
         attempted_actions.add((strategy.action, str(strategy.params)))
         
