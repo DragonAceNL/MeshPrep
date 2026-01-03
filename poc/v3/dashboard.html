@@ -100,24 +100,24 @@
     <div class="container">
         <h1>🔧 MeshPrep Thingi10K Test Dashboard</h1>
         <p class="subtitle">
-            Started: 2026-01-03T09:18:55 | 
-            Last Update: 2026-01-03T09:21:08
-            <span class="eta">| ETA: Calculating...</span>
+            Started: 2026-01-03T09:37:21 | 
+            Last Update: 2026-01-03T09:39:36
+            <span class="eta">| ETA: 0:01:04</span>
         </p>
         
         <div class="progress-bar">
             <div class="progress-fill" style="width: 0.0%">
-                0.0% (1 / 9,956)
+                0.0% (3 / 9,956)
             </div>
         </div>
         
         <div class="current-file">
             <div class="spinner"></div>
             <div style="flex: 1;">
-                <div>Currently processing: <strong>100026</strong></div>
+                <div>Currently processing: <strong>100028</strong></div>
                 <div style="margin-top: 5px; font-size: 14px; color: #888;">
-                    Action: <span style="color: #4fe8c4;">blender_remesh</span>
-                    (step 6 of 10)
+                    Action: <span style="color: #4fe8c4;">pymeshfix_repair</span>
+                    (step 2 of 10)
                 </div>
             </div>
         </div>
@@ -128,7 +128,7 @@
                 <div class="stat-label">Total Models</div>
             </div>
             <div class="stat-card">
-                <div class="stat-value success">1</div>
+                <div class="stat-value success">3</div>
                 <div class="stat-label">Successful</div>
             </div>
             <div class="stat-card">
@@ -140,7 +140,7 @@
                 <div class="stat-label">Escalations</div>
             </div>
             <div class="stat-card">
-                <div class="stat-value" style="color: #3498db;">0</div>
+                <div class="stat-value" style="color: #3498db;">1</div>
                 <div class="stat-label">Already Clean</div>
             </div>
             <div class="stat-card">
@@ -148,7 +148,7 @@
                 <div class="stat-label">Success Rate</div>
             </div>
             <div class="stat-card">
-                <div class="stat-value">127.0s</div>
+                <div class="stat-value">42.9s</div>
                 <div class="stat-label">Avg Duration</div>
             </div>
         </div>
@@ -168,10 +168,28 @@
             <tbody>
 
                 <tr>
+                    <td>100028</td>
+                    <td class="success">✅</td>
+                    <td>none (already clean)</td>
+                    <td>0.6s</td>
+                    <td>228 → 228</td>
+                    <td><a href="file:///C:\Users\Dragon Ace\Source\repos\Thingi10K\raw_meshes\reports/100028.md">View</a></td>
+                </tr>
+
+                <tr>
+                    <td>100027</td>
+                    <td class="success">✅</td>
+                    <td>slicer-repair-loop</td>
+                    <td>1.6s</td>
+                    <td>508 → 12</td>
+                    <td><a href="file:///C:\Users\Dragon Ace\Source\repos\Thingi10K\raw_meshes\reports/100027.md">View</a></td>
+                </tr>
+
+                <tr>
                     <td>100026</td>
                     <td class="success">✅ 🚀</td>
                     <td>slicer-repair-loop (blender)</td>
-                    <td>127.0s</td>
+                    <td>126.5s</td>
                     <td>270 → 100,000</td>
                     <td><a href="file:///C:\Users\Dragon Ace\Source\repos\Thingi10K\raw_meshes\reports/100026.md">View</a></td>
                 </tr>

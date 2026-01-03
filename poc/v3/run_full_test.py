@@ -594,8 +594,8 @@ def render_mesh_image(mesh, output_path: Path, title: str = ""):
 
 
 def generate_report(stl_path: Path, original, repaired, result: TestResult, fixed_path: Optional[Path] = None):
-    """Generate markdown report in the reports subfolder."""
-    report_path = REPORTS_PATH / f"{stl_path.stem}.md"
+    """Generate HTML report in the reports subfolder."""
+    report_path = REPORTS_PATH / f"{stl_path.stem}.html"
     images_dir = REPORTS_PATH / "images"
     images_dir.mkdir(exist_ok=True)
     
@@ -614,96 +614,286 @@ def generate_report(stl_path: Path, original, repaired, result: TestResult, fixe
     next_file = all_files[current_idx + 1] if current_idx < len(all_files) - 1 else None
     
     # Status
-    status = "SUCCESS" if result.success else "FAILED"
-    status_icon = "v" if result.success else "x"
-    if result.escalation_used:
-        status += " (Blender)"
-    
-    # Generate markdown
-    md_content = f"""# {stl_path.stem}
-
-**Status:** {status}  
-**Filter:** `{result.filter_used}`  
-**Duration:** {result.duration_ms:.0f}ms  
-{"**Escalation:** Yes (Blender)  " if result.escalation_used else ""}
-
----
-
-## Navigation
-
-"""
-    
-    if prev_file:
-        md_content += f"[< Previous: {prev_file.stem}](./{prev_file.stem}.md) | "
+    if result.precheck_skipped:
+        status_class = "skipped"
+        status_text = "&#10003; Already Clean"
+    elif result.success:
+        if result.escalation_used:
+            status_class = "escalated"
+            status_text = "&#10003; Fixed (Blender)"
+        else:
+            status_class = "success"
+            status_text = "&#10003; Fixed"
     else:
-        md_content += "< Previous | "
+        status_class = "failed"
+        status_text = "&#10007; Failed"
     
-    md_content += "[Dashboard](../../../MeshPrep/poc/v3/dashboard.html) | "
+    # Calculate changes
+    vertex_change = result.result_vertices - result.original_vertices
+    face_change = result.result_faces - result.original_faces
+    face_change_pct = (face_change / result.original_faces * 100) if result.original_faces > 0 else 0
     
-    if next_file:
-        md_content += f"[Next: {next_file.stem} >](./{next_file.stem}.md)"
-    else:
-        md_content += "Next >"
+    # Navigation links
+    prev_link = f'<a href="{prev_file.stem}.html">&lt; {prev_file.stem}</a>' if prev_file else '<span class="disabled">&lt; Previous</span>'
+    next_link = f'<a href="{next_file.stem}.html">{next_file.stem} &gt;</a>' if next_file else '<span class="disabled">Next &gt;</span>'
     
-    md_content += f"""
-
----
-
-## Download Models
-
-| Model | Link |
-|-------|------|
-| **Original** | [{stl_path.name}](../{stl_path.name}) |
-"""
-    
+    # Fixed model link
     if fixed_path and fixed_path.exists():
-        md_content += f"""| **Fixed** | [{fixed_path.name}](../fixed/{fixed_path.name}) |
-"""
+        fixed_link = f'<a href="../fixed/{fixed_path.name}" class="download-btn">&#11015; Download Fixed</a>'
     else:
-        md_content += """| **Fixed** | Not saved (repair failed) |
+        fixed_link = '<span class="no-file">Not saved (repair failed)</span>'
+    
+    # Duration formatting
+    duration_sec = result.duration_ms / 1000
+    if duration_sec >= 60:
+        duration_text = f"{duration_sec/60:.1f} minutes"
+    else:
+        duration_text = f"{duration_sec:.1f} seconds"
+    
+    html_content = f"""<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>{stl_path.stem} - MeshPrep Report</title>
+    <style>
+        body {{
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0f1720;
+            color: #dff6fb;
+            margin: 0;
+            padding: 20px;
+        }}
+        .container {{ max-width: 1200px; margin: 0 auto; }}
+        h1 {{ color: #4fe8c4; margin-bottom: 5px; }}
+        
+        .nav-bar {{
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: #1b2b33;
+            padding: 10px 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }}
+        .nav-bar a {{ color: #4fe8c4; text-decoration: none; padding: 5px 10px; }}
+        .nav-bar a:hover {{ background: #2a3a43; border-radius: 4px; }}
+        .nav-bar .disabled {{ color: #555; }}
+        
+        .status-badge {{
+            display: inline-block;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-weight: bold;
+            margin-bottom: 20px;
+        }}
+        .status-badge.success {{ background: #2ecc71; color: #0f1720; }}
+        .status-badge.failed {{ background: #e74c3c; color: white; }}
+        .status-badge.skipped {{ background: #3498db; color: white; }}
+        .status-badge.escalated {{ background: #f39c12; color: #0f1720; }}
+        
+        .info-grid {{
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 30px;
+        }}
+        .info-card {{
+            background: #1b2b33;
+            padding: 15px;
+            border-radius: 8px;
+        }}
+        .info-card .label {{ color: #888; font-size: 12px; margin-bottom: 5px; }}
+        .info-card .value {{ font-size: 18px; font-weight: bold; }}
+        
+        .comparison {{
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-bottom: 30px;
+        }}
+        .comparison-panel {{
+            background: #1b2b33;
+            border-radius: 12px;
+            overflow: hidden;
+        }}
+        .comparison-panel h3 {{
+            margin: 0;
+            padding: 15px;
+            background: #0f1720;
+            color: #4fe8c4;
+        }}
+        .comparison-panel img {{
+            width: 100%;
+            height: 400px;
+            object-fit: contain;
+            background: #0a0f14;
+        }}
+        
+        .metrics-table {{
+            width: 100%;
+            border-collapse: collapse;
+            background: #1b2b33;
+            border-radius: 12px;
+            overflow: hidden;
+            margin-bottom: 30px;
+        }}
+        .metrics-table th, .metrics-table td {{
+            padding: 12px 15px;
+            text-align: left;
+            border-bottom: 1px solid #2a3a43;
+        }}
+        .metrics-table th {{ background: #0f1720; color: #4fe8c4; }}
+        
+        .change-positive {{ color: #e74c3c; }}
+        .change-negative {{ color: #2ecc71; }}
+        .change-neutral {{ color: #888; }}
+        
+        .downloads {{
+            display: flex;
+            gap: 15px;
+            margin-bottom: 30px;
+        }}
+        .download-btn {{
+            display: inline-block;
+            background: #4fe8c4;
+            color: #0f1720;
+            padding: 12px 24px;
+            border-radius: 8px;
+            text-decoration: none;
+            font-weight: bold;
+        }}
+        .download-btn:hover {{ background: #3dd4b0; }}
+        .download-btn.secondary {{ background: #1b2b33; color: #4fe8c4; }}
+        .no-file {{ color: #888; padding: 12px 24px; }}
+        
+        .error-box {{
+            background: #2a1a1a;
+            border: 1px solid #e74c3c;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 30px;
+        }}
+        .error-box h3 {{ color: #e74c3c; margin-top: 0; }}
+        .error-box pre {{ margin: 0; white-space: pre-wrap; }}
+        
+        .footer {{ color: #555; font-size: 12px; margin-top: 30px; }}
+        
+        a {{ color: #4fe8c4; }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="nav-bar">
+            <div>{prev_link}</div>
+            <div>
+                <a href="index.html">&#128209; Index</a>
+                <a href="../../../MeshPrep/poc/v3/dashboard.html">&#128202; Dashboard</a>
+            </div>
+            <div>{next_link}</div>
+        </div>
+        
+        <h1>{stl_path.stem}</h1>
+        <span class="status-badge {status_class}">{status_text}</span>
+        
+        <div class="info-grid">
+            <div class="info-card">
+                <div class="label">Filter Used</div>
+                <div class="value">{result.filter_used}</div>
+            </div>
+            <div class="info-card">
+                <div class="label">Duration</div>
+                <div class="value">{duration_text}</div>
+            </div>
+            <div class="info-card">
+                <div class="label">Original Faces</div>
+                <div class="value">{result.original_faces:,}</div>
+            </div>
+            <div class="info-card">
+                <div class="label">Result Faces</div>
+                <div class="value">{result.result_faces:,}</div>
+            </div>
+        </div>
+        
+        <div class="downloads">
+            <a href="../{stl_path.name}" class="download-btn secondary">&#11015; Download Original</a>
+            {fixed_link}
+            <a href="filters/{stl_path.stem}.json" class="download-btn secondary">&#128196; Filter Script</a>
+        </div>
+        
+        <h2>Visual Comparison</h2>
+        <div class="comparison">
+            <div class="comparison-panel">
+                <h3>Before</h3>
+                <img src="images/{stl_path.stem}_before.png" alt="Before">
+            </div>
+            <div class="comparison-panel">
+                <h3>After</h3>
+                <img src="images/{stl_path.stem}_after.png" alt="After">
+            </div>
+        </div>
+        
+        <h2>Metrics</h2>
+        <table class="metrics-table">
+            <thead>
+                <tr>
+                    <th>Metric</th>
+                    <th>Before</th>
+                    <th>After</th>
+                    <th>Change</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>Vertices</td>
+                    <td>{result.original_vertices:,}</td>
+                    <td>{result.result_vertices:,}</td>
+                    <td class="{'change-positive' if vertex_change > 0 else 'change-negative' if vertex_change < 0 else 'change-neutral'}">{vertex_change:+,}</td>
+                </tr>
+                <tr>
+                    <td>Faces</td>
+                    <td>{result.original_faces:,}</td>
+                    <td>{result.result_faces:,}</td>
+                    <td class="{'change-positive' if face_change > 0 else 'change-negative' if face_change < 0 else 'change-neutral'}">{face_change:+,} ({face_change_pct:+.1f}%)</td>
+                </tr>
+                <tr>
+                    <td>Volume</td>
+                    <td>{result.original_volume:.2f}</td>
+                    <td>{result.result_volume:.2f}</td>
+                    <td class="{'change-positive' if result.volume_change_pct > 5 else 'change-negative' if result.volume_change_pct < -5 else 'change-neutral'}">{result.volume_change_pct:+.1f}%</td>
+                </tr>
+                <tr>
+                    <td>Watertight</td>
+                    <td>{'&#10003; Yes' if result.original_watertight else '&#10007; No'}</td>
+                    <td>{'&#10003; Yes' if result.result_watertight else '&#10007; No'}</td>
+                    <td>-</td>
+                </tr>
+                <tr>
+                    <td>Manifold</td>
+                    <td>{'&#10003; Yes' if result.original_manifold else '&#10007; No'}</td>
+                    <td>{'&#10003; Yes' if result.result_manifold else '&#10007; No'}</td>
+                    <td>-</td>
+                </tr>
+            </tbody>
+        </table>
 """
     
-    md_content += f"""| **Filter Script** | [{stl_path.stem}.json](./filters/{stl_path.stem}.json) |
-
----
-
-## Visual Comparison
-
-| Before | After |
-|--------|-------|
-| ![Before](./images/{stl_path.stem}_before.png) | ![After](./images/{stl_path.stem}_after.png) |
-
----
-
-## Metrics
-
-| Metric | Before | After | Change |
-|--------|--------|-------|--------|
-| Vertices | {result.original_vertices:,} | {result.result_vertices:,} | {result.result_vertices - result.original_vertices:+,} |
-| Faces | {result.original_faces:,} | {result.result_faces:,} | {result.result_faces - result.original_faces:+,} |
-| Volume | {result.original_volume:.2f} | {result.result_volume:.2f} | {result.volume_change_pct:+.1f}% |
-| Watertight | {"Yes" if result.original_watertight else "No"} | {"Yes" if result.result_watertight else "No"} | - |
-| Manifold | {"Yes" if result.original_manifold else "No"} | {"Yes" if result.result_manifold else "No"} | - |
-
-"""
-
     if result.error:
-        md_content += f"""
-## Error
-
-```
-{result.error}
-```
+        html_content += f"""        <div class="error-box">
+            <h3>&#9888; Error</h3>
+            <pre>{result.error}</pre>
+        </div>
 """
-
-    md_content += f"""
----
-
-*Generated: {result.timestamp}*
+    
+    html_content += f"""        <div class="footer">
+            Generated: {result.timestamp}
+        </div>
+    </div>
+</body>
+</html>
 """
     
     with open(report_path, "w", encoding="utf-8") as f:
-        f.write(md_content)
+        f.write(html_content)
 
 
 def generate_dashboard(progress: Progress, results: List[TestResult]):
@@ -925,11 +1115,307 @@ def generate_dashboard(progress: Progress, results: List[TestResult]):
         f.write(html)
 
 
+def generate_reports_index(results: List[TestResult]):
+    """Generate an index.html in the reports folder for easy navigation."""
+    index_path = REPORTS_PATH / "index.html"
+    
+    # Sort results by file_id
+    sorted_results = sorted(results, key=lambda r: r.file_id)
+    
+    # Calculate stats
+    total = len(results)
+    successful = sum(1 for r in results if r.success)
+    failed = total - successful
+    precheck_skipped = sum(1 for r in results if r.precheck_skipped)
+    escalations = sum(1 for r in results if r.escalation_used)
+    
+    html = f"""<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>MeshPrep Reports Index</title>
+    <style>
+        body {{
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0f1720;
+            color: #dff6fb;
+            margin: 0;
+            padding: 20px;
+        }}
+        .container {{ max-width: 1600px; margin: 0 auto; }}
+        h1 {{ color: #4fe8c4; margin-bottom: 10px; }}
+        .subtitle {{ color: #888; margin-bottom: 20px; }}
+        
+        .stats-row {{
+            display: flex;
+            gap: 20px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }}
+        .stat {{
+            background: #1b2b33;
+            padding: 10px 20px;
+            border-radius: 8px;
+        }}
+        .stat-value {{ font-size: 24px; font-weight: bold; color: #4fe8c4; }}
+        .stat-label {{ font-size: 12px; color: #888; }}
+        
+        .filters {{
+            background: #1b2b33;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            display: flex;
+            gap: 15px;
+            align-items: center;
+            flex-wrap: wrap;
+        }}
+        .filters label {{ color: #888; }}
+        .filters select, .filters input {{
+            background: #0f1720;
+            color: #dff6fb;
+            border: 1px solid #333;
+            padding: 8px 12px;
+            border-radius: 4px;
+        }}
+        
+        table {{
+            width: 100%;
+            border-collapse: collapse;
+            background: #1b2b33;
+            border-radius: 12px;
+            overflow: hidden;
+        }}
+        th, td {{
+            padding: 10px 12px;
+            text-align: left;
+            border-bottom: 1px solid #2a3a43;
+        }}
+        th {{
+            background: #0f1720;
+            color: #4fe8c4;
+            cursor: pointer;
+            user-select: none;
+            position: sticky;
+            top: 0;
+        }}
+        th:hover {{ background: #1a2a35; }}
+        tr:hover {{ background: #2a3a43; }}
+        
+        .success {{ color: #2ecc71; }}
+        .failed {{ color: #e74c3c; }}
+        .skipped {{ color: #3498db; }}
+        .escalated {{ color: #f39c12; }}
+        
+        .change-positive {{ color: #e74c3c; }}  /* Red for increase */
+        .change-negative {{ color: #2ecc71; }}  /* Green for decrease */
+        .change-neutral {{ color: #888; }}
+        
+        a {{ color: #4fe8c4; text-decoration: none; }}
+        a:hover {{ text-decoration: underline; }}
+        
+        .thumbnail {{
+            width: 60px;
+            height: 60px;
+            object-fit: contain;
+            background: #0f1720;
+            border-radius: 4px;
+        }}
+        
+        .search-box {{
+            flex: 1;
+            min-width: 200px;
+        }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📋 MeshPrep Reports Index</h1>
+        <p class="subtitle">Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} | Total: {total} models</p>
+        
+        <div class="stats-row">
+            <div class="stat">
+                <div class="stat-value">{total}</div>
+                <div class="stat-label">Total</div>
+            </div>
+            <div class="stat">
+                <div class="stat-value success">{successful}</div>
+                <div class="stat-label">Successful</div>
+            </div>
+            <div class="stat">
+                <div class="stat-value failed">{failed}</div>
+                <div class="stat-label">Failed</div>
+            </div>
+            <div class="stat">
+                <div class="stat-value skipped">{precheck_skipped}</div>
+                <div class="stat-label">Already Clean</div>
+            </div>
+            <div class="stat">
+                <div class="stat-value escalated">{escalations}</div>
+                <div class="stat-label">Blender</div>
+            </div>
+        </div>
+        
+        <div class="filters">
+            <label>Filter:</label>
+            <select id="statusFilter" onchange="filterTable()">
+                <option value="all">All</option>
+                <option value="success">Successful</option>
+                <option value="failed">Failed</option>
+                <option value="skipped">Already Clean</option>
+                <option value="escalated">Blender Escalation</option>
+            </select>
+            
+            <label>Search:</label>
+            <input type="text" id="searchBox" class="search-box" placeholder="Search by model ID..." onkeyup="filterTable()">
+        </div>
+        
+        <table id="resultsTable">
+            <thead>
+                <tr>
+                    <th onclick="sortTable(0)">Model ID</th>
+                    <th onclick="sortTable(1)">Status</th>
+                    <th onclick="sortTable(2)">Filter</th>
+                    <th onclick="sortTable(3)">Faces Before</th>
+                    <th onclick="sortTable(4)">Faces After</th>
+                    <th onclick="sortTable(5)">Face Change</th>
+                    <th onclick="sortTable(6)">Volume Change</th>
+                    <th onclick="sortTable(7)">Duration</th>
+                    <th>Report</th>
+                </tr>
+            </thead>
+            <tbody>
+"""
+    
+    for r in sorted_results:
+        # Status
+        if r.precheck_skipped:
+            status_class = "skipped"
+            status_text = "&#10003; Clean"  # checkmark
+            status_data = "skipped"
+        elif r.success:
+            if r.escalation_used:
+                status_class = "escalated"
+                status_text = "&#10003; Blender"  # checkmark
+                status_data = "escalated"
+            else:
+                status_class = "success"
+                status_text = "&#10003; Fixed"  # checkmark
+                status_data = "success"
+        else:
+            status_class = "failed"
+            status_text = "&#10007; Failed"  # X mark
+            status_data = "failed"
+        
+        # Face change
+        face_change = r.result_faces - r.original_faces
+        face_change_pct = (face_change / r.original_faces * 100) if r.original_faces > 0 else 0
+        if face_change > 0:
+            face_change_class = "change-positive"
+            face_change_text = f"+{face_change:,} ({face_change_pct:+.1f}%)"
+        elif face_change < 0:
+            face_change_class = "change-negative"
+            face_change_text = f"{face_change:,} ({face_change_pct:+.1f}%)"
+        else:
+            face_change_class = "change-neutral"
+            face_change_text = "No change"
+        
+        # Volume change
+        if r.volume_change_pct > 5:
+            vol_change_class = "change-positive"
+        elif r.volume_change_pct < -5:
+            vol_change_class = "change-negative"
+        else:
+            vol_change_class = "change-neutral"
+        vol_change_text = f"{r.volume_change_pct:+.1f}%" if r.volume_change_pct != 0 else "~0%"
+        
+        # Duration
+        duration_sec = r.duration_ms / 1000
+        if duration_sec >= 60:
+            duration_text = f"{duration_sec/60:.1f}m"
+        else:
+            duration_text = f"{duration_sec:.1f}s"
+        
+        html += f"""                <tr data-status="{status_data}">
+                    <td><strong>{r.file_id}</strong></td>
+                    <td class="{status_class}">{status_text}</td>
+                    <td>{r.filter_used}</td>
+                    <td>{r.original_faces:,}</td>
+                    <td>{r.result_faces:,}</td>
+                    <td class="{face_change_class}">{face_change_text}</td>
+                    <td class="{vol_change_class}">{vol_change_text}</td>
+                    <td>{duration_text}</td>
+                    <td><a href="{r.file_id}.html">View</a></td>
+                </tr>
+"""
+    
+    html += """            </tbody>
+        </table>
+    </div>
+    
+    <script>
+        let sortDirection = {};
+        
+        function sortTable(columnIndex) {
+            const table = document.getElementById('resultsTable');
+            const tbody = table.querySelector('tbody');
+            const rows = Array.from(tbody.querySelectorAll('tr'));
+            
+            // Toggle sort direction
+            sortDirection[columnIndex] = !sortDirection[columnIndex];
+            const dir = sortDirection[columnIndex] ? 1 : -1;
+            
+            rows.sort((a, b) => {
+                let aVal = a.cells[columnIndex].textContent.trim();
+                let bVal = b.cells[columnIndex].textContent.trim();
+                
+                // Try numeric sort first
+                const aNum = parseFloat(aVal.replace(/[^\d.-]/g, ''));
+                const bNum = parseFloat(bVal.replace(/[^\d.-]/g, ''));
+                
+                if (!isNaN(aNum) && !isNaN(bNum)) {
+                    return (aNum - bNum) * dir;
+                }
+                
+                return aVal.localeCompare(bVal) * dir;
+            });
+            
+            rows.forEach(row => tbody.appendChild(row));
+        }
+        
+        function filterTable() {
+            const statusFilter = document.getElementById('statusFilter').value;
+            const searchText = document.getElementById('searchBox').value.toLowerCase();
+            const rows = document.querySelectorAll('#resultsTable tbody tr');
+            
+            rows.forEach(row => {
+                const status = row.getAttribute('data-status');
+                const modelId = row.cells[0].textContent.toLowerCase();
+                
+                let showByStatus = statusFilter === 'all' || status === statusFilter;
+                let showBySearch = modelId.includes(searchText);
+                
+                row.style.display = (showByStatus && showBySearch) ? '' : 'none';
+            });
+        }
+    </script>
+</body>
+</html>
+"""
+    
+    with open(index_path, "w", encoding="utf-8") as f:
+        f.write(html)
+    
+    logger.info(f"Generated reports index: {index_path}")
+
+
 def get_processed_files() -> set:
     """Get set of already processed file IDs."""
     processed = set()
-    for md_file in REPORTS_PATH.glob("*.md"):
-        processed.add(md_file.stem)
+    for html_file in REPORTS_PATH.glob("*.html"):
+        # Skip the index file
+        if html_file.stem != "index":
+            processed.add(html_file.stem)
     return processed
 
 
@@ -1104,6 +1590,7 @@ def run_batch_test(limit: Optional[int] = None, resume: bool = True):
         # Update dashboard every 10 files (slower operation)
         if i % 10 == 0:
             generate_dashboard(progress, results)
+            generate_reports_index(results)
         
         # Log result
         status = "[OK]" if result.success else "[FAIL]"
@@ -1114,6 +1601,7 @@ def run_batch_test(limit: Optional[int] = None, resume: bool = True):
     # Final save
     save_progress(progress)
     generate_dashboard(progress, results)
+    generate_reports_index(results)  # Generate navigable index in reports folder
     
     # Summary
     print("", flush=True)
