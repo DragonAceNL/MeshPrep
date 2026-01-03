@@ -63,6 +63,7 @@ This starts a server with the following URLs:
 | http://localhost:8000/reports/ | Reports index (browse all results) |
 | http://localhost:8000/live_dashboard.html | Live dashboard (auto-updates) |
 | http://localhost:8000/dashboard | Static dashboard |
+| http://localhost:8000/learning | Learning engine status page |
 | http://localhost:8000/progress.json | Progress data (JSON) |
 
 Features:

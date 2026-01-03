@@ -277,6 +277,7 @@ def main():
     print(f"  Reports Index:    http://localhost:{args.port}/reports/")
     print(f"  Live Dashboard:   http://localhost:{args.port}/live_dashboard.html")
     print(f"  Static Dashboard: http://localhost:{args.port}/dashboard")
+    print(f"  Learning Status:  http://localhost:{args.port}/learning")
     print(f"  Progress JSON:    http://localhost:{args.port}/progress.json")
     print("=" * 60)
     print()
