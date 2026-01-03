@@ -1,14 +1,18 @@
 {
   "total_files": 9956,
-  "processed": 646,
-  "successful": 614,
-  "failed": 32,
-  "escalations": 53,
+  "processed": 3,
+  "successful": 3,
+  "failed": 0,
+  "escalations": 1,
   "skipped": 0,
-  "start_time": "2026-01-02T21:42:56.431341",
-  "last_update": "2026-01-03T07:53:20.366695",
-  "current_file": "1088055",
-  "total_duration_ms": 34711855.34501076,
-  "avg_duration_ms": 53733.522205899004,
-  "eta_seconds": 463641.85147193604
+  "precheck_skipped": 1,
+  "start_time": "2026-01-03T09:12:37.785507",
+  "last_update": "2026-01-03T09:13:48.393391",
+  "current_file": "100028",
+  "current_action": "validate",
+  "current_step": 4,
+  "total_steps": 4,
+  "total_duration_ms": 64295.73917388916,
+  "avg_duration_ms": 21431.913057963055,
+  "eta_seconds": 31.8976868391037
 }

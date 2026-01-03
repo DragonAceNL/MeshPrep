@@ -155,7 +155,13 @@
             
             <div class="current-file">
                 <div id="spinner" class="spinner stopped"></div>
-                <span>Currently processing: <strong id="currentFile">-</strong></span>
+                <div style="flex: 1;">
+                    <div>Currently processing: <strong id="currentFile">-</strong></div>
+                    <div id="currentActionContainer" style="margin-top: 5px; font-size: 14px; color: #888;">
+                        Action: <span id="currentAction" style="color: #4fe8c4;">-</span>
+                        <span id="actionProgress" style="margin-left: 10px;"></span>
+                    </div>
+                </div>
             </div>
             
             <div class="stats-grid">
@@ -174,6 +180,10 @@
                 <div class="stat-card">
                     <div class="stat-value escalated" id="escalations">0</div>
                     <div class="stat-label">Escalations</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" style="color: #3498db;" id="precheckSkipped">0</div>
+                    <div class="stat-label">Already Clean</div>
                 </div>
                 <div class="stat-card">
                     <div class="stat-value" id="successRate">0%</div>
@@ -265,11 +275,31 @@
             // Current file
             document.getElementById('currentFile').textContent = p.current_file || '-';
             
+            // Current action (NEW)
+            const actionContainer = document.getElementById('currentActionContainer');
+            const currentAction = document.getElementById('currentAction');
+            const actionProgress = document.getElementById('actionProgress');
+            
+            if (p.current_action && isRunning) {
+                actionContainer.style.display = 'block';
+                currentAction.textContent = p.current_action;
+                if (p.current_step && p.total_steps) {
+                    actionProgress.textContent = `(step ${p.current_step} of ${p.total_steps})`;
+                } else {
+                    actionProgress.textContent = '';
+                }
+            } else {
+                actionContainer.style.display = isRunning ? 'block' : 'none';
+                currentAction.textContent = isRunning ? 'Waiting...' : '-';
+                actionProgress.textContent = '';
+            }
+            
             // Stats
             document.getElementById('totalModels').textContent = p.total_files.toLocaleString();
             document.getElementById('successful').textContent = p.successful.toLocaleString();
             document.getElementById('failed').textContent = p.failed.toLocaleString();
             document.getElementById('escalations').textContent = p.escalations.toLocaleString();
+            document.getElementById('precheckSkipped').textContent = (p.precheck_skipped || 0).toLocaleString();
             document.getElementById('successRate').textContent = successRate.toFixed(1) + '%';
             document.getElementById('avgDuration').textContent = (p.avg_duration_ms / 1000).toFixed(1) + 's';
         }

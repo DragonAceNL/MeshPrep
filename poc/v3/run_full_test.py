@@ -64,6 +64,7 @@ from meshprep_poc.filter_script import (
     get_preset,
 )
 from meshprep_poc.actions.blender_actions import is_blender_available
+from meshprep_poc.actions.slicer_actions import get_mesh_info_prusa, is_slicer_available
 
 # Paths
 THINGI10K_PATH = Path(r"C:\Users\Dragon Ace\Source\repos\Thingi10K\raw_meshes")
@@ -91,6 +92,10 @@ class TestResult:
     filter_used: str = ""
     escalation_used: bool = False
     duration_ms: float = 0
+    
+    # Pre-check result (slicer --info before repair)
+    precheck_passed: bool = False  # True if model was already clean
+    precheck_skipped: bool = False  # True if we skipped repair due to precheck
     
     # Original metrics
     original_vertices: int = 0
@@ -132,10 +137,14 @@ class Progress:
     failed: int = 0
     escalations: int = 0
     skipped: int = 0
+    precheck_skipped: int = 0  # NEW: Models skipped because already clean
     
     start_time: str = ""
     last_update: str = ""
     current_file: str = ""
+    current_action: str = ""  # NEW: Current action being executed
+    current_step: int = 0  # NEW: Current step number (e.g., 1 of 4)
+    total_steps: int = 0  # NEW: Total steps in current filter
     
     # Timing
     total_duration_ms: float = 0
@@ -274,6 +283,9 @@ def decimate_mesh(mesh, target_faces: int = 100000):
 
 def save_filter_script(file_id: str, filter_script: FilterScript, escalated: bool = False):
     """Save the filter script used for a model."""
+    # Ensure filters directory exists
+    FILTERS_PATH.mkdir(parents=True, exist_ok=True)
+    
     filter_path = FILTERS_PATH / f"{file_id}.json"
     
     # Build filter data
@@ -296,8 +308,30 @@ def save_filter_script(file_id: str, filter_script: FilterScript, escalated: boo
         json.dump(filter_data, f, indent=2)
 
 
-def process_single_model(stl_path: Path) -> TestResult:
-    """Process a single model and return result."""
+# Global progress reference for callback
+_current_progress: Optional[Progress] = None
+
+
+def update_action_progress(action_index: int, action_name: str, total_actions: int):
+    """Callback to update progress with current action."""
+    global _current_progress
+    if _current_progress:
+        _current_progress.current_action = action_name
+        _current_progress.current_step = action_index + 1
+        _current_progress.total_steps = total_actions
+        save_progress(_current_progress)
+
+
+def process_single_model(stl_path: Path, skip_if_clean: bool = True, progress: Optional[Progress] = None) -> TestResult:
+    """Process a single model and return result.
+    
+    Args:
+        stl_path: Path to the STL file
+        skip_if_clean: If True, skip repair if model already passes STRICT slicer check
+        progress: Optional Progress object for live updates
+    """
+    global _current_progress
+    _current_progress = progress  # Set for callback
     file_id = stl_path.stem
     start_time = time.time()
     
@@ -307,6 +341,45 @@ def process_single_model(stl_path: Path) -> TestResult:
     )
     
     try:
+        # PRE-CHECK: Run STRICT slicer validation BEFORE any repair
+        # This detects models that are already clean and don't need repair
+        if skip_if_clean and is_slicer_available():
+            precheck = get_mesh_info_prusa(stl_path, timeout=30)
+            if precheck.mesh_info and precheck.mesh_info.is_clean:
+                # Model is already clean! Skip repair.
+                logger.info(f"  PRE-CHECK PASSED: Model already clean (manifold, no holes)")
+                result.precheck_passed = True
+                result.precheck_skipped = True
+                result.success = True
+                result.filter_used = "none (already clean)"
+                result.duration_ms = (time.time() - start_time) * 1000
+                
+                # Still load mesh to get metrics
+                original = load_mesh(stl_path)
+                original_diag = compute_diagnostics(original)
+                result.original_vertices = original_diag.vertex_count
+                result.original_faces = original_diag.face_count
+                result.original_volume = original_diag.volume
+                result.original_watertight = original_diag.is_watertight
+                result.original_manifold = original_diag.is_volume
+                result.original_file_size = stl_path.stat().st_size
+                
+                # Result = Original (no changes)
+                result.result_vertices = result.original_vertices
+                result.result_faces = result.original_faces
+                result.result_volume = result.original_volume
+                result.result_watertight = result.original_watertight
+                result.result_manifold = result.original_manifold
+                
+                # Generate report showing it was skipped
+                generate_report(stl_path, original, original, result, None)
+                return result
+            else:
+                # Model has issues, will proceed with repair
+                issues = precheck.mesh_info.issues if precheck.mesh_info else ["unknown"]
+                logger.info(f"  PRE-CHECK: Issues detected: {issues[:3]}")
+                result.precheck_passed = False
+        
         # Load mesh
         original = load_mesh(stl_path)
         original_diag = compute_diagnostics(original)
@@ -335,7 +408,7 @@ def process_single_model(stl_path: Path) -> TestResult:
         
         # Run repair
         runner = FilterScriptRunner(stop_on_error=False)
-        repair_result = runner.run(filter_script, original)
+        repair_result = runner.run(filter_script, original, progress_callback=update_action_progress)
         
         if not repair_result.success or repair_result.final_mesh is None:
             result.success = False
@@ -362,7 +435,7 @@ def process_single_model(stl_path: Path) -> TestResult:
         if needs_escalation and is_blender_available():
             logger.info(f"  Escalating to Blender...")
             escalation_script = get_preset("blender-remesh")
-            escalation_result = runner.run(escalation_script, original)
+            escalation_result = runner.run(escalation_script, original, progress_callback=update_action_progress)
             
             if escalation_result.success and escalation_result.final_mesh is not None:
                 repaired = escalation_result.final_mesh
@@ -723,7 +796,13 @@ def generate_dashboard(progress: Progress, results: List[TestResult]):
         
         <div class="current-file">
             <div class="spinner"></div>
-            <span>Currently processing: <strong>{progress.current_file or 'Waiting...'}</strong></span>
+            <div style="flex: 1;">
+                <div>Currently processing: <strong>{progress.current_file or 'Waiting...'}</strong></div>
+                <div style="margin-top: 5px; font-size: 14px; color: #888;">
+                    Action: <span style="color: #4fe8c4;">{progress.current_action or '-'}</span>
+                    {f'(step {progress.current_step} of {progress.total_steps})' if progress.current_step else ''}
+                </div>
+            </div>
         </div>
         
         <div class="stats-grid">
@@ -742,6 +821,10 @@ def generate_dashboard(progress: Progress, results: List[TestResult]):
             <div class="stat-card">
                 <div class="stat-value escalated">{progress.escalations:,}</div>
                 <div class="stat-label">Escalations</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" style="color: #3498db;">{progress.precheck_skipped:,}</div>
+                <div class="stat-label">Already Clean</div>
             </div>
             <div class="stat-card">
                 <div class="stat-value">{progress.success_rate:.1f}%</div>
@@ -819,6 +902,7 @@ def append_to_csv(result: TestResult):
     # Define CSV columns
     columns = [
         'file_id', 'success', 'filter_used', 'escalation_used', 'duration_ms',
+        'precheck_passed', 'precheck_skipped',  # NEW: Pre-check fields
         'original_vertices', 'original_faces', 'original_volume', 
         'original_watertight', 'original_manifold',
         'result_vertices', 'result_faces', 'result_volume',
@@ -846,6 +930,8 @@ def append_to_csv(result: TestResult):
             'filter_used': result.filter_used,
             'escalation_used': result.escalation_used,
             'duration_ms': result.duration_ms,
+            'precheck_passed': result.precheck_passed,
+            'precheck_skipped': result.precheck_skipped,
             'original_vertices': result.original_vertices,
             'original_faces': result.original_faces,
             'original_volume': result.original_volume,
@@ -953,7 +1039,7 @@ def run_batch_test(limit: Optional[int] = None, resume: bool = True):
         logger.info(f"[{i+1}/{len(to_process)}] Processing {file_id}...")
         
         # Process
-        result = process_single_model(stl_path)
+        result = process_single_model(stl_path, progress=progress)
         results.append(result)
         
         # Append to CSV for incremental export
@@ -967,6 +1053,9 @@ def run_batch_test(limit: Optional[int] = None, resume: bool = True):
         
         if result.escalation_used:
             progress.escalations += 1
+        
+        if result.precheck_skipped:
+            progress.precheck_skipped += 1
         
         progress.total_duration_ms += result.duration_ms
         progress.avg_duration_ms = progress.total_duration_ms / len(results)

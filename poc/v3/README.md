@@ -4,6 +4,23 @@
 
 This POC runs automatic mesh repair against all ~10,000 models in the Thingi10K dataset, generating detailed reports with before/after comparisons.
 
+## NEW: STRICT Slicer Pre-Check
+
+POC v3 now includes a **STRICT pre-check** using PrusaSlicer's `--info` command **before** attempting any repair. This:
+
+1. **Skips already-clean models** - No unnecessary repair that might break good models
+2. **Detects exact issues** - manifold status, open edges, reversed facets
+3. **Prevents repair damage** - Models that were good before won't be damaged by repair
+
+```
+Pre-check results on first 10 models:
+  100028.stl: CLEAN (skip repair)
+  100034.stl: CLEAN (skip repair)
+  100026.stl: NEEDS REPAIR - open_edges (16)
+  100030.stl: NEEDS REPAIR - open_edges (958)
+  ...
+```
+
 ## Quick Start
 
 ### 1. Start the Live Dashboard (Optional but Recommended)
@@ -75,14 +92,17 @@ Based on test results:
 
 ## Repair Pipeline
 
-1. **Load mesh** and compute diagnostics
-2. **Run conservative-repair** filter (trimesh + pymeshfix)
-3. **Check results**:
+1. **STRICT Pre-check** (NEW) - Run `prusa-slicer --info` to check if model is already clean
+   - If CLEAN (manifold, no open edges, no reversed facets) → **Skip repair**, mark success
+   - If HAS ISSUES → Continue with repair
+2. **Load mesh** and compute diagnostics
+3. **Run conservative-repair** filter (trimesh + pymeshfix)
+4. **Check results**:
    - If watertight & manifold → Success
    - If geometry loss > 30% or not printable → Escalate to Blender
-4. **Blender remesh** (if needed) - voxel remesh at 0.05 size
-5. **Decimate** if > 100k faces (keeps original if decimation breaks manifold)
-6. **Save** fixed model and generate report
+5. **Blender remesh** (if needed) - voxel remesh at 0.05 size
+6. **Decimate** if > 100k faces (keeps original if decimation breaks manifold)
+7. **Save** fixed model and generate report
 
 ## Troubleshooting
 
