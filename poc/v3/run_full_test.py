@@ -1566,12 +1566,12 @@ def append_to_csv(result: TestResult):
         writer.writerow(row)
 
 
-def run_batch_test(limit: Optional[int] = None, resume: bool = True):
+def run_batch_test(limit: Optional[int] = None, skip_existing: bool = True):
     """Run the full batch test.
     
     Args:
         limit: Optional limit on number of files to process
-        resume: If True (default), skip files that already have reports
+        skip_existing: If True (default), skip files that already have reports
     """
     print("="* 60, flush=True)
     print("MeshPrep Thingi10K Full Test - POC v3", flush=True)
@@ -1600,16 +1600,21 @@ def run_batch_test(limit: Optional[int] = None, resume: bool = True):
         print(f"Processing first {len(files_to_consider):,} files (--limit {limit})", flush=True)
     logger.info(f"Found {total_stl_count:,} STL files")
     
-    # Always check for already processed files (auto-resume)
+    # Check for already processed files
     processed_ids = get_processed_files()
     if processed_ids:
-        print(f"Found {len(processed_ids):,} existing reports - will skip those", flush=True)
-        logger.info(f"Found {len(processed_ids):,} existing reports - will skip those")
+        print(f"Found {len(processed_ids):,} existing reports", flush=True)
+        logger.info(f"Found {len(processed_ids):,} existing reports")
     
-    # Count how many we'll actually process
-    to_process = [f for f in files_to_consider if f.stem not in processed_ids]
-    print(f"Will process {len(to_process):,} new files", flush=True)
-    logger.info(f"Will process {len(to_process):,} new files")
+    # Determine which files to process
+    if skip_existing:
+        to_process = [f for f in files_to_consider if f.stem not in processed_ids]
+        print(f"Will process {len(to_process):,} new files (skipping existing)", flush=True)
+        logger.info(f"Will process {len(to_process):,} new files (skipping existing)")
+    else:
+        to_process = files_to_consider
+        print(f"Will process {len(to_process):,} files (--fresh mode, may overwrite existing)", flush=True)
+        logger.info(f"Will process {len(to_process):,} files (--fresh mode)")
     
     if len(to_process) == 0:
         print("\nAll files already processed! Use --fresh to reprocess.", flush=True)
@@ -1755,7 +1760,7 @@ def main():
     parser.add_argument(
         "--fresh", "-f",
         action="store_true",
-        help="Start fresh - ignore existing reports and reprocess all"
+        help="Reprocess all files (doesn't delete existing results, just overwrites)"
     )
     parser.add_argument(
         "--status", "-s",
@@ -1769,22 +1774,11 @@ def main():
         show_status()
         return
     
-    # If --fresh is passed, clear existing reports first
+    # If --fresh is passed, reprocess all files (but don't delete existing results)
     if args.fresh:
-        logger.info("Fresh mode: clearing existing reports...")
-        # Clear reports folder
-        if REPORTS_PATH.exists():
-            import shutil
-            shutil.rmtree(REPORTS_PATH)
-            REPORTS_PATH.mkdir(parents=True, exist_ok=True)
-        # Clear fixed files
-        if FIXED_OUTPUT_PATH.exists():
-            import shutil
-            shutil.rmtree(FIXED_OUTPUT_PATH)
-            FIXED_OUTPUT_PATH.mkdir(parents=True, exist_ok=True)
-        logger.info("Cleared existing reports and fixed files")
+        logger.info("Fresh mode: will reprocess all files (existing results preserved until overwritten)")
     
-    run_batch_test(limit=args.limit)
+    run_batch_test(limit=args.limit, skip_existing=not args.fresh)
 
 
 if __name__ == "__main__":

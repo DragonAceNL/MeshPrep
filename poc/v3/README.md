@@ -88,7 +88,7 @@ That's it! The test will run automatically.
 |---------|-------------|
 | `run_full_test.py` | Run all models (auto-resumes from where it left off) |
 | `run_full_test.py --status` | Check current progress without processing |
-| `run_full_test.py --fresh` | Start over from scratch (clears all reports) |
+| `run_full_test.py --fresh` | Reprocess all files (doesn't delete existing results) |
 | `run_full_test.py --limit 100` | Test only the first 100 models |
 
 ## Features

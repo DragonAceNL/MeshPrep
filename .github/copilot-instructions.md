@@ -217,6 +217,7 @@ When making changes that affect documented behavior:
 - Do not duplicate information — reference the source-of-truth document instead
 - Do not leave documentation outdated after making changes
 - Do not make assumptions about the situation but also don't over-gather context when you have sufficient information to proceed.
+- **Do not delete existing test results** — POC v3 batch tests take many hours to run. Never use `--fresh` flag or delete reports/fixed files when testing. The auto-resume feature will skip already-processed files.
 
 ## Helpful Context
 
