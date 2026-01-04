@@ -51,6 +51,7 @@ DEFAULT_MAX_REPAIR_ATTEMPTS = 20
 DEFAULT_REPAIR_TIMEOUT = 120
 DASHBOARD_UPDATE_INTERVAL = 10  # Update dashboard every N files
 THRESHOLD_OPTIMIZE_INTERVAL = 100  # Optimize thresholds every N models
+PROFILE_DISCOVERY_INTERVAL = 100  # Run profile discovery every N models
 
 
 # =============================================================================

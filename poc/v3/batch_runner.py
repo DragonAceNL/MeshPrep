@@ -30,7 +30,7 @@ from config import (
     REPORTS_PATH, FILTERS_PATH,
     PROGRESS_FILE, SUMMARY_FILE, RESULTS_CSV, DASHBOARD_FILE,
     SUPPORTED_FORMATS,
-    DASHBOARD_UPDATE_INTERVAL, THRESHOLD_OPTIMIZE_INTERVAL,
+    DASHBOARD_UPDATE_INTERVAL, THRESHOLD_OPTIMIZE_INTERVAL, PROFILE_DISCOVERY_INTERVAL,
 )
 from test_result import TestResult
 from progress_tracker import Progress, save_progress
@@ -42,6 +42,14 @@ from index_generator import generate_reports_index as generate_index_html, load_
 
 if ADAPTIVE_THRESHOLDS_AVAILABLE:
     from meshprep_poc.adaptive_thresholds import get_adaptive_thresholds
+
+# Try to import profile discovery
+try:
+    from meshprep_poc.profile_discovery import get_discovery_engine
+    PROFILE_DISCOVERY_AVAILABLE = True
+except ImportError:
+    PROFILE_DISCOVERY_AVAILABLE = False
+    get_discovery_engine = None
 
 logger = logging.getLogger(__name__)
 
@@ -383,6 +391,18 @@ def run_batch_test(
             except Exception as e:
                 logger.debug(f"Auto-optimization failed: {e}")
         
+        # Auto-run profile discovery periodically
+        if auto_optimize and PROFILE_DISCOVERY_AVAILABLE and new_results_count > 0 and new_results_count % PROFILE_DISCOVERY_INTERVAL == 0:
+            try:
+                discovery = get_discovery_engine()
+                discovered = discovery.run_discovery(min_samples=50)
+                if discovered:
+                    logger.info(f"Auto-discovered {len(discovered)} new profiles after {new_results_count} models")
+                    for profile in discovered:
+                        logger.info(f"  {profile.name}: {profile.total_models} models, {profile.success_rate*100:.0f}% success")
+            except Exception as e:
+                logger.debug(f"Auto-discovery failed: {e}")
+        
         # Log result
         status = "SUCCESS" if result.success else "FAIL"
         escalation = "BLENDER" if result.escalation_used else " "
@@ -439,6 +459,27 @@ def run_batch_test(
                 print(f"Thresholds are optimal ({stats['thresholds_adjusted']} adjusted from defaults)", flush=True)
         except Exception as e:
             logger.debug(f"Final optimization failed: {e}")
+    
+    # Final profile discovery
+    if auto_optimize and PROFILE_DISCOVERY_AVAILABLE and new_results_count >= 50:
+        try:
+            discovery = get_discovery_engine()
+            stats = discovery.get_stats_summary()
+            print(f"\nProfile discovery: {stats['total_clusters']} clusters, {stats['active_profiles']} profiles", flush=True)
+            
+            # Run discovery on any remaining unassigned clusters
+            if stats['unassigned_clusters'] > 0:
+                discovered = discovery.run_discovery(min_samples=50)
+                if discovered:
+                    print(f"Auto-discovered {len(discovered)} new profiles:", flush=True)
+                    for profile in discovered:
+                        print(f"  {profile.name}: {profile.total_models} models, {profile.success_rate*100:.0f}% success", flush=True)
+                else:
+                    print(f"No new profiles discovered ({stats['unassigned_models']} models in {stats['unassigned_clusters']} clusters awaiting more data)", flush=True)
+            else:
+                print(f"All clusters assigned to profiles", flush=True)
+        except Exception as e:
+            logger.debug(f"Final profile discovery failed: {e}")
     
     # Save final summary
     with open(SUMMARY_FILE, "w") as f:

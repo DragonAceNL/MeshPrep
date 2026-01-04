@@ -95,7 +95,10 @@ class ProfileDiscoveryEngine:
     
     def __init__(self, data_path: Optional[Path] = None):
         """Initialize the profile discovery engine."""
-        self.data_path = data_path or Path(__file__).parent.parent.parent.parent / "learning_data"
+        if data_path is None:
+            # Resolve the path first to handle relative imports correctly
+            data_path = Path(__file__).resolve().parent.parent.parent.parent / "learning_data"
+        self.data_path = data_path
         self.data_path.mkdir(parents=True, exist_ok=True)
         self.db_path = self.data_path / "profile_discovery.db"
         

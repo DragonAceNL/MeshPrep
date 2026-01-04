@@ -27,6 +27,14 @@ from meshprep_poc.actions.blender_actions import is_blender_available
 from meshprep_poc.fingerprint import compute_file_fingerprint, compute_full_file_hash
 from meshprep_poc.learning_engine import get_learning_engine
 
+# Try to import profile discovery at module level
+try:
+    from meshprep_poc.profile_discovery import get_discovery_engine
+    PROFILE_DISCOVERY_AVAILABLE = True
+except ImportError:
+    PROFILE_DISCOVERY_AVAILABLE = False
+    get_discovery_engine = None
+
 from config import (
     REPORTS_PATH, FIXED_OUTPUT_PATH, THINGI10K_PATH,
     DEFAULT_MAX_REPAIR_ATTEMPTS, DEFAULT_REPAIR_TIMEOUT,
@@ -179,6 +187,12 @@ def process_single_model(
             result.result_volume = result.original_volume
             result.result_watertight = result.original_watertight
             result.result_manifold = result.original_manifold
+            
+            # Extract diagnostics for learning even for clean models
+            before_diagnostics = extract_mesh_diagnostics(original, "before")
+            
+            # Feed to learning engine (even clean models help build profiles)
+            _update_learning_engine(result, repair_result, before_diagnostics, before_diagnostics)
             
             # Generate report showing it was skipped
             _generate_report(stl_path, original, original, result, None)
@@ -345,7 +359,7 @@ def _generate_report(stl_path: Path, original, repaired, result: TestResult, fix
 
 
 def _update_learning_engine(result: TestResult, repair_result, before_diagnostics, after_diagnostics):
-    """Feed result to learning engine for continuous improvement."""
+    """Feed result to learning engine and profile discovery for continuous improvement."""
     try:
         learning_engine = get_learning_engine()
         filter_data = {
@@ -377,6 +391,41 @@ def _update_learning_engine(result: TestResult, repair_result, before_diagnostic
         learning_engine.record_result(filter_data)
     except Exception as le_error:
         logger.debug(f"Learning engine update failed: {le_error}")
+    
+    # Also feed profile discovery engine for automatic profile creation
+    if PROFILE_DISCOVERY_AVAILABLE:
+        try:
+            discovery = get_discovery_engine()
+            
+            # Extract issues from repair result
+            issues = repair_result.issues_found if repair_result else []
+            
+            # Determine winning pipeline
+            pipeline_used = "unknown"
+            if repair_result and repair_result.attempts:
+                for attempt in repair_result.attempts:
+                    if attempt.success:
+                        pipeline_used = attempt.pipeline_name
+                        break
+            
+            # For clean models, set pipeline to "none"
+            if repair_result and repair_result.precheck_skipped:
+                pipeline_used = "none (already clean)"
+            
+            # Record model for profile discovery clustering
+            if before_diagnostics:
+                discovery.record_model(
+                    model_id=result.file_id,
+                    diagnostics=before_diagnostics,
+                    issues=issues,
+                    success=result.success,
+                    pipeline_used=pipeline_used,
+                    attempts=repair_result.total_attempts if repair_result else 0,
+                )
+        except Exception as pd_error:
+            logger.debug(f"Profile discovery update failed: {pd_error}")
+    else:
+        logger.debug("Profile discovery not available")
 
 
 def _update_adaptive_thresholds(
