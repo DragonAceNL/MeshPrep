@@ -89,7 +89,7 @@ def generate_dashboard(
 </head>
 <body>
     <div class="container">
-        <h1>?? MeshPrep Thingi10K Test Dashboard</h1>
+        <h1>&#128295; MeshPrep Thingi10K Test Dashboard</h1>
         <p class="subtitle">
             Started: {progress.start_time[:19] if progress.start_time else 'Not started'} | 
             Last Update: {progress.last_update[:19] if progress.last_update else 'Never'}
@@ -97,9 +97,9 @@ def generate_dashboard(
         </p>
         
         <div class="nav-links">
-            <a href="/reports/index.html">?? Reports Index</a>
-            <a href="/learning">?? Learning Status</a>
-            <a href="/live">?? Live Dashboard</a>
+            <a href="/reports/index.html">&#128203; Reports Index</a>
+            <a href="/learning">&#129504; Learning Status</a>
+            <a href="/live">&#128260; Live Dashboard</a>
         </div>
         
         <div class="progress-bar">
@@ -172,9 +172,9 @@ def generate_dashboard(
     
     for r in reversed(recent):
         status_class = "success" if r.success else "failed"
-        status_text = "?" if r.success else "?"
+        status_text = "&#10003;" if r.success else "&#10007;"
         if r.escalation_used:
-            status_text += " ??"
+            status_text += " &#128640;"  # Rocket emoji
         
         duration_text = format_duration(r.duration_ms)
         

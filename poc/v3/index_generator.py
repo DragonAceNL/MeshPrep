@@ -156,7 +156,7 @@ def generate_reports_index(
 </head>
 <body>
     <div class="container">
-        <h1>?? MeshPrep Reports Index</h1>
+        <h1>&#128203; MeshPrep Reports Index</h1>
         <p class="subtitle">Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} | Total: {total} models</p>
         
         <div class="stats-row">
@@ -240,7 +240,7 @@ def generate_reports_index(
         </table>
         
         <p style="margin-top: 30px; color: {COLORS['text_muted']}; font-size: 12px;">
-            <a href="/dashboard">?? Dashboard</a> | 
+            <a href="/dashboard">&#128202; Dashboard</a> | 
             <a href="javascript:location.reload()">Refresh</a>
         </p>
     </div>
