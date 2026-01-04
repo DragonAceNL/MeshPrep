@@ -19,6 +19,7 @@ import os
 import shutil
 import subprocess
 import tempfile
+import time
 from pathlib import Path
 from typing import Optional
 
@@ -246,16 +247,24 @@ def run_blender_script(
     input_mesh: trimesh.Trimesh,
     operation: str,
     params: Optional[dict] = None,
-    timeout: int = 120
+    poll_interval: float = 5.0,
+    log_interval: float = 60.0,
+    max_runtime: Optional[int] = None
 ) -> trimesh.Trimesh:
     """
     Run a Blender operation on a mesh.
+    
+    Uses process polling instead of a fixed timeout - waits as long as
+    Blender is still running. This is more reliable for complex meshes
+    that may take a long time to process.
     
     Args:
         input_mesh: Input trimesh mesh
         operation: Operation name (remesh, boolean_union, fill_holes, make_manifold, etc.)
         params: Operation parameters
-        timeout: Timeout in seconds
+        poll_interval: How often to check if process is still running (seconds)
+        log_interval: How often to log progress messages (seconds)
+        max_runtime: Optional maximum runtime in seconds (None = no limit)
         
     Returns:
         Repaired mesh
@@ -282,7 +291,7 @@ def run_blender_script(
         # Write script
         script_path.write_text(BLENDER_REPAIR_SCRIPT)
         
-        # Run Blender
+        # Run Blender using Popen for process monitoring
         cmd = [
             blender,
             "--background",
@@ -295,18 +304,45 @@ def run_blender_script(
         ]
         
         logger.info(f"Running Blender {operation}...")
+        start_time = time.time()
+        last_log_time = start_time
+        
+        process = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True
+        )
         
         try:
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                timeout=timeout
-            )
+            # Poll until process completes
+            while process.poll() is None:
+                time.sleep(poll_interval)
+                
+                elapsed = time.time() - start_time
+                
+                # Log progress periodically
+                if time.time() - last_log_time >= log_interval:
+                    minutes = int(elapsed // 60)
+                    seconds = int(elapsed % 60)
+                    logger.info(f"Blender {operation} still running... ({minutes}m {seconds}s elapsed)")
+                    last_log_time = time.time()
+                
+                # Check max runtime if specified
+                if max_runtime is not None and elapsed > max_runtime:
+                    process.terminate()
+                    process.wait(timeout=10)
+                    raise RuntimeError(
+                        f"Blender operation exceeded max runtime of {max_runtime}s"
+                    )
             
-            if result.returncode != 0:
-                logger.error(f"Blender stderr: {result.stderr}")
-                raise RuntimeError(f"Blender failed: {result.stderr}")
+            # Process finished - get output
+            stdout, stderr = process.communicate()
+            elapsed = time.time() - start_time
+            
+            if process.returncode != 0:
+                logger.error(f"Blender stderr: {stderr}")
+                raise RuntimeError(f"Blender failed: {stderr}")
             
             if not output_path.exists():
                 raise RuntimeError("Blender did not produce output file")
@@ -317,12 +353,24 @@ def run_blender_script(
             if isinstance(output_mesh, trimesh.Scene):
                 output_mesh = trimesh.util.concatenate(list(output_mesh.geometry.values()))
             
-            logger.info(f"Blender {operation} complete: {len(output_mesh.vertices)} vertices")
+            minutes = int(elapsed // 60)
+            seconds = int(elapsed % 60)
+            logger.info(
+                f"Blender {operation} complete: {len(output_mesh.vertices)} vertices "
+                f"(took {minutes}m {seconds}s)"
+            )
             
             return output_mesh
             
-        except subprocess.TimeoutExpired:
-            raise RuntimeError(f"Blender operation timed out after {timeout}s")
+        except Exception:
+            # Ensure process is terminated on any error
+            if process.poll() is None:
+                process.terminate()
+                try:
+                    process.wait(timeout=10)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+            raise
 
 
 @register_action(
