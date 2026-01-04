@@ -844,7 +844,7 @@ This file is loaded at startup and used to populate the editor's filter library 
 
 Validation criteria
 
-MeshPrep uses a three-level validation system:
+MeshPrep uses a four-level validation system:
 
 **Level 1 - Basic Geometry (Required)**
 - `is_watertight` true
@@ -862,6 +862,12 @@ MeshPrep uses a three-level validation system:
 - Successful slicer pass with no errors
 - No critical warnings (thin walls, unsupported features)
 - Print time/filament estimates available
+
+**Level 4 - Quality Verified (Optional, Recommended for acceptance)**
+- All Level 3 checks
+- User quality rating ≥ threshold (default 3)
+- OR predicted quality score ≥ threshold with high confidence
+- Ensures repaired model visually resembles the original
 
 CLI
 
@@ -2576,6 +2582,7 @@ All learning components work together as an integrated system:
 | **Pipeline Evolution** | Create new pipeline combinations | Evolved pipelines for failures |
 | **Profile Discovery** | Cluster similar meshes | New profile definitions |
 | **Adaptive Thresholds** | Optimize parameter values | Learned threshold values |
+| **Quality Learning** | Learn from user ratings | Quality predictions, pipeline penalties |
 
 ### Startup Initialization
 
@@ -2602,6 +2609,8 @@ Found 10,000 total mesh files
 | Evolve pipelines | On failures | Create new pipeline combinations |
 | Update pipeline order | Every 10 models | Re-rank pipelines by success |
 | Profile discovery | On-demand | Analyze clusters for new profiles |
+| Update quality predictions | Every 50 ratings | Retrain quality prediction model |
+| Quality-weight pipelines | Every 20 ratings | Adjust pipeline scores by quality |
 
 ### Learning Data Location
 
@@ -2614,6 +2623,7 @@ MeshPrep/
 │   ├── pipeline_evolution.db     # Evolved pipelines and action stats
 │   ├── profile_discovery.db      # Discovered profiles and clusters
 │   ├── adaptive_thresholds.db    # Threshold values and observations
+│   ├── quality_feedback.db       # User quality ratings and predictions
 │   └── learning_detailed_log.db  # Detailed logging for debugging
 ├── poc/
 │   ├── v2/meshprep_poc/          # Core implementation (reusable library)
@@ -2648,3 +2658,525 @@ python run_full_test.py --reset-thresholds
 4. **Robustness**: Evolves new strategies when standard approaches fail
 5. **Transparency**: All learning is logged and can be inspected
 6. **Reproducibility**: Learning data can be exported/shared
+
+Visual Quality Feedback System
+------------------------------
+
+The **Visual Quality Feedback System** addresses a critical gap in mesh repair validation: a model can be technically perfect (watertight, manifold, slicer-validated) but visually unrecognizable compared to the original. This system learns from user feedback to understand what constitutes an acceptable repair.
+
+### The Problem
+
+Traditional validation only checks technical correctness:
+
+| Check | What It Validates | What It Misses |
+|-------|-------------------|----------------|
+| Watertight | No holes | Original shape preserved? |
+| Manifold | Valid topology | Details intact? |
+| Slicer pass | Printable | Looks like original? |
+| Volume loss % | Geometry amount | Geometry **quality**? |
+
+**Example failure modes:**
+- Voxel remesh creates a "blob" that prints fine but is unrecognizable
+- Aggressive hole filling closes intentional openings (windows, vents)
+- Surface reconstruction smooths away fine details
+- Boolean union merges parts that should remain separate
+
+### Design Philosophy
+
+**Human-in-the-loop learning**: Only humans can judge whether a repair preserves the intended appearance. MeshPrep learns from user ratings to:
+
+1. **Predict quality scores** for new repairs based on similar past repairs
+2. **Flag suspicious repairs** that may need review before use
+3. **Penalize pipelines** that produce technically-valid but visually-poor results
+4. **Learn profile-specific tolerances** (organic models need more detail preservation than mechanical parts)
+
+### Four-Level Validation System
+
+Visual quality validation becomes **Level 4** in the validation hierarchy:
+
+| Level | Checks | Confidence | Speed | When to Use |
+|-------|--------|------------|-------|-------------|
+| **1. Basic** | `is_watertight`, `is_volume` | ~80% | Fast (ms) | Internal checkpoints |
+| **2. Full Geometry** | + normals, no self-intersections | ~90% | Medium (s) | Internal checkpoints |
+| **3. Slicer Validated** | + successful slicer pass | ~95% | Slow (s-min) | Default for output |
+| **4. Quality Verified** | + user quality rating ≥ threshold | **~99%** | Manual | **Recommended for final acceptance** |
+
+**Important**: Level 4 is optional but strongly recommended. Models that pass Level 3 but have no quality rating are marked as `"quality_verified": false` in reports.
+
+### Rating Scale Options
+
+Users can provide feedback using either approach:
+
+#### Simple Binary Rating (Quick)
+
+| Rating | Meaning | Use Case |
+|--------|---------|----------|
+| 👍 **Accept** | Result looks good, I would print this | Quick batch review |
+| 👎 **Reject** | Result is damaged/unrecognizable | Quick batch review |
+
+#### Gradational Rating (Detailed)
+
+| Score | Label | Description |
+|-------|-------|-------------|
+| **5** | Perfect | Indistinguishable from original, all details preserved |
+| **4** | Good | Minor smoothing or simplification, fully usable |
+| **3** | Acceptable | Noticeable changes but still recognizable and printable |
+| **2** | Poor | Significant detail loss, may still be usable for some purposes |
+| **1** | Rejected | Unrecognizable, destroyed, or fundamentally wrong |
+
+**Threshold mapping:**
+- Score ≥ 4: Considered "high quality"
+- Score ≥ 3: Considered "acceptable"
+- Score < 3: Considered "failed" (even if technically valid)
+
+### Quality Feedback Flow
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                 VISUAL QUALITY FEEDBACK FLOW                    │
+└─────────────────────────────────────────────────────────────────┘
+
+1. Repair completes (passes Level 3 - Slicer Validated)
+         │
+         ▼
+2. Present before/after comparison to user
+   - Side-by-side 3D preview
+   - Overlay diff visualization
+   - Key metrics (volume change, face count change)
+         │
+         ▼
+3. User provides rating
+   - Quick: 👍 Accept / 👎 Reject
+   - Detailed: 1-5 scale with optional comment
+         │
+         ▼
+    ┌─────────────────┐
+    │ Rating ≥ 3?     │
+    └────────┬────────┘
+             │
+     YES ────┴──── NO
+      │              │
+      ▼              ▼
+4a. Mark as        4b. Mark as
+    QUALITY_VERIFIED    QUALITY_REJECTED
+    Save rating         Optionally retry
+         │              with different pipeline
+         ▼
+5. Record feedback for learning
+   - Pipeline used
+   - Model profile
+   - Geometry metrics
+   - User rating
+         │
+         ▼
+6. Update quality prediction model
+```
+
+### Automatic Quality Prediction
+
+After collecting sufficient user feedback, MeshPrep can **predict** quality scores for new repairs:
+
+```python
+predicted_quality = predict_quality(
+    pipeline_used="blender-remesh",
+    profile="organic-sculpt",
+    volume_loss_pct=12.5,
+    face_loss_pct=45.0,
+    hausdorff_distance=0.8,
+    detail_preservation_score=0.72
+)
+# Returns: {"predicted_score": 3.2, "confidence": 0.85, "warning": None}
+```
+
+**Prediction features:**
+- Pipeline + profile combination history
+- Geometry change metrics (volume, faces, Hausdorff distance)
+- Detail preservation heuristics
+- Similar model outcomes
+
+**Automatic flagging:**
+- If predicted quality < 3.0 with high confidence → Flag for manual review
+- If predicted quality < 2.0 → Suggest trying different pipeline
+- If similar models consistently rated poorly → Warn before starting repair
+
+### Quality Metrics (Automatic)
+
+In addition to user ratings, MeshPrep computes automatic quality metrics:
+
+| Metric | Description | Good Range |
+|--------|-------------|------------|
+| `volume_change_pct` | Volume difference from original | < 10% |
+| `face_count_change_pct` | Face count difference | -50% to +50% |
+| `hausdorff_distance` | Maximum surface deviation | < 1% of bbox diagonal |
+| `chamfer_distance` | Average surface deviation | < 0.5% of bbox diagonal |
+| `detail_preservation` | High-frequency feature retention | > 0.7 |
+| `silhouette_similarity` | 2D projection similarity | > 0.9 |
+
+These metrics are recorded for every repair and correlated with user ratings to improve predictions.
+
+### Report Integration
+
+Quality feedback is included in `report.json`:
+
+```json
+{
+  "quality_validation": {
+    "status": "verified",
+    "user_rating": 4,
+    "user_rating_type": "gradational",
+    "user_comment": "Minor smoothing on edges but looks good",
+    "rated_by": "user@example.com",
+    "rated_at": "2025-01-15T14:30:00Z",
+    "automatic_metrics": {
+      "volume_change_pct": -2.3,
+      "face_count_change_pct": -15.7,
+      "hausdorff_distance": 0.42,
+      "chamfer_distance": 0.18,
+      "detail_preservation": 0.85,
+      "silhouette_similarity": 0.94
+    },
+    "predicted_quality": {
+      "score": 3.8,
+      "confidence": 0.72,
+      "based_on_samples": 234
+    }
+  }
+}
+```
+
+**When quality validation is skipped:**
+```json
+{
+  "quality_validation": {
+    "status": "unverified",
+    "predicted_quality": {
+      "score": 3.5,
+      "confidence": 0.68,
+      "warning": "No user verification - predicted score only"
+    },
+    "automatic_metrics": {...}
+  }
+}
+```
+
+### GUI Integration
+
+The GUI provides a **Quality Review** panel after repair completion:
+
+1. **Before/After Viewer**
+   - Side-by-side 3D view with synchronized rotation
+   - Overlay mode showing differences
+   - Highlight regions with significant changes
+   - Toggle between original and repaired
+
+2. **Metrics Dashboard**
+   - Visual gauges for key metrics
+   - Color-coded (green/yellow/red) based on thresholds
+   - Comparison to similar model repairs
+
+3. **Rating Interface**
+   - Large 👍/👎 buttons for quick rating
+   - Star rating (1-5) for detailed feedback
+   - Optional comment field
+   - "Skip" option (counts as unverified)
+
+4. **Batch Review Mode**
+   - Grid view of multiple repairs
+   - Quick-rate with keyboard shortcuts (1-5, Y/N)
+   - Filter by predicted quality score
+   - Sort by confidence (review uncertain ones first)
+
+### CLI Integration
+
+```bash
+# Rate a completed repair
+python auto_fix_stl.py --rate model_fixed.stl --rating 4 --comment "Looks good"
+
+# Rate using fingerprint
+python auto_fix_stl.py --rate-fingerprint MP:42f3729aa758 --rating 5
+
+# Batch rate from file
+python auto_fix_stl.py --rate-batch ratings.csv
+
+# Show quality statistics
+python auto_fix_stl.py --quality-stats
+
+# List unrated repairs awaiting review
+python auto_fix_stl.py --list-unrated --sort-by predicted_quality
+
+# Re-process models rated < 3 with alternative pipelines
+python auto_fix_stl.py --retry-poor-quality --threshold 3
+```
+
+### Data Storage
+
+Quality feedback is stored in SQLite at `learning_data/quality_feedback.db`:
+
+```sql
+-- Individual quality ratings
+CREATE TABLE quality_ratings (
+    id INTEGER PRIMARY KEY,
+    model_fingerprint TEXT,
+    model_filename TEXT,
+    
+    -- Rating data
+    rating_type TEXT,           -- 'binary' or 'gradational'
+    rating_value INTEGER,       -- 0-1 for binary, 1-5 for gradational
+    normalized_score REAL,      -- 0.0-1.0 normalized
+    user_comment TEXT,
+    rated_by TEXT,
+    rated_at TEXT,
+    
+    -- Context
+    pipeline_used TEXT,
+    profile TEXT,
+    repair_duration_ms REAL,
+    escalated INTEGER,
+    
+    -- Automatic metrics
+    volume_change_pct REAL,
+    face_count_change_pct REAL,
+    hausdorff_distance REAL,
+    chamfer_distance REAL,
+    detail_preservation REAL,
+    silhouette_similarity REAL,
+    
+    -- For learning
+    metrics_json TEXT           -- Full metrics snapshot
+);
+
+-- Pipeline quality statistics
+CREATE TABLE pipeline_quality_stats (
+    pipeline_name TEXT,
+    profile TEXT,
+    
+    total_ratings INTEGER,
+    avg_rating REAL,
+    rating_stddev REAL,
+    
+    ratings_5 INTEGER,
+    ratings_4 INTEGER,
+    ratings_3 INTEGER,
+    ratings_2 INTEGER,
+    ratings_1 INTEGER,
+    
+    acceptance_rate REAL,       -- % rated >= 3
+    high_quality_rate REAL,     -- % rated >= 4
+    
+    PRIMARY KEY (pipeline_name, profile)
+);
+
+-- Quality prediction model parameters
+CREATE TABLE quality_prediction_model (
+    model_version INTEGER PRIMARY KEY,
+    created_at TEXT,
+    training_samples INTEGER,
+    
+    -- Model coefficients (simple linear model to start)
+    coefficients_json TEXT,
+    
+    -- Validation metrics
+    mae REAL,                   -- Mean Absolute Error
+    rmse REAL,                  -- Root Mean Square Error
+    correlation REAL            -- Correlation with actual ratings
+);
+
+-- Profile-specific quality thresholds
+CREATE TABLE profile_quality_thresholds (
+    profile TEXT PRIMARY KEY,
+    
+    -- Learned acceptable ranges
+    max_volume_loss_pct REAL,
+    max_hausdorff_distance REAL,
+    min_detail_preservation REAL,
+    min_silhouette_similarity REAL,
+    
+    -- Based on user feedback
+    samples INTEGER,
+    confidence REAL
+);
+```
+
+### Learning from Feedback
+
+The system learns in several ways:
+
+#### 1. Pipeline Quality Scores
+
+Track average quality rating per pipeline + profile combination:
+
+```
+                     | organic | mechanical | fragmented |
+---------------------|---------|------------|------------|
+trimesh-basic        | 4.2     | 4.5        | 2.1        |
+pymeshfix-repair     | 3.8     | 4.3        | 2.8        |
+blender-remesh       | 2.5     | 4.1        | 3.9        |
+open3d-poisson       | 3.2     | 3.0        | 4.2        |
+```
+
+This informs pipeline selection: avoid `blender-remesh` for organic models.
+
+#### 2. Threshold Learning
+
+Learn what metric values correlate with good ratings per profile:
+
+```json
+{
+  "profile": "organic-sculpt",
+  "learned_thresholds": {
+    "max_volume_loss_for_rating_4": 5.0,
+    "max_hausdorff_for_rating_4": 0.3,
+    "min_detail_preservation_for_rating_4": 0.85
+  },
+  "samples": 156,
+  "confidence": 0.89
+}
+```
+
+#### 3. Quality Prediction Model
+
+Train a simple model to predict quality scores:
+
+```python
+# Features:
+X = [
+    pipeline_quality_history,      # Historical avg rating for this pipeline
+    profile_quality_history,       # Historical avg rating for this profile  
+    volume_change_pct,
+    face_count_change_pct,
+    hausdorff_distance_normalized,
+    detail_preservation_score,
+    silhouette_similarity,
+    escalation_flag
+]
+
+# Target:
+y = user_rating (1-5)
+
+# Model: Start with linear regression, upgrade to gradient boosting if needed
+```
+
+#### 4. Early Warning System
+
+Predict quality before completing repair:
+
+```python
+def should_continue_repair(intermediate_mesh, original_mesh, pipeline):
+    metrics = compute_quality_metrics(intermediate_mesh, original_mesh)
+    predicted = predict_quality(metrics, pipeline)
+    
+    if predicted < 2.0 and confidence > 0.8:
+        return False, "Predicted poor quality - try different pipeline"
+    return True, None
+```
+
+### Integration with Other Learning Systems
+
+Quality feedback integrates with existing learning components:
+
+| Component | How Quality Feedback Helps |
+|-----------|---------------------------|
+| **Learning Engine** | Weight pipeline success by quality rating, not just technical success |
+| **Pipeline Evolution** | Penalize evolved pipelines with low quality scores |
+| **Profile Discovery** | Split profiles where same pipeline produces variable quality |
+| **Adaptive Thresholds** | Learn quality-aware thresholds (e.g., max volume loss for rating 4+) |
+
+### Updated Data Flow
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│              LEARNING SYSTEM DATA FLOW (WITH QUALITY)           │
+└─────────────────────────────────────────────────────────────────┘
+
+    ┌──────────────────┐
+    │  Process Model   │
+    └────────┬─────────┘
+             │
+             ▼
+    ┌──────────────────┐
+    │ Technical        │
+    │ Validation       │ (Levels 1-3)
+    └────────┬─────────┘
+             │
+             ▼
+    ┌──────────────────┐
+    │ User Quality     │
+    │ Rating           │ (Level 4 - Optional)
+    └────────┬─────────┘
+             │
+             ▼
+    ┌──────────────────┐
+    │ Record Outcome   │──────────────────────────────────────┐
+    └────────┬─────────┘                                      │
+             │                                                │
+    ┌────────┴────────┬──────────────────┬──────────────────┬────────────────┐
+    ▼                 ▼                  ▼                  ▼                ▼
+┌─────────┐    ┌─────────────┐    ┌──────────────┐    ┌─────────────┐  ┌──────────┐
+│Learning │    │  Pipeline   │    │   Profile    │    │  Adaptive   │  │ Quality  │
+│ Engine  │    │  Evolution  │    │  Discovery   │    │ Thresholds  │  │ Learning │
+└────┬────┘    └──────┬──────┘    └──────┬───────┘    └──────┬──────┘  └────┬─────┘
+     │                │                  │                   │              │
+     └────────────────┴──────────────────┴───────────────────┴──────────────┘
+                                         │
+                                         ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         NEXT MODEL PROCESSING                               │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ • Quality-weighted pipeline order (prefer high-quality pipelines)           │
+│ • Early quality prediction (warn if repair likely to produce poor quality)  │
+│ • Profile-specific quality thresholds (organic vs mechanical tolerance)     │
+│ • Automatic flagging for review (low predicted quality)                     │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### CLI Options for Quality Feedback
+
+| Argument | Type | Default | Description |
+|----------|------|---------|-------------|
+| `--require-quality-rating` | flag | false | Pause after repair for quality rating (GUI mode) |
+| `--quality-threshold` | int | 3 | Minimum quality score to consider repair successful |
+| `--predict-quality` | flag | false | Show predicted quality before starting repair |
+| `--skip-low-quality-prediction` | flag | false | Skip repairs with predicted quality < threshold |
+| `--quality-review-mode` | flag | false | Enter batch quality review mode |
+| `--rate` | path | — | Rate a specific repaired model |
+| `--rating` | int | — | Quality rating (1-5) to assign |
+| `--comment` | string | — | Optional comment with rating |
+
+### Success Criteria Update
+
+With quality feedback, success is redefined:
+
+| Outcome | Technical Status | Quality Status | Overall Status |
+|---------|------------------|----------------|----------------|
+| Full Success | ✅ Slicer pass | ✅ Rating ≥ 4 | **SUCCESS** |
+| Acceptable | ✅ Slicer pass | ⚠️ Rating 3 | **ACCEPTABLE** |
+| Quality Fail | ✅ Slicer pass | ❌ Rating < 3 | **QUALITY_REJECTED** |
+| Technical Fail | ❌ Slicer fail | — | **FAILED** |
+| Unverified | ✅ Slicer pass | ❓ No rating | **UNVERIFIED** |
+
+### Batch Processing Workflow
+
+For batch processing, quality feedback works asynchronously:
+
+1. **Processing Phase**: Repair all models (Level 3 validation)
+2. **Review Phase**: User reviews repairs in batch review mode
+3. **Learning Phase**: System updates quality predictions based on ratings
+4. **Retry Phase**: Optionally re-process models rated < 3 with alternative pipelines
+
+```bash
+# Process batch
+python auto_fix_stl.py --batch ./models/ --output ./fixed/
+
+# Review results (opens GUI batch reviewer)
+python auto_fix_stl.py --quality-review-mode --input ./fixed/
+
+# Retry poor quality repairs
+python auto_fix_stl.py --retry-poor-quality --threshold 3 --input ./fixed/
+```
+
+### Privacy and Data Considerations
+
+- Quality ratings are stored locally in `learning_data/`
+- No data is sent externally unless explicitly shared
+- User identity in ratings is optional (default: anonymous)
+- Ratings can be exported/imported for team sharing
