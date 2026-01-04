@@ -27,7 +27,8 @@ from html_helpers import (
 )
 
 if TYPE_CHECKING:
-    from run_full_test import Progress, TestResult
+    from progress_tracker import Progress
+    from test_result import TestResult
 
 logger = logging.getLogger(__name__)
 

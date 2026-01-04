@@ -26,7 +26,7 @@ from html_helpers import (
 )
 
 if TYPE_CHECKING:
-    from run_full_test import TestResult
+    from test_result import TestResult
 
 logger = logging.getLogger(__name__)
 
@@ -49,7 +49,7 @@ def load_results_from_reports(reports_path: Path, filters_path: Path) -> List["T
         List of TestResult objects reconstructed from filter files
     """
     # Import here to avoid circular import
-    from run_full_test import TestResult
+    from test_result import TestResult
     
     results = []
     
