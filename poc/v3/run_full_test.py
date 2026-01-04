@@ -47,18 +47,73 @@ from pathlib import Path
 from typing import Optional, List, Dict, Any
 import traceback
 
+
+# =============================================================================
+# Colored Logging Formatter
+# =============================================================================
+class ColoredFormatter(logging.Formatter):
+    """Custom formatter that adds colors to log levels in terminal output."""
+    
+    # ANSI color codes
+    COLORS = {
+        'DEBUG': '\033[36m',     # Cyan
+        'INFO': '\033[32m',      # Green
+        'WARNING': '\033[33m',   # Yellow
+        'ERROR': '\033[31m',     # Red
+        'CRITICAL': '\033[35m',  # Magenta
+    }
+    RESET = '\033[0m'
+    BOLD = '\033[1m'
+    
+    def __init__(self, fmt=None, datefmt=None, use_colors=True):
+        super().__init__(fmt, datefmt)
+        self.use_colors = use_colors
+    
+    def format(self, record):
+        # Save original levelname
+        original_levelname = record.levelname
+        
+        if self.use_colors and record.levelname in self.COLORS:
+            color = self.COLORS[record.levelname]
+            # Color the entire line for ERROR and WARNING, just levelname for others
+            if record.levelname in ('ERROR', 'CRITICAL'):
+                record.levelname = f"{self.BOLD}{color}{record.levelname}{self.RESET}"
+                record.msg = f"{self.BOLD}{color}{record.msg}{self.RESET}"
+            elif record.levelname == 'WARNING':
+                record.levelname = f"{color}{record.levelname}{self.RESET}"
+                record.msg = f"{color}{record.msg}{self.RESET}"
+            else:
+                record.levelname = f"{color}{record.levelname}{self.RESET}"
+        
+        result = super().format(record)
+        
+        # Restore original levelname for other handlers (like file handler)
+        record.levelname = original_levelname
+        
+        return result
+
+
 # Setup logging with file output
 LOG_DIR = Path(__file__).parent / "logs"
 LOG_DIR.mkdir(exist_ok=True)
 
+# Create handlers
+console_handler = logging.StreamHandler(sys.stdout)
+console_handler.setFormatter(ColoredFormatter(
+    fmt="%(asctime)s [%(levelname)s] %(message)s",
+    datefmt="%H:%M:%S",
+    use_colors=True
+))
+
+file_handler = logging.FileHandler(LOG_DIR / f"run_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log")
+file_handler.setFormatter(logging.Formatter(
+    fmt="%(asctime)s [%(levelname)s] %(message)s",
+    datefmt="%H:%M:%S"
+))
+
 logging.basicConfig(
     level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s",
-    datefmt="%H:%M:%S",
-    handlers=[
-        logging.StreamHandler(sys.stdout),
-        logging.FileHandler(LOG_DIR / f"run_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log")
-    ],
+    handlers=[console_handler, file_handler],
     force=True
 )
 logger = logging.getLogger(__name__)
