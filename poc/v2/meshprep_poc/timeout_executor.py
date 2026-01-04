@@ -5,8 +5,14 @@
 """
 Timeout-aware action executor for MeshPrep.
 
-Wraps action execution with timeout detection based on learned durations.
-When an action exceeds its predicted timeout, it's killed and recorded as a hang.
+Wraps action execution with intelligent timeout detection based on learned durations.
+Uses a two-stage timeout system:
+1. Soft timeout: Warn but continue (logs that action is running slow)
+2. Hard timeout: Kill process only after giving it ample time
+
+The hard timeout factor is LEARNED per action based on observed variance:
+- Consistent actions (low variance) get tighter timeouts
+- Unpredictable actions (high variance) get more generous timeouts
 
 This uses multiprocessing to truly kill hung operations (threads can't be killed).
 """
@@ -17,7 +23,7 @@ from multiprocessing import Process, Queue
 import queue
 import time
 from dataclasses import dataclass
-from typing import Optional, Tuple, Any
+from typing import Optional, Tuple, Any, Callable
 import traceback
 
 import trimesh
@@ -45,6 +51,11 @@ class TimeoutActionResult:
     mesh: Optional[trimesh.Trimesh]
     duration_ms: float
     timed_out: bool
+    
+    # Timeout info
+    soft_timeout_exceeded: bool = False  # Exceeded soft timeout but completed
+    hard_timeout_exceeded: bool = False  # Was killed by hard timeout
+    
     error: Optional[str] = None
     prediction: Optional[DurationPrediction] = None
 
@@ -91,22 +102,27 @@ def execute_with_timeout(
     action_name: str,
     mesh: trimesh.Trimesh,
     params: dict,
-    timeout_ms: Optional[float] = None,
     model_id: str = "",
     pipeline_name: str = "",
+    progress_callback: Optional[Callable[[str], None]] = None,
 ) -> TimeoutActionResult:
-    """Execute an action with timeout based on predicted duration.
+    """Execute an action with intelligent timeout based on learned duration patterns.
     
-    If the action takes longer than the predicted timeout (based on mesh
-    characteristics and learned history), it's killed and recorded as a hang.
+    Uses a two-stage timeout system:
+    1. Soft timeout: Log warning but continue waiting
+    2. Hard timeout: Kill the process (learned factor specific to this action)
+    
+    The hard timeout factor is learned per action:
+    - Consistent actions (low timing variance) get tighter timeouts (e.g., 3x average)
+    - Unpredictable actions (high variance) get generous timeouts (e.g., 15x average)
     
     Args:
         action_name: Name of the action to execute
         mesh: Input mesh
         params: Action parameters
-        timeout_ms: Override timeout in milliseconds (uses prediction if None)
         model_id: Model identifier for learning
         pipeline_name: Pipeline name for learning
+        progress_callback: Optional callback for status updates
         
     Returns:
         TimeoutActionResult with mesh or timeout info
@@ -125,6 +141,9 @@ def execute_with_timeout(
     
     # Get prediction
     prediction = None
+    soft_timeout_s = 30  # Default soft timeout
+    hard_timeout_s = 300  # Default hard timeout (5 minutes)
+    
     if PREDICTOR_AVAILABLE:
         predictor = get_duration_predictor()
         prediction = predictor.predict_duration(action_name, mesh_chars)
@@ -133,76 +152,87 @@ def execute_with_timeout(
         if prediction.should_skip:
             logger.warning(
                 f"Skipping {action_name} for {mesh_chars.size_bin} mesh "
-                f"(hang risk: {prediction.hang_risk:.0%})"
+                f"(hang risk: {prediction.hang_risk:.0%}, learned from history)"
             )
             return TimeoutActionResult(
                 success=False,
                 mesh=None,
                 duration_ms=0,
                 timed_out=False,
-                error=f"Action skipped due to high hang risk ({prediction.hang_risk:.0%})",
+                error=f"Action skipped: {prediction.hang_risk:.0%} hang risk for {mesh_chars.size_bin} meshes",
                 prediction=prediction,
             )
         
-        # Use predicted timeout if not overridden
-        if timeout_ms is None:
-            timeout_ms = prediction.timeout_ms
+        # Use learned timeouts
+        soft_timeout_s = prediction.soft_timeout_ms / 1000
+        hard_timeout_s = prediction.hard_timeout_ms / 1000
+        
+        logger.info(
+            f"Executing {action_name} on {mesh_chars.size_bin} mesh ({mesh_chars.face_count:,} faces)"
+        )
+        logger.debug(
+            f"  Timeouts: soft={soft_timeout_s:.1f}s, hard={hard_timeout_s:.1f}s "
+            f"(factor={prediction.timeout_factor:.1f}x, confidence={prediction.confidence:.0%})"
+        )
     
-    # Default timeout if no prediction
-    if timeout_ms is None:
-        timeout_ms = 60000  # 60 seconds default
-    
-    timeout_s = timeout_ms / 1000
-    
-    logger.debug(
-        f"Executing {action_name} with {timeout_s:.1f}s timeout "
-        f"(predicted: {prediction.predicted_ms/1000:.1f}s)" if prediction else
-        f"Executing {action_name} with {timeout_s:.1f}s timeout"
-    )
-    
-    # For short timeouts or simple actions, run directly without subprocess overhead
-    if timeout_s > 300 or mesh_chars.face_count > 100000:
-        # Large mesh or long timeout - use subprocess for killability
-        return _execute_in_subprocess(
-            action_name, mesh, params, timeout_s, 
-            prediction, model_id, pipeline_name, mesh_chars
+    # Decide execution strategy based on expected duration
+    if hard_timeout_s < 60 and mesh_chars.face_count < 100000:
+        # Short timeout and small mesh - run directly for efficiency
+        return _execute_direct_with_monitoring(
+            action_name, mesh, params, soft_timeout_s, hard_timeout_s,
+            prediction, model_id, pipeline_name, mesh_chars, progress_callback
         )
     else:
-        # Small mesh - run directly with timing check
-        return _execute_direct_with_timeout(
-            action_name, mesh, params, timeout_s,
-            prediction, model_id, pipeline_name, mesh_chars
+        # Large mesh or long timeout - use subprocess for killability
+        return _execute_in_subprocess(
+            action_name, mesh, params, soft_timeout_s, hard_timeout_s,
+            prediction, model_id, pipeline_name, mesh_chars, progress_callback
         )
 
 
-def _execute_direct_with_timeout(
+def _execute_direct_with_monitoring(
     action_name: str,
     mesh: trimesh.Trimesh,
     params: dict,
-    timeout_s: float,
+    soft_timeout_s: float,
+    hard_timeout_s: float,
     prediction: Optional[DurationPrediction],
     model_id: str,
     pipeline_name: str,
     mesh_chars: MeshCharacteristics,
+    progress_callback: Optional[Callable[[str], None]],
 ) -> TimeoutActionResult:
-    """Execute action directly (no subprocess) with timing.
+    """Execute action directly with timing monitoring.
     
-    This is faster for small meshes but can't truly kill hung operations.
-    We rely on the predictor to avoid known-hanging combinations.
+    This is faster but can't truly kill hung operations.
+    Used for small meshes where we trust the action won't hang.
     """
     from .actions import ActionRegistry
     
     start = time.perf_counter()
+    soft_timeout_exceeded = False
+    
     try:
         result_mesh = ActionRegistry.execute(action_name, mesh, params)
         duration_ms = (time.perf_counter() - start) * 1000
+        duration_s = duration_ms / 1000
         
-        # Record successful duration for learning
+        # Check if it was slower than soft timeout
+        if duration_s > soft_timeout_s:
+            soft_timeout_exceeded = True
+            logger.info(
+                f"  {action_name} completed but was slow: {duration_s:.1f}s "
+                f"(soft timeout: {soft_timeout_s:.1f}s)"
+            )
+        
+        # Record successful completion for learning
         if PREDICTOR_AVAILABLE:
             predictor = get_duration_predictor()
-            predictor.record_duration(
-                action_name, mesh_chars, duration_ms, 
-                success=True, model_id=model_id, pipeline_name=pipeline_name
+            predictor.record_completion(
+                action_name, mesh_chars, duration_ms,
+                model_id=model_id, pipeline_name=pipeline_name,
+                was_slow_warning=soft_timeout_exceeded,
+                predicted_timeout_ms=hard_timeout_s * 1000 if prediction else 0,
             )
         
         return TimeoutActionResult(
@@ -210,6 +240,7 @@ def _execute_direct_with_timeout(
             mesh=result_mesh,
             duration_ms=duration_ms,
             timed_out=False,
+            soft_timeout_exceeded=soft_timeout_exceeded,
             prediction=prediction,
         )
     except Exception as e:
@@ -228,14 +259,19 @@ def _execute_in_subprocess(
     action_name: str,
     mesh: trimesh.Trimesh,
     params: dict,
-    timeout_s: float,
+    soft_timeout_s: float,
+    hard_timeout_s: float,
     prediction: Optional[DurationPrediction],
     model_id: str,
     pipeline_name: str,
     mesh_chars: MeshCharacteristics,
+    progress_callback: Optional[Callable[[str], None]],
 ) -> TimeoutActionResult:
-    """Execute action in subprocess with hard timeout capability."""
+    """Execute action in subprocess with two-stage timeout.
     
+    Stage 1: Wait until soft_timeout, if exceeded log warning but continue
+    Stage 2: Wait until hard_timeout, if exceeded kill the process
+    """
     result_queue = mp.Queue()
     
     # Start subprocess
@@ -246,96 +282,158 @@ def _execute_in_subprocess(
     process.start()
     
     start = time.perf_counter()
+    soft_timeout_exceeded = False
     
-    # Wait for result with timeout
+    # Stage 1: Wait until soft timeout
     try:
-        result = result_queue.get(timeout=timeout_s)
+        result = result_queue.get(timeout=soft_timeout_s)
+        # Completed within soft timeout
         duration_ms = (time.perf_counter() - start) * 1000
-        
-        if result["success"]:
-            # Reconstruct mesh from result
-            result_mesh = trimesh.Trimesh(
-                vertices=result["vertices"],
-                faces=result["faces"],
-            )
-            
-            # Record successful duration
-            if PREDICTOR_AVAILABLE:
-                predictor = get_duration_predictor()
-                predictor.record_duration(
-                    action_name, mesh_chars, duration_ms,
-                    success=True, model_id=model_id, pipeline_name=pipeline_name
-                )
-            
-            return TimeoutActionResult(
-                success=True,
-                mesh=result_mesh,
-                duration_ms=duration_ms,
-                timed_out=False,
-                prediction=prediction,
-            )
-        else:
-            return TimeoutActionResult(
-                success=False,
-                mesh=None,
-                duration_ms=duration_ms,
-                timed_out=False,
-                error=result.get("error", "Unknown error"),
-                prediction=prediction,
-            )
-            
+        return _handle_subprocess_result(
+            result, duration_ms, prediction, action_name, mesh_chars,
+            model_id, pipeline_name, soft_timeout_exceeded=False,
+            hard_timeout_s=hard_timeout_s, progress_callback=progress_callback
+        )
     except queue.Empty:
-        # Timeout! Kill the process
-        duration_ms = timeout_s * 1000
+        # Exceeded soft timeout, but don't kill yet
+        soft_timeout_exceeded = True
+        elapsed = time.perf_counter() - start
+        
+        if progress_callback:
+            progress_callback(f"{action_name} running slow ({elapsed:.0f}s)...")
         
         logger.warning(
-            f"Action {action_name} TIMED OUT after {timeout_s:.1f}s on "
-            f"{mesh_chars.size_bin} mesh ({mesh_chars.face_count:,} faces)"
+            f"  {action_name} exceeded soft timeout ({soft_timeout_s:.1f}s), "
+            f"continuing until hard timeout ({hard_timeout_s:.1f}s)..."
+        )
+    
+    # Stage 2: Wait for remaining time until hard timeout
+    remaining_s = hard_timeout_s - (time.perf_counter() - start)
+    
+    if remaining_s > 0:
+        try:
+            result = result_queue.get(timeout=remaining_s)
+            # Completed (slowly) before hard timeout
+            duration_ms = (time.perf_counter() - start) * 1000
+            
+            logger.info(
+                f"  {action_name} completed after {duration_ms/1000:.1f}s "
+                f"(exceeded soft timeout but finished before hard timeout)"
+            )
+            
+            return _handle_subprocess_result(
+                result, duration_ms, prediction, action_name, mesh_chars,
+                model_id, pipeline_name, soft_timeout_exceeded=True,
+                hard_timeout_s=hard_timeout_s, progress_callback=progress_callback
+            )
+        except queue.Empty:
+            pass  # Will handle below
+    
+    # Hard timeout exceeded - kill the process
+    duration_ms = hard_timeout_s * 1000
+    
+    logger.error(
+        f"  {action_name} KILLED after {hard_timeout_s:.1f}s hard timeout "
+        f"(learned factor: {prediction.timeout_factor:.1f}x)" if prediction else
+        f"  {action_name} KILLED after {hard_timeout_s:.1f}s hard timeout"
+    )
+    
+    # Kill the hung process
+    process.terminate()
+    process.join(timeout=5)
+    if process.is_alive():
+        process.kill()
+        process.join(timeout=5)
+    
+    # Record as hang for learning
+    if PREDICTOR_AVAILABLE:
+        predictor = get_duration_predictor()
+        predictor.record_hang(
+            action_name, mesh_chars, duration_ms,
+            model_id=model_id, pipeline_name=pipeline_name,
+        )
+    
+    return TimeoutActionResult(
+        success=False,
+        mesh=None,
+        duration_ms=duration_ms,
+        timed_out=True,
+        soft_timeout_exceeded=True,
+        hard_timeout_exceeded=True,
+        error=f"Action killed after {hard_timeout_s:.1f}s hard timeout",
+        prediction=prediction,
+    )
+
+
+def _handle_subprocess_result(
+    result: dict,
+    duration_ms: float,
+    prediction: Optional[DurationPrediction],
+    action_name: str,
+    mesh_chars: MeshCharacteristics,
+    model_id: str,
+    pipeline_name: str,
+    soft_timeout_exceeded: bool,
+    hard_timeout_s: float,
+    progress_callback: Optional[Callable[[str], None]],
+) -> TimeoutActionResult:
+    """Handle result from subprocess execution."""
+    if result["success"]:
+        # Reconstruct mesh from result
+        result_mesh = trimesh.Trimesh(
+            vertices=result["vertices"],
+            faces=result["faces"],
         )
         
-        # Kill the hung process
-        process.terminate()
-        process.join(timeout=5)
-        if process.is_alive():
-            process.kill()
-            process.join(timeout=5)
-        
-        # Record as hang for learning
+        # Record successful duration for learning
         if PREDICTOR_AVAILABLE:
             predictor = get_duration_predictor()
-            predictor.record_duration(
+            predictor.record_completion(
                 action_name, mesh_chars, duration_ms,
-                success=False, model_id=model_id, pipeline_name=pipeline_name
+                model_id=model_id, pipeline_name=pipeline_name,
+                was_slow_warning=soft_timeout_exceeded,
+                predicted_timeout_ms=hard_timeout_s * 1000 if prediction else 0,
             )
         
+        return TimeoutActionResult(
+            success=True,
+            mesh=result_mesh,
+            duration_ms=duration_ms,
+            timed_out=False,
+            soft_timeout_exceeded=soft_timeout_exceeded,
+            prediction=prediction,
+        )
+    else:
         return TimeoutActionResult(
             success=False,
             mesh=None,
             duration_ms=duration_ms,
-            timed_out=True,
-            error=f"Action timed out after {timeout_s:.1f}s",
+            timed_out=False,
+            soft_timeout_exceeded=soft_timeout_exceeded,
+            error=result.get("error", "Unknown error"),
             prediction=prediction,
         )
+
+
+def get_timeout_info(action_name: str, mesh: trimesh.Trimesh) -> dict:
+    """Get timeout information for an action on a specific mesh.
     
-    finally:
-        # Ensure process is cleaned up
-        if process.is_alive():
-            process.terminate()
-            process.join(timeout=2)
-
-
-def get_recommended_timeout(action_name: str, mesh: trimesh.Trimesh) -> float:
-    """Get recommended timeout for an action based on mesh characteristics.
+    Useful for logging/debugging timeout decisions.
     
     Args:
         action_name: Action name
         mesh: Input mesh
         
     Returns:
-        Recommended timeout in seconds
+        Dict with timeout info including learned factors
     """
     if not PREDICTOR_AVAILABLE:
-        return 60.0  # Default 60 seconds
+        return {
+            "soft_timeout_s": 30,
+            "hard_timeout_s": 300,
+            "learned_factor": None,
+            "confidence": 0,
+        }
     
     try:
         body_count = len(mesh.split(only_watertight=False))
@@ -351,10 +449,24 @@ def get_recommended_timeout(action_name: str, mesh: trimesh.Trimesh) -> float:
     predictor = get_duration_predictor()
     prediction = predictor.predict_duration(action_name, mesh_chars)
     
-    return prediction.timeout_ms / 1000
+    return {
+        "action_name": action_name,
+        "size_bin": prediction.size_bin,
+        "predicted_ms": prediction.predicted_ms,
+        "soft_timeout_s": prediction.soft_timeout_ms / 1000,
+        "hard_timeout_s": prediction.hard_timeout_ms / 1000,
+        "learned_factor": prediction.timeout_factor,
+        "confidence": prediction.confidence,
+        "sample_count": prediction.sample_count,
+        "hang_risk": prediction.hang_risk,
+        "variance_ratio": prediction.variance_ratio,
+        "should_skip": prediction.should_skip,
+        "p90_ms": prediction.p90_ms,
+        "max_observed_ms": prediction.max_observed_ms,
+    }
 
 
-def should_skip_action(action_name: str, mesh: trimesh.Trimesh) -> Tuple[bool, Optional[str]]:
+def should_skip_action(action_name: str, mesh: trimesh.Trimesh) -> Tuple[bool, Optional[str], float]:
     """Check if an action should be skipped for this mesh due to hang risk.
     
     Args:
@@ -362,10 +474,10 @@ def should_skip_action(action_name: str, mesh: trimesh.Trimesh) -> Tuple[bool, O
         mesh: Input mesh
         
     Returns:
-        Tuple of (should_skip, alternative_action_name)
+        Tuple of (should_skip, alternative_action_name, hang_risk)
     """
     if not PREDICTOR_AVAILABLE:
-        return False, None
+        return False, None, 0.0
     
     try:
         body_count = len(mesh.split(only_watertight=False))
@@ -381,4 +493,4 @@ def should_skip_action(action_name: str, mesh: trimesh.Trimesh) -> Tuple[bool, O
     predictor = get_duration_predictor()
     prediction = predictor.predict_duration(action_name, mesh_chars)
     
-    return prediction.should_skip, prediction.alternative_action
+    return prediction.should_skip, prediction.alternative_action, prediction.hang_risk
