@@ -8,6 +8,7 @@ Local HTTP server for MeshPrep reports with MeshLab integration.
 This server:
 1. Serves the reports and STL files via HTTP
 2. Provides an API endpoint to open STL files in MeshLab
+3. Provides an API endpoint to rate models
 
 Usage:
     python reports_server.py [--port 8000]
@@ -64,7 +65,7 @@ class SilentTCPServer(socketserver.TCPServer):
 
 
 class MeshLabHandler(http.server.SimpleHTTPRequestHandler):
-    """HTTP handler with MeshLab integration."""
+    """HTTP handler with MeshLab integration and rating API."""
     
     def __init__(self, *args, **kwargs):
         # Don't set directory here - we'll handle routing manually
@@ -98,7 +99,7 @@ class MeshLabHandler(http.server.SimpleHTTPRequestHandler):
         elif path.startswith('/raw_meshes/') or path.startswith('/meshes/'):
             # Serve from Thingi10K/raw_meshes/ directory
             if path.startswith('/raw_meshes/'):
-                rel_path = path[len('/raw_meshes/'):]
+                rel_path = path[len('/raw_meshes/')]
             else:
                 rel_path = path[len('/meshes/'):]
             return str(THINGI10K_RAW_MESHES / rel_path)
@@ -162,8 +163,26 @@ class MeshLabHandler(http.server.SimpleHTTPRequestHandler):
             self.handle_refresh_learning_status()
             return
         
+        # API endpoint to get rating for a model
+        if parsed.path == "/api/get-rating":
+            self.handle_get_rating(parsed.query)
+            return
+        
         # Default: serve static files
         super().do_GET()
+    
+    def do_POST(self):
+        """Handle POST requests."""
+        parsed = urllib.parse.urlparse(self.path)
+        
+        # API endpoint to rate a model
+        if parsed.path == "/api/rate-model":
+            self.handle_rate_model()
+            return
+        
+        # Default: method not allowed
+        self.send_response(405)
+        self.end_headers()
     
     def handle_meshlab_status(self):
         """Check if MeshLab is available."""
@@ -201,6 +220,159 @@ class MeshLabHandler(http.server.SimpleHTTPRequestHandler):
         self.send_header("Access-Control-Allow-Origin", "*")
         self.end_headers()
         self.wfile.write(json.dumps(response).encode())
+    
+    def handle_get_rating(self, query_string: str):
+        """Get existing rating for a model by fingerprint."""
+        params = urllib.parse.parse_qs(query_string)
+        fingerprint = params.get("fingerprint", [None])[0]
+        
+        if not fingerprint:
+            self.send_json_error(400, "Missing 'fingerprint' parameter")
+            return
+        
+        try:
+            # Add POC v2 to path for imports
+            sys.path.insert(0, str(POC_V3_PATH.parent / "v2"))
+            from meshprep_poc.quality_feedback import get_quality_engine
+            
+            quality_engine = get_quality_engine()
+            rating = quality_engine.get_rating_by_fingerprint(fingerprint)
+            
+            if rating:
+                response = {
+                    "success": True,
+                    "rating": {
+                        "rating_value": rating.rating_value,
+                        "user_comment": rating.user_comment,
+                        "rated_at": rating.rated_at,
+                        "rated_by": rating.rated_by,
+                    }
+                }
+            else:
+                response = {
+                    "success": True,
+                    "rating": None
+                }
+            
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            self.wfile.write(json.dumps(response).encode())
+            
+        except Exception as e:
+            print(f"[Rating] Error getting rating: {e}")
+            self.send_json_error(500, f"Failed to get rating: {e}")
+    
+    def handle_rate_model(self):
+        """Handle POST request to rate a model."""
+        try:
+            # Read request body
+            content_length = int(self.headers.get('Content-Length', 0))
+            body = self.rfile.read(content_length).decode('utf-8')
+            data = json.loads(body)
+            
+            fingerprint = data.get('fingerprint')
+            file_id = data.get('file_id')
+            rating = data.get('rating')
+            comment = data.get('comment', '')
+            
+            if not fingerprint:
+                self.send_json_error(400, "Missing 'fingerprint' field")
+                return
+            
+            if not rating or rating < 1 or rating > 5:
+                self.send_json_error(400, "Rating must be between 1 and 5")
+                return
+            
+            # Normalize fingerprint format
+            if not fingerprint.startswith("MP:"):
+                fingerprint = f"MP:{fingerprint}"
+            
+            print(f"[Rating] Recording rating for {fingerprint}: {rating}/5")
+            
+            # Add POC v2 to path for imports
+            sys.path.insert(0, str(POC_V3_PATH.parent / "v2"))
+            from meshprep_poc.quality_feedback import get_quality_engine, QualityRating
+            
+            # Try to load additional context from filter file
+            pipeline_used = "unknown"
+            profile = "standard"
+            escalated = False
+            volume_change_pct = 0.0
+            face_count_change_pct = 0.0
+            model_filename = file_id or "unknown"
+            
+            if file_id:
+                filter_path = THINGI10K_REPORTS / "filters" / f"{file_id}.json"
+                if filter_path.exists():
+                    try:
+                        with open(filter_path, encoding='utf-8') as f:
+                            filter_data = json.load(f)
+                        pipeline_used = filter_data.get("filter_name", "unknown")
+                        escalated = filter_data.get("escalated_to_blender", False)
+                        model_filename = filter_data.get("original_filename", file_id)
+                        
+                        # Get diagnostics for change percentages
+                        diag = filter_data.get("diagnostics", {})
+                        before = diag.get("before", {}) or {}
+                        after = diag.get("after", {}) or {}
+                        
+                        if before.get("volume") and after.get("volume"):
+                            vol_before = before["volume"]
+                            vol_after = after["volume"]
+                            if vol_before != 0:
+                                volume_change_pct = ((vol_after - vol_before) / abs(vol_before)) * 100
+                        
+                        if before.get("faces") and after.get("faces"):
+                            face_before = before["faces"]
+                            face_after = after["faces"]
+                            if face_before > 0:
+                                face_count_change_pct = ((face_after - face_before) / face_before) * 100
+                    except Exception as e:
+                        print(f"[Rating] Could not load filter data: {e}")
+            
+            # Create and record rating
+            quality_rating = QualityRating(
+                model_fingerprint=fingerprint,
+                model_filename=model_filename,
+                rating_type="gradational",
+                rating_value=rating,
+                user_comment=comment if comment else None,
+                rated_by="web_user",
+                pipeline_used=pipeline_used,
+                profile=profile,
+                escalated=escalated,
+                volume_change_pct=volume_change_pct,
+                face_count_change_pct=face_count_change_pct,
+            )
+            
+            quality_engine = get_quality_engine()
+            quality_engine.record_rating(quality_rating)
+            
+            print(f"[Rating] Successfully recorded rating for {fingerprint}")
+            
+            response = {
+                "success": True,
+                "message": "Rating recorded successfully",
+                "fingerprint": fingerprint,
+                "rating": rating,
+            }
+            
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            self.wfile.write(json.dumps(response).encode())
+            
+        except json.JSONDecodeError as e:
+            print(f"[Rating] Invalid JSON: {e}")
+            self.send_json_error(400, f"Invalid JSON: {e}")
+        except Exception as e:
+            print(f"[Rating] Error: {e}")
+            import traceback
+            traceback.print_exc()
+            self.send_json_error(500, f"Failed to record rating: {e}")
     
     def handle_open_meshlab(self, query_string: str):
         """Open a file in MeshLab."""
@@ -334,6 +506,10 @@ def main():
     print("Additional paths:")
     print(f"  Raw Meshes:       http://localhost:{args.port}/raw_meshes/")
     print(f"  Fixed Meshes:     http://localhost:{args.port}/fixed/")
+    print()
+    print("API Endpoints:")
+    print(f"  GET  /api/get-rating?fingerprint=MP:xxx  - Get rating for model")
+    print(f"  POST /api/rate-model                     - Submit rating for model")
     print("=" * 60)
     print()
     print("Press Ctrl+C to stop")

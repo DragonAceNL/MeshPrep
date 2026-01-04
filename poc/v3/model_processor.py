@@ -191,7 +191,7 @@ def process_single_model(
             
             # Check if Blender escalation was used
             for attempt in repair_result.attempts:
-                if "blender" in attempt.strategy.action:
+                if "blender" in attempt.pipeline_name.lower():
                     result.escalation_used = True
                     result.filter_used = "slicer-repair-loop (blender)"
                     break

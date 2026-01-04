@@ -97,6 +97,7 @@ def _get_report_styles() -> str:
             display: flex;
             gap: 15px;
             margin-bottom: 30px;
+            flex-wrap: wrap;
         }}
         
         .footer {{ color: {COLORS['text_muted']}; font-size: 12px; margin-top: 30px; }}
@@ -160,13 +161,134 @@ def _get_report_styles() -> str:
             color: {COLORS['text_muted']};
             font-style: italic;
         }}
+        
+        /* Rating box styles */
+        .rating-box {{
+            background: {COLORS['background_secondary']};
+            border: 2px solid {COLORS['background_tertiary']};
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 25px;
+        }}
+        .rating-box h3 {{
+            margin: 0 0 15px 0;
+            color: {COLORS['accent']};
+            font-size: 18px;
+        }}
+        .rating-stars {{
+            display: flex;
+            gap: 8px;
+            margin-bottom: 15px;
+        }}
+        .rating-star {{
+            font-size: 32px;
+            cursor: pointer;
+            color: {COLORS['background_tertiary']};
+            transition: all 0.2s;
+            background: none;
+            border: none;
+            padding: 5px;
+        }}
+        .rating-star:hover,
+        .rating-star.hovered {{
+            color: #f1c40f;
+            transform: scale(1.2);
+        }}
+        .rating-star.selected {{
+            color: #f1c40f;
+        }}
+        .rating-star.selected.locked {{
+            cursor: default;
+        }}
+        .rating-comment {{
+            width: 100%;
+            padding: 10px;
+            border-radius: 8px;
+            border: 1px solid {COLORS['background_tertiary']};
+            background: {COLORS['background']};
+            color: {COLORS['text_primary']};
+            font-size: 14px;
+            resize: vertical;
+            min-height: 60px;
+            margin-bottom: 15px;
+        }}
+        .rating-comment:focus {{
+            outline: none;
+            border-color: {COLORS['accent']};
+        }}
+        .rating-submit {{
+            background: {COLORS['accent']};
+            color: white;
+            border: none;
+            padding: 10px 25px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: bold;
+            transition: all 0.2s;
+        }}
+        .rating-submit:hover {{
+            background: #2980b9;
+            transform: translateY(-2px);
+        }}
+        .rating-submit:disabled {{
+            background: {COLORS['background_tertiary']};
+            cursor: not-allowed;
+            transform: none;
+        }}
+        .rating-status {{
+            margin-top: 15px;
+            padding: 10px;
+            border-radius: 8px;
+            font-size: 14px;
+        }}
+        .rating-status.success {{
+            background: rgba(39, 174, 96, 0.2);
+            color: {COLORS['success']};
+        }}
+        .rating-status.error {{
+            background: rgba(231, 76, 60, 0.2);
+            color: {COLORS['danger']};
+        }}
+        .rating-status.info {{
+            background: rgba(52, 152, 219, 0.2);
+            color: {COLORS['info']};
+        }}
+        .existing-rating {{
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 15px;
+            background: rgba(52, 152, 219, 0.1);
+            border-radius: 8px;
+            margin-bottom: 15px;
+        }}
+        .existing-rating .stars {{
+            color: #f1c40f;
+            font-size: 20px;
+        }}
+        .existing-rating .details {{
+            color: {COLORS['text_secondary']};
+            font-size: 13px;
+        }}
+        .rating-labels {{
+            display: flex;
+            justify-content: space-between;
+            font-size: 11px;
+            color: {COLORS['text_muted']};
+            margin-bottom: 10px;
+            padding: 0 5px;
+        }}
 """
 
 
-def _get_report_scripts(fingerprint: str) -> str:
+def _get_report_scripts(fingerprint: str, file_id: str) -> str:
     """Get JavaScript for model report page."""
     return f"""
     <script>
+        let selectedRating = 0;
+        let isRatingLocked = false;
+        
         async function openInMeshLab(filePath) {{
             const btn = event.target;
             const originalText = btn.innerHTML;
@@ -233,7 +355,7 @@ def _get_report_scripts(fingerprint: str) -> str:
                     el.textContent = original;
                     el.style.background = '#0f1720';
                 }}, 1500);
-            }}).catch(err => {{
+            }}.catch(err => {{
                 const el = document.querySelector('.fingerprint-value');
                 const range = document.createRange();
                 range.selectNodeContents(el);
@@ -244,7 +366,121 @@ def _get_report_scripts(fingerprint: str) -> str:
             }});
         }}
         
-        window.onload = checkMeshLab;
+        // Rating functions
+        function hoverStar(rating) {{
+            if (isRatingLocked) return;
+            const stars = document.querySelectorAll('.rating-star');
+            stars.forEach((star, idx) => {{
+                star.classList.toggle('hovered', idx < rating);
+            }});
+        }}
+        
+        function unhoverStars() {{
+            if (isRatingLocked) return;
+            const stars = document.querySelectorAll('.rating-star');
+            stars.forEach((star, idx) => {{
+                star.classList.remove('hovered');
+                star.classList.toggle('selected', idx < selectedRating);
+            }});
+        }}
+        
+        function selectStar(rating) {{
+            if (isRatingLocked) return;
+            selectedRating = rating;
+            const stars = document.querySelectorAll('.rating-star');
+            stars.forEach((star, idx) => {{
+                star.classList.toggle('selected', idx < rating);
+            }});
+            document.getElementById('submit-rating').disabled = false;
+        }}
+        
+        async function submitRating() {{
+            if (selectedRating === 0) {{
+                showRatingStatus('Please select a rating (1-5 stars)', 'error');
+                return;
+            }}
+            
+            const comment = document.getElementById('rating-comment').value;
+            const fingerprint = '{fingerprint}';
+            const fileId = '{file_id}';
+            
+            const btn = document.getElementById('submit-rating');
+            btn.disabled = true;
+            btn.textContent = 'Submitting...';
+            
+            try {{
+                const response = await fetch('/api/rate-model', {{
+                    method: 'POST',
+                    headers: {{ 'Content-Type': 'application/json' }},
+                    body: JSON.stringify({{
+                        fingerprint: fingerprint,
+                        file_id: fileId,
+                        rating: selectedRating,
+                        comment: comment
+                    }})
+                }});
+                
+                const data = await response.json();
+                
+                if (data.success) {{
+                    showRatingStatus('\\u2713 Rating saved! Thank you for your feedback.', 'success');
+                    isRatingLocked = true;
+                    document.querySelectorAll('.rating-star').forEach(s => s.classList.add('locked'));
+                    btn.textContent = 'Rating Saved';
+                    // Update existing rating display
+                    loadExistingRating();
+                }} else {{
+                    showRatingStatus('Failed to save rating: ' + (data.error || 'Unknown error'), 'error');
+                    btn.disabled = false;
+                    btn.textContent = 'Submit Rating';
+                }}
+            }} catch (e) {{
+                console.error('Rating error:', e);
+                showRatingStatus('Error: ' + e.message + '. Make sure reports_server.py is running.', 'error');
+                btn.disabled = false;
+                btn.textContent = 'Submit Rating';
+            }}
+        }}
+        
+        function showRatingStatus(message, type) {{
+            const statusEl = document.getElementById('rating-status');
+            statusEl.textContent = message;
+            statusEl.className = 'rating-status ' + type;
+            statusEl.style.display = 'block';
+        }}
+        
+        async function loadExistingRating() {{
+            try {{
+                const response = await fetch('/api/get-rating?fingerprint=' + encodeURIComponent('{fingerprint}'));
+                const data = await response.json();
+                
+                if (data.success && data.rating) {{
+                    const existingDiv = document.getElementById('existing-rating');
+                    const stars = '\\u2605'.repeat(data.rating.rating_value) + '\\u2606'.repeat(5 - data.rating.rating_value);
+                    let details = 'Rated on ' + new Date(data.rating.rated_at).toLocaleDateString();
+                    if (data.rating.user_comment) {{
+                        details += ' - "' + data.rating.user_comment + '"';
+                    }}
+                    existingDiv.innerHTML = '<span class="stars">' + stars + '</span><span class="details">' + details + '</span>';
+                    existingDiv.style.display = 'flex';
+                    
+                    // Pre-select the rating
+                    selectedRating = data.rating.rating_value;
+                    const starBtns = document.querySelectorAll('.rating-star');
+                    starBtns.forEach((star, idx) => {{
+                        star.classList.toggle('selected', idx < selectedRating);
+                    }});
+                }}
+            }} catch (e) {{
+                // Silently fail - rating display is optional
+                console.log('Could not load existing rating:', e.message);
+            }}
+        }}
+        
+        window.onload = function() {{
+            checkMeshLab();
+            loadExistingRating();
+        }};
     </script>
 """
 
@@ -299,7 +535,7 @@ def generate_model_report(
         fixed_link = '<span class="no-file">Repair failed - no fixed model</span>'
     
     # Original model link
-    original_rel_path = f'../{stl_path.name}'
+    original_rel_path = f'../raw_meshes/{stl_path.name}'
     
     # Duration formatting
     duration_text = format_duration(result.duration_ms)
@@ -323,7 +559,7 @@ def generate_model_report(
     <style>
 {all_styles}
     </style>
-{_get_report_scripts(result.model_fingerprint)}
+{_get_report_scripts(result.model_fingerprint, result.file_id)}
 </head>
 <body>
     <div class="container">
@@ -350,6 +586,29 @@ def generate_model_report(
                 <a href="https://github.com/DragonAceNL/MeshPrep" target="_blank">MeshPrep GitHub</a> |
                 <span class="copy-hint">Click fingerprint to copy</span>
             </div>
+        </div>
+        
+        <!-- Rating Box -->
+        <div class="rating-box">
+            <h3>&#11088; Rate This Repair</h3>
+            <div id="existing-rating" class="existing-rating" style="display: none;"></div>
+            <div class="rating-labels">
+                <span>Rejected</span>
+                <span>Poor</span>
+                <span>Acceptable</span>
+                <span>Good</span>
+                <span>Perfect</span>
+            </div>
+            <div class="rating-stars">
+                <button class="rating-star" onmouseover="hoverStar(1)" onmouseout="unhoverStars()" onclick="selectStar(1)">&#9733;</button>
+                <button class="rating-star" onmouseover="hoverStar(2)" onmouseout="unhoverStars()" onclick="selectStar(2)">&#9733;</button>
+                <button class="rating-star" onmouseover="hoverStar(3)" onmouseout="unhoverStars()" onclick="selectStar(3)">&#9733;</button>
+                <button class="rating-star" onmouseover="hoverStar(4)" onmouseout="unhoverStars()" onclick="selectStar(4)">&#9733;</button>
+                <button class="rating-star" onmouseover="hoverStar(5)" onmouseout="unhoverStars()" onclick="selectStar(5)">&#9733;</button>
+            </div>
+            <textarea id="rating-comment" class="rating-comment" placeholder="Optional: Add a comment about the repair quality..."></textarea>
+            <button id="submit-rating" class="rating-submit" onclick="submitRating()" disabled>Submit Rating</button>
+            <div id="rating-status" class="rating-status" style="display: none;"></div>
         </div>
         
         <div class="info-grid">
