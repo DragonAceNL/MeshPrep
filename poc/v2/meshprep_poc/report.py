@@ -28,6 +28,12 @@ from .reproducibility import (
     capture_environment,
     create_reproducibility_block,
 )
+from .quality_feedback import (
+    QualityFeedbackEngine,
+    QualityRating,
+    QualityPrediction,
+    get_quality_engine,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -173,6 +179,9 @@ class RepairReport:
     reproducibility: Optional[dict[str, Any]] = None
     model_fingerprint: Optional[str] = None
     filter_script_hash: Optional[str] = None
+    
+    # Quality validation (Level 4)
+    quality_validation: Optional[dict[str, Any]] = None
 
 
 def generate_markdown_report(
@@ -483,6 +492,71 @@ def generate_json_report(
     # Add fingerprint if available
     if report.model_fingerprint:
         data["model_fingerprint"] = report.model_fingerprint
+    
+    # Add quality validation block
+    if report.quality_validation:
+        data["quality_validation"] = report.quality_validation
+    else:
+        # Generate default unverified quality validation block with prediction
+        quality_block = {
+            "status": "unverified",
+            "user_rating": None,
+            "user_rating_type": None,
+            "user_comment": None,
+            "rated_by": None,
+            "rated_at": None,
+        }
+        
+        # Add automatic metrics if we have diagnostics
+        if report.original_diagnostics and report.repaired_diagnostics:
+            orig = report.original_diagnostics
+            rep = report.repaired_diagnostics
+            
+            volume_change_pct = 0.0
+            if orig.volume != 0:
+                volume_change_pct = ((rep.volume - orig.volume) / abs(orig.volume)) * 100
+            
+            face_count_change_pct = 0.0
+            if orig.face_count > 0:
+                face_count_change_pct = ((rep.face_count - orig.face_count) / orig.face_count) * 100
+            
+            quality_block["automatic_metrics"] = {
+                "volume_change_pct": round(volume_change_pct, 2),
+                "face_count_change_pct": round(face_count_change_pct, 2),
+                "hausdorff_distance": None,  # Would require mesh comparison
+                "chamfer_distance": None,
+                "detail_preservation": None,
+                "silhouette_similarity": None,
+            }
+            
+            # Try to get quality prediction
+            try:
+                quality_engine = get_quality_engine()
+                # Determine profile (default to "standard" if not available)
+                profile = "standard"
+                prediction = quality_engine.predict_quality(
+                    pipeline=report.filter_script_name,
+                    profile=profile,
+                    volume_change_pct=volume_change_pct,
+                    face_count_change_pct=face_count_change_pct,
+                    escalated=report.escalation_used,
+                )
+                quality_block["predicted_quality"] = {
+                    "score": round(prediction.score, 2),
+                    "confidence": round(prediction.confidence, 2),
+                    "based_on_samples": prediction.based_on_samples,
+                    "warning": prediction.warning or "No user verification - predicted score only",
+                }
+            except Exception as e:
+                logger.debug(f"Could not generate quality prediction: {e}")
+                quality_block["predicted_quality"] = {
+                    "score": None,
+                    "confidence": 0.0,
+                    "based_on_samples": 0,
+                    "warning": "Quality prediction unavailable",
+                }
+        
+        data["quality_validation"] = quality_block
     
     with open(output_path, 'w') as f:
         json.dump(data, f, indent=2)

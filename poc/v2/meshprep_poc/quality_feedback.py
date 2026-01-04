@@ -137,9 +137,16 @@ class PipelineQualityStats:
 def get_db_path(data_path: Optional[Path] = None) -> Path:
     """Get the path to the SQLite database."""
     if data_path is None:
+        # Use learning_data directory at repo root
         data_path = Path(__file__).parent.parent.parent.parent / "learning_data"
     data_path.mkdir(parents=True, exist_ok=True)
-    return data_path / "quality_feedback.db"
+    db_path = data_path / "quality_feedback.db"
+    
+    # Log if creating new database
+    if not db_path.exists():
+        logger.info(f"Creating new quality feedback database at {db_path}")
+    
+    return db_path
 
 
 def init_database(db_path: Path) -> None:

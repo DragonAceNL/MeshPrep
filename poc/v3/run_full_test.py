@@ -16,6 +16,7 @@ Features:
 - Auto-resume: automatically skips files that already have reports
 - Adaptive thresholds: learns optimal values from repair outcomes
 - Auto-optimization: thresholds are optimized every 100 models and at batch end
+- Quality feedback: learn from user ratings to improve repair quality
 
 Usage:
     python run_full_test.py                    # Run all models (auto-resumes)
@@ -27,6 +28,11 @@ Usage:
     python run_full_test.py --optimize-thresholds  # Manually optimize thresholds
     python run_full_test.py --reset-thresholds # Reset thresholds to defaults
     python run_full_test.py --no-auto-optimize # Disable automatic optimization
+    
+    # Quality feedback commands:
+    python run_full_test.py --quality-stats    # Show quality feedback statistics
+    python run_full_test.py --rate MP:abc123 --rating 4  # Rate a model (1-5)
+    python run_full_test.py --rate MP:abc123 --rating 3 --comment "Minor issues"
 """
 
 import argparse
@@ -77,6 +83,11 @@ from meshprep_poc.actions.blender_actions import is_blender_available
 from meshprep_poc.actions.slicer_actions import get_mesh_info_prusa, is_slicer_available
 from meshprep_poc.fingerprint import compute_file_fingerprint, compute_full_file_hash
 from meshprep_poc.learning_engine import get_learning_engine, LearningEngine
+from meshprep_poc.quality_feedback import (
+    get_quality_engine,
+    QualityRating,
+    QualityFeedbackEngine,
+)
 
 # Try to import adaptive thresholds
 try:
@@ -2701,6 +2712,149 @@ def reset_adaptive_thresholds():
     print("\n" + "=" * 60)
 
 
+def show_quality_stats():
+    """Show quality feedback statistics."""
+    print("=" * 60)
+    print("MeshPrep Quality Feedback Statistics")
+    print("=" * 60)
+    
+    try:
+        quality_engine = get_quality_engine()
+        stats = quality_engine.get_summary_stats()
+        
+        print(f"\nTotal ratings: {stats['total_ratings']:,}")
+        print(f"Average rating: {stats['avg_rating']:.2f}/5")
+        print(f"Overall acceptance rate: {stats['overall_acceptance_rate']:.1f}%")
+        print(f"Pipeline/profile combinations tracked: {stats['pipeline_profile_combinations']}")
+        print(f"Ready for prediction: {'Yes' if stats['ready_for_prediction'] else 'No (need more ratings)'}")
+        
+        if stats['rating_distribution']:
+            print("\nRating distribution:")
+            for score in range(5, 0, -1):
+                count = stats['rating_distribution'].get(score, 0)
+                bar = "#" * min(count, 50)
+                print(f"  {score} stars: {count:>5} {bar}")
+        
+        # Show pipeline quality stats
+        all_stats = quality_engine.get_all_pipeline_quality_stats()
+        if all_stats:
+            print("\nPipeline quality by profile:")
+            print(f"  {'Pipeline':<25} {'Profile':<15} {'Ratings':>8} {'Avg':>6} {'Accept%':>8}")
+            print(f"  {'-'*25} {'-'*15} {'-'*8} {'-'*6} {'-'*8}")
+            
+            for pipeline, profiles in all_stats.items():
+                for profile, pstats in profiles.items():
+                    if pstats.total_ratings > 0:
+                        print(f"  {pipeline:<25} {profile:<15} {pstats.total_ratings:>8} {pstats.avg_rating:>6.2f} {pstats.acceptance_rate*100:>7.1f}%")
+        
+    except Exception as e:
+        print(f"\nError getting quality stats: {e}")
+        import traceback
+        traceback.print_exc()
+    
+    print("\n" + "=" * 60)
+
+
+def rate_model_by_fingerprint(fingerprint: str, rating: int, comment: Optional[str] = None):
+    """Rate a model by its fingerprint."""
+    print("=" * 60)
+    print("MeshPrep Quality Rating")
+    print("=" * 60)
+    
+    # Normalize fingerprint format
+    if not fingerprint.startswith("MP:"):
+        fingerprint = f"MP:{fingerprint}"
+    
+    print(f"\nFingerprint: {fingerprint}")
+    print(f"Rating: {rating}/5")
+    if comment:
+        print(f"Comment: {comment}")
+    
+    try:
+        quality_engine = get_quality_engine()
+        
+        # Check if this fingerprint already has a rating
+        existing = quality_engine.get_rating_by_fingerprint(fingerprint)
+        if existing:
+            print(f"\nNote: This model was previously rated {existing.rating_value}/5")
+            print(f"  by {existing.rated_by or 'anonymous'} on {existing.rated_at}")
+            print("  This new rating will be added to the history.")
+        
+        # Find matching report to get context
+        # Search in reports directory for matching fingerprint
+        model_filename = "unknown"
+        pipeline_used = "unknown"
+        profile = "standard"
+        volume_change_pct = 0.0
+        face_count_change_pct = 0.0
+        escalated = False
+        
+        # Try to find matching report
+        for report_file in REPORTS_PATH.rglob("report.json"):
+            try:
+                with open(report_file) as f:
+                    data = json.load(f)
+                if data.get("model_fingerprint") == fingerprint:
+                    model_filename = Path(data.get("input_file", "unknown")).name
+                    pipeline_used = data.get("filter_script", "unknown")
+                    escalated = data.get("escalation_used", False)
+                    
+                    # Get metrics
+                    orig = data.get("original_diagnostics", {})
+                    rep = data.get("repaired_diagnostics", {})
+                    if orig and rep:
+                        if orig.get("volume", 0) != 0:
+                            volume_change_pct = ((rep.get("volume", 0) - orig.get("volume", 0)) / abs(orig.get("volume", 1))) * 100
+                        if orig.get("face_count", 0) > 0:
+                            face_count_change_pct = ((rep.get("face_count", 0) - orig.get("face_count", 0)) / orig.get("face_count", 1)) * 100
+                    
+                    print(f"\nFound matching report:")
+                    print(f"  File: {model_filename}")
+                    print(f"  Pipeline: {pipeline_used}")
+                    break
+            except:
+                continue
+        
+        # Create and record rating
+        quality_rating = QualityRating(
+            model_fingerprint=fingerprint,
+            model_filename=model_filename,
+            rating_type="gradational",
+            rating_value=rating,
+            user_comment=comment,
+            rated_by="cli_user",
+            pipeline_used=pipeline_used,
+            profile=profile,
+            escalated=escalated,
+            volume_change_pct=volume_change_pct,
+            face_count_change_pct=face_count_change_pct,
+        )
+        
+        quality_engine.record_rating(quality_rating)
+        
+        print(f"\n[OK] Rating recorded successfully!")
+        
+        # Show updated prediction for this pipeline/profile
+        prediction = quality_engine.predict_quality(
+            pipeline=pipeline_used,
+            profile=profile,
+            volume_change_pct=volume_change_pct,
+            face_count_change_pct=face_count_change_pct,
+            escalated=escalated,
+        )
+        print(f"\nUpdated prediction for {pipeline_used}:")
+        print(f"  Predicted score: {prediction.score:.2f}/5")
+        print(f"  Confidence: {prediction.confidence:.1%}")
+        print(f"  Based on {prediction.based_on_samples} samples")
+        
+    except Exception as e:
+        print(f"\nError recording rating: {e}")
+        import traceback
+        traceback.print_exc()
+    
+    print("\n" + "=" * 60)
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Run MeshPrep repair against all Thingi10K models (auto-resumes by default)"
@@ -2767,6 +2921,30 @@ def main():
         help="Disable automatic threshold optimization during batch processing"
     )
     
+    # Quality feedback options
+    parser.add_argument(
+        "--quality-stats",
+        action="store_true",
+        help="Show quality feedback statistics"
+    )
+    parser.add_argument(
+        "--rate",
+        type=str,
+        metavar="FINGERPRINT",
+        help="Rate a model by fingerprint (e.g., MP:42f3729aa758)"
+    )
+    parser.add_argument(
+        "--rating",
+        type=int,
+        choices=[1, 2, 3, 4, 5],
+        help="Quality rating (1-5) to assign when using --rate"
+    )
+    parser.add_argument(
+        "--comment",
+        type=str,
+        help="Optional comment when rating a model"
+    )
+    
     args = parser.parse_args()
     
     if args.status:
@@ -2819,6 +2997,17 @@ def main():
             print("=" * 60)
         else:
             print("Adaptive thresholds not available.")
+        return
+    
+    if args.quality_stats:
+        show_quality_stats()
+        return
+    
+    if args.rate:
+        if not args.rating:
+            print("Error: --rating is required when using --rate")
+            return
+        rate_model_by_fingerprint(args.rate, args.rating, args.comment)
         return
     
     # If --fresh is passed, reprocess all files (but don't delete existing results)
