@@ -1,4 +1,4 @@
-# Copyright 2025 Allard Peper (Dragon Ace / DragonAceNL)
+﻿# Copyright 2025 Allard Peper (Dragon Ace / DragonAceNL)
 # Licensed under the Apache License, Version 2.0 (see LICENSE).
 # This file is part of MeshPrep — https://github.com/DragonAceNL/MeshPrep
 
@@ -866,6 +866,33 @@ def process_single_model(stl_path: Path, skip_if_clean: bool = True, progress: O
                         success=result.success,
                         profile=profile,
                     )
+                
+                # Record body count threshold observations for learning
+                # This helps the system learn optimal fragmentation thresholds
+                if before_diagnostics and "body_count" in before_diagnostics:
+                    body_count = before_diagnostics["body_count"]
+                    
+                    # Record observation for extreme fragmentation threshold
+                    extreme_threshold = adaptive.get("body_count_extreme_fragmented")
+                    adaptive.record_observation(
+                        threshold_name="body_count_extreme_fragmented",
+                        threshold_value=extreme_threshold,
+                        actual_value=body_count,
+                        success=result.success,
+                        quality=quality,
+                        profile=profile,
+                    )
+                    
+                    # Record observation for fragmented threshold
+                    frag_threshold = adaptive.get("body_count_fragmented")
+                    adaptive.record_observation(
+                        threshold_name="body_count_fragmented",
+                        threshold_value=frag_threshold,
+                        actual_value=body_count,
+                        success=result.success,
+                        quality=quality,
+                        profile=profile,
+                    )
         except Exception as at_error:
             logger.debug(f"Adaptive thresholds update failed: {at_error}")
         
@@ -1631,7 +1658,7 @@ def generate_dashboard(progress: Progress, results: List[TestResult]):
                     <td class="{status_class}">{status_text}</td>
                     <td>{r.filter_used}</td>
                     <td>{r.duration_ms/1000:.1f}s</td>
-                    <td>{r.original_faces:,} → {r.result_faces:,}</td>
+                    <td>{r.original_faces:,} -> {r.result_faces:,}</td>
                     <td><a href="file:///{report_link}">View</a></td>
                 </tr>
 """
@@ -2545,7 +2572,7 @@ def run_profile_discovery(min_samples: int = 50):
         profiles = discovery.run_discovery(min_samples=min_samples)
         
         if profiles:
-            print(f"\n✓ Discovered {len(profiles)} new profiles:")
+            print(f"\n[OK] Discovered {len(profiles)} new profiles:")
             for p in profiles:
                 print(f"  - {p.name}")
                 print(f"    {p.description}")
@@ -2611,7 +2638,7 @@ def optimize_adaptive_thresholds(min_samples: int = 20):
         adjustments = adaptive.optimize_thresholds(min_samples=min_samples)
         
         if adjustments:
-            print(f"\n✓ Made {len(adjustments)} adjustments:")
+            print(f"\n[OK] Made {len(adjustments)} adjustments:")
             for adj in adjustments:
                 print(f"  {adj['threshold']}: {adj['old_value']:.2f} -> {adj['new_value']:.2f}")
                 print(f"    Reason: {adj['reason']}")
@@ -2665,7 +2692,7 @@ def reset_adaptive_thresholds():
         print("\nResetting all thresholds to defaults...")
         adaptive.reset_to_defaults()
         
-        print("✓ All thresholds reset to default values.")
+        print("[OK] All thresholds reset to default values.")
         print("\nNote: Observation history is preserved for future optimization.")
         
     except Exception as e:

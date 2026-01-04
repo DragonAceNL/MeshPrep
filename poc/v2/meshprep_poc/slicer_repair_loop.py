@@ -1,4 +1,4 @@
-# Copyright 2025 Allard Peper (Dragon Ace / DragonAceNL)
+﻿# Copyright 2025 Allard Peper (Dragon Ace / DragonAceNL)
 # Licensed under the Apache License, Version 2.0 (see LICENSE).
 # This file is part of MeshPrep — https://github.com/DragonAceNL/MeshPrep
 
@@ -480,26 +480,47 @@ def run_slicer_repair_loop(
     # =========================================================================
     frag_analysis = analyze_fragmented_model(original_mesh)
     blender_unsafe = False  # Will be True if blender_remesh should be skipped
+    is_extreme_fragmented = False  # For 1000+ body meshes that need reconstruction
+    
+    # Get learned thresholds for fragmentation detection
+    try:
+        from .adaptive_thresholds import get_adaptive_thresholds
+        thresholds = get_adaptive_thresholds()
+        body_count_extreme_threshold = thresholds.get("body_count_extreme_fragmented")
+    except Exception:
+        body_count_extreme_threshold = 1000  # Default fallback
     
     if frag_analysis["is_fragmented"]:
-        if "fragmented" not in result.issues_found:
-            result.issues_found.append("fragmented")
+        component_count = frag_analysis.get("component_count", 0)
         
-        frag_type = frag_analysis.get("fragmentation_type", "unknown")
-        blender_safe = frag_analysis.get("blender_safe", False)
-        reason = frag_analysis.get("reason", "")
-        
-        logger.warning(f"  FRAGMENTED MODEL DETECTED")
-        logger.warning(f"    Type: {frag_type}")
-        logger.warning(f"    Reason: {reason}")
-        logger.warning(f"    Components: {frag_analysis.get('component_count', '?')}")
-        
-        if blender_safe:
-            logger.info(f"    Blender remesh: ALLOWED (may help reconnect parts)")
-            blender_unsafe = False
+        # Check for extreme fragmentation - threshold is LEARNED, not hardcoded!
+        if component_count > body_count_extreme_threshold:
+            is_extreme_fragmented = True
+            if "extreme-fragmented" not in result.issues_found:
+                result.issues_found.append("extreme-fragmented")
+            logger.warning(f"  EXTREME FRAGMENTATION DETECTED: {component_count} components (threshold: {body_count_extreme_threshold})")
+            logger.warning(f"    This mesh requires RECONSTRUCTION, not repair")
+            # For extreme fragmentation, we WANT to try reconstruction methods
+            blender_unsafe = False  # Allow blender and other reconstruction
         else:
-            logger.warning(f"    Blender remesh: BLOCKED (would destroy structure)")
-            blender_unsafe = True
+            if "fragmented" not in result.issues_found:
+                result.issues_found.append("fragmented")
+        
+            frag_type = frag_analysis.get("fragmentation_type", "unknown")
+            blender_safe = frag_analysis.get("blender_safe", False)
+            reason = frag_analysis.get("reason", "")
+            
+            logger.warning(f"  FRAGMENTED MODEL DETECTED")
+            logger.warning(f"    Type: {frag_type}")
+            logger.warning(f"    Reason: {reason}")
+            logger.warning(f"    Components: {component_count}")
+            
+            if blender_safe:
+                logger.info(f"    Blender remesh: ALLOWED (may help reconnect parts)")
+                blender_unsafe = False
+            else:
+                logger.warning(f"    Blender remesh: BLOCKED (would destroy structure)")
+                blender_unsafe = True
     
     # =========================================================================
     # STEP 2: Get smart pipelines for the detected issues
@@ -540,7 +561,7 @@ def run_slicer_repair_loop(
         
         action_names = [a["action"] for a in pipeline.actions]
         logger.info(f"  Attempt {attempt_num}: {pipeline.name}")
-        logger.info(f"    Actions: {' → '.join(action_names)}")
+        logger.info(f"    Actions: {' -> '.join(action_names)}")
         logger.info(f"    Starting from ORIGINAL mesh")
         
         # Progress callback
@@ -616,7 +637,7 @@ def run_slicer_repair_loop(
                 attempt_result.slicer_result = slicer_result
                 
                 if slicer_result.success:
-                    logger.info(f"    ✓ Slicer validation PASSED!")
+                    logger.info(f"    [OK] Slicer validation PASSED!")
                     result.success = True
                     result.final_mesh = repaired_mesh
                     result.final_slicer_result = slicer_result
@@ -626,7 +647,7 @@ def run_slicer_repair_loop(
                     result.attempts.append(attempt_result)
                     break  # Success!
                 else:
-                    logger.info(f"    ✗ Slicer validation FAILED")
+                    logger.info(f"    [X] Slicer validation FAILED")
                     
                     # Track best result
                     score = (1 if repaired_mesh.is_watertight else 0) + (1 if repaired_mesh.is_volume else 0)
@@ -637,15 +658,15 @@ def run_slicer_repair_loop(
                     
                     attempt_result.error = f"Slicer issues remain"
             elif geom_valid.is_printable and not geom_acceptable:
-                logger.warning(f"    ✗ Geometry loss: {geom_loss_reason}")
+                logger.warning(f"    [X] Geometry loss: {geom_loss_reason}")
                 attempt_result.error = f"Geometry loss: {geom_loss_reason}"
                 attempt_result.geometry_valid = False
             else:
-                logger.warning(f"    ✗ Geometry invalid: {geom_valid.issues}")
+                logger.warning(f"    [X] Geometry invalid: {geom_valid.issues}")
                 attempt_result.error = f"Geometry invalid: {geom_valid.issues}"
             
         except Exception as e:
-            logger.error(f"    ✗ Pipeline failed: {e}")
+            logger.error(f"    [X] Pipeline failed: {e}")
             attempt_result.error = str(e)
         
         attempt_result.duration_ms = (time.perf_counter() - attempt_start) * 1000

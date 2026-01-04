@@ -1,4 +1,4 @@
-# Copyright 2025 Allard Peper (Dragon Ace / DragonAceNL)
+﻿# Copyright 2025 Allard Peper (Dragon Ace / DragonAceNL)
 # Licensed under the Apache License, Version 2.0 (see LICENSE).
 # This file is part of MeshPrep — https://github.com/DragonAceNL/MeshPrep
 
@@ -34,7 +34,7 @@ class FilterPipeline:
     avoid_for_fragmented: bool = False  # Skip if model is fragmented
     
     def __repr__(self):
-        action_names = " → ".join(a["action"] for a in self.actions)
+        action_names = " -> ".join(a["action"] for a in self.actions)
         return f"Pipeline({self.name}: {action_names})"
 
 
@@ -227,6 +227,7 @@ PROFILE_PIPELINES: Dict[str, List[FilterPipeline]] = {
     # =========================================================================
     # FRAGMENTED / MULTI-COMPONENT
     # These profiles must NOT use blender_remesh or aggressive pymeshfix
+    # EXCEPT for extreme fragmentation where reconstruction is the only option
     # =========================================================================
     "fragmented": [
         FilterPipeline(
@@ -258,7 +259,103 @@ PROFILE_PIPELINES: Dict[str, List[FilterPipeline]] = {
             ],
             priority=3,
         ),
-        # NOTE: No blender_remesh - it destroys fragmented models!
+        # For extreme fragmentation (>1000 bodies), reconstruction is the only option
+        FilterPipeline(
+            name="voxel-reconstruct-fragmented",
+            description="Voxelize and reconstruct for extreme fragmentation",
+            actions=[
+                {"action": "voxelize_and_reconstruct", "params": {"pitch": "auto"}},
+                {"action": "fix_normals", "params": {}},
+            ],
+            priority=4,
+        ),
+        FilterPipeline(
+            name="meshlab-poisson-reconstruct",
+            description="Poisson surface reconstruction from point cloud",
+            actions=[
+                {"action": "meshlab_reconstruct_poisson", "params": {"depth": 8}},
+                {"action": "fix_normals", "params": {}},
+            ],
+            priority=5,
+        ),
+        FilterPipeline(
+            name="meshlab-ball-pivoting-reconstruct",
+            description="Ball pivoting reconstruction",
+            actions=[
+                {"action": "meshlab_reconstruct_ball_pivoting", "params": {}},
+                {"action": "fix_normals", "params": {}},
+            ],
+            priority=6,
+        ),
+        FilterPipeline(
+            name="blender-remesh-aggressive",
+            description="Aggressive Blender remesh as last resort for extreme fragmentation",
+            actions=[
+                {"action": "blender_remesh", "params": {"voxel_size": 0.01}},
+                {"action": "fix_normals", "params": {}},
+            ],
+            priority=7,
+            # NOTE: This CAN destroy fragmented models, but for extreme cases
+            # (>1000 bodies) it may be the only option to get a printable mesh
+        ),
+    ],
+    
+    # NEW: Extreme fragmentation profile (>1000 bodies) - reconstruction only
+    "extreme-fragmented": [
+        FilterPipeline(
+            name="voxel-reconstruct-extreme",
+            description="Voxelize and reconstruct for 1000+ body meshes",
+            actions=[
+                {"action": "voxelize_and_reconstruct", "params": {"pitch": "auto"}},
+                {"action": "fix_normals", "params": {}},
+            ],
+            priority=1,
+        ),
+        FilterPipeline(
+            name="voxel-reconstruct-fine",
+            description="Finer voxel reconstruction",
+            actions=[
+                {"action": "voxelize_and_reconstruct", "params": {"pitch": 0.5}},
+                {"action": "fix_normals", "params": {}},
+            ],
+            priority=2,
+        ),
+        FilterPipeline(
+            name="meshlab-poisson-extreme",
+            description="High-detail Poisson reconstruction",
+            actions=[
+                {"action": "meshlab_reconstruct_poisson", "params": {"depth": 10}},
+                {"action": "fix_normals", "params": {}},
+            ],
+            priority=3,
+        ),
+        FilterPipeline(
+            name="meshlab-alpha-wrap",
+            description="Alpha wrap reconstruction",
+            actions=[
+                {"action": "meshlab_alpha_wrap", "params": {}},
+                {"action": "fix_normals", "params": {}},
+            ],
+            priority=4,
+        ),
+        FilterPipeline(
+            name="blender-remesh-extreme",
+            description="Blender voxel remesh for extreme fragmentation",
+            actions=[
+                {"action": "blender_remesh", "params": {"voxel_size": 0.005}},
+                {"action": "fix_normals", "params": {}},
+            ],
+            priority=5,
+        ),
+        FilterPipeline(
+            name="convex-hull-extreme",
+            description="Convex hull as absolute last resort",
+            actions=[
+                {"action": "convex_hull", "params": {}},
+                {"action": "fix_normals", "params": {}},
+            ],
+            priority=6,
+        ),
     ],
     
     "multiple-disconnected-large": [
@@ -897,9 +994,9 @@ def analyze_fragmented_model(mesh) -> dict:
     Analyze a fragmented model to determine the type of fragmentation.
     
     This helps decide whether blender_remesh would be destructive:
-    - debris-particles: Many tiny fragments → Blender DESTROYS
-    - multi-part-assembly: Multiple large parts → Blender DESTROYS  
-    - split-seam: Parts that should connect → Blender might HELP
+    - debris-particles: Many tiny fragments -> Blender DESTROYS
+    - multi-part-assembly: Multiple large parts -> Blender DESTROYS  
+    - split-seam: Parts that should connect -> Blender might HELP
     
     Args:
         mesh: trimesh.Trimesh object
@@ -1032,7 +1129,7 @@ def print_pipeline_summary():
     for profile, pipelines in sorted(PROFILE_PIPELINES.items()):
         print(f"\n{profile}: ({len(pipelines)} pipelines)")
         for p in pipelines:
-            actions = " → ".join(a["action"] for a in p.actions)
+            actions = " -> ".join(a["action"] for a in p.actions)
             fragmented_note = " [!fragmented]" if p.avoid_for_fragmented else ""
             print(f"  {p.priority}. {p.name}{fragmented_note}")
             print(f"     {actions}")
@@ -1042,7 +1139,7 @@ def print_pipeline_summary():
     print("-" * 70)
     
     for p in GENERIC_PIPELINES:
-        actions = " → ".join(a["action"] for a in p.actions)
+        actions = " -> ".join(a["action"] for a in p.actions)
         fragmented_note = " [!fragmented]" if p.avoid_for_fragmented else ""
         print(f"  {p.priority}. {p.name}{fragmented_note}")
         print(f"     {actions}")

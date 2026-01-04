@@ -39,8 +39,9 @@ DEFAULT_THRESHOLDS = {
     "decimation_target_faces": 100000,
     
     # Profile boundary - body count
-    "body_count_fragmented": 10,  # > this = fragmented
-    "body_count_multi": 1,        # > this = multi-body
+    "body_count_extreme_fragmented": 1000,  # > this = extreme-fragmented (needs reconstruction)
+    "body_count_fragmented": 10,            # > this = fragmented
+    "body_count_multi": 1,                  # > this = multi-body
     
     # Profile boundary - face count buckets
     "face_count_tiny": 1000,

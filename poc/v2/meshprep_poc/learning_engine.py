@@ -254,7 +254,8 @@ class LearningEngine:
     def _detect_profile(self, diagnostics: Optional[Dict[str, Any]], issues: List[str] = None) -> str:
         """Detect mesh profile from diagnostics.
         
-        First checks discovered profiles, then falls back to hardcoded rules.
+        First checks discovered profiles, then falls back to learned thresholds,
+        then to hardcoded rules as last resort.
         """
         if not diagnostics:
             return "unknown"
@@ -269,20 +270,37 @@ class LearningEngine:
         except Exception as e:
             logger.debug(f"Profile discovery lookup failed: {e}")
         
-        # Fall back to hardcoded rules
+        # Get learned thresholds (falls back to defaults if not enough data)
+        try:
+            from .adaptive_thresholds import get_adaptive_thresholds
+            thresholds = get_adaptive_thresholds()
+            body_count_extreme = thresholds.get("body_count_extreme_fragmented")
+            body_count_fragmented = thresholds.get("body_count_fragmented")
+            body_count_multi = thresholds.get("body_count_multi")
+            face_count_large = thresholds.get("face_count_large")
+        except Exception as e:
+            logger.debug(f"Adaptive thresholds unavailable, using defaults: {e}")
+            body_count_extreme = 1000
+            body_count_fragmented = 10
+            body_count_multi = 1
+            face_count_large = 500000
+        
         body_count = diagnostics.get("body_count", 1)
         face_count = diagnostics.get("faces", 0)
         is_watertight = diagnostics.get("is_watertight", False)
         
-        if body_count > 10:
+        # Extreme fragmentation - needs reconstruction, not repair
+        if body_count > body_count_extreme:
+            return "extreme-fragmented"
+        elif body_count > body_count_fragmented:
             return "fragmented"
-        elif body_count > 1:
+        elif body_count > body_count_multi:
             return "multi-body"
         elif not is_watertight and face_count < 1000:
             return "simple-broken"
         elif not is_watertight:
             return "complex-broken"
-        elif face_count > 500000:
+        elif face_count > face_count_large:
             return "high-poly"
         else:
             return "standard"

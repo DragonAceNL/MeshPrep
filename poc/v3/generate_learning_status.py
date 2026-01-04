@@ -413,7 +413,7 @@ def generate_status_page(data: Dict[str, Any]) -> str:
         # Build sample pipelines list
         samples_html = ""
         for p in ap.get("samples", []):
-            actions_str = " → ".join(p["actions"])
+            actions_str = " -> ".join(p["actions"])
             samples_html += f'''
                 <div class="pipeline-sample">
                     <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
@@ -714,7 +714,7 @@ def generate_status_page(data: Dict[str, Any]) -> str:
             """
             for p in ee["evolved_pipelines"]:
                 rate_class = "success" if p["success_rate"] >= 0.7 else "warning" if p["success_rate"] >= 0.4 else "danger"
-                actions_str = " → ".join(p["actions"])
+                actions_str = " -> ".join(p["actions"])
                 evolution_html += f"""
                     <div class="evolved-card">
                         <div class="evolved-header">

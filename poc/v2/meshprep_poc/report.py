@@ -1,4 +1,4 @@
-# Copyright 2025 Allard Peper (Dragon Ace / DragonAceNL)
+﻿# Copyright 2025 Allard Peper (Dragon Ace / DragonAceNL)
 # Licensed under the Apache License, Version 2.0 (see LICENSE).
 # This file is part of MeshPrep — https://github.com/DragonAceNL/MeshPrep
 
@@ -194,7 +194,7 @@ def generate_markdown_report(
     
     # Navigation bar
     if index_path:
-        lines.append(f"[← Back to Index]({index_path})")
+        lines.append(f"[<- Back to Index]({index_path})")
         lines.append("")
         lines.append("---")
         lines.append("")
@@ -720,12 +720,12 @@ def generate_report_index(
             # Watertight status
             orig_wt = r["original"].get("is_watertight", False)
             rep_wt = r["repaired"].get("is_watertight", False) if r["repaired"] else False
-            wt_status = f"{"❌" if not orig_wt else "✅"} → {"✅" if rep_wt else "❌"}"
+            wt_status = f"{"❌" if not orig_wt else "✅"} -> {"✅" if rep_wt else "❌"}"
             
             # Face count change
             orig_faces = r["original"].get("face_count", 0)
             rep_faces = r["repaired"].get("face_count", 0) if r["repaired"] else 0
-            faces_str = f"{orig_faces:,} → {rep_faces:,}"
+            faces_str = f"{orig_faces:,} -> {rep_faces:,}"
             
             report_link = f"[View](./{r['path']}/report.md)"
             
@@ -756,9 +756,9 @@ def generate_report_index(
                 content = report_md_path.read_text(encoding="utf-8")
                 
                 # Check if it already has a back link
-                if "[← Back to Index]" not in content:
+                if "[<- Back to Index]" not in content:
                     # Add navigation at the top
-                    nav = f"[← Back to Index]({back_path})\n\n---\n\n"
+                    nav = f"[<- Back to Index]({back_path})\n\n---\n\n"
                     content = nav + content
                     report_md_path.write_text(content, encoding="utf-8")
                     logger.debug(f"Added navigation to {report_md_path}")
