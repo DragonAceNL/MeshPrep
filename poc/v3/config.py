@@ -27,10 +27,8 @@ FIXED_OUTPUT_PATH = OUTPUT_BASE_PATH / "fixed"
 
 # POC v3 local paths
 POC_V3_PATH = Path(__file__).parent
-PROGRESS_FILE = POC_V3_PATH / "progress.json"
 SUMMARY_FILE = POC_V3_PATH / "summary.json"
 RESULTS_CSV = POC_V3_PATH / "results.csv"
-DASHBOARD_FILE = POC_V3_PATH / "dashboard.html"
 LOG_DIR = POC_V3_PATH / "logs"
 
 # =============================================================================
@@ -49,7 +47,6 @@ DEFAULT_DECIMATION_TRIGGER_FACES = 100000
 # Batch processing settings
 DEFAULT_MAX_REPAIR_ATTEMPTS = 20
 DEFAULT_REPAIR_TIMEOUT = 120
-DASHBOARD_UPDATE_INTERVAL = 10  # Update dashboard every N files
 THRESHOLD_OPTIMIZE_INTERVAL = 100  # Optimize thresholds every N models
 PROFILE_DISCOVERY_INTERVAL = 100  # Run profile discovery every N models
 

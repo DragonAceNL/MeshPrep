@@ -7,8 +7,9 @@ Local HTTP server for MeshPrep reports with MeshLab integration.
 
 This server:
 1. Serves the reports and STL files via HTTP
-2. Provides an API endpoint to open STL files in MeshLab
-3. Provides an API endpoint to rate models
+2. Provides API endpoints for progress data (from SQLite)
+3. Provides an API endpoint to open STL files in MeshLab
+4. Provides an API endpoint to rate models
 
 Usage:
     python reports_server.py [--port 8000]
@@ -86,12 +87,15 @@ class MeshLabHandler(http.server.SimpleHTTPRequestHandler):
         path = urllib.parse.unquote(path)
         
         # Route based on path prefix
-        if path.startswith('/reports/') or path == '/reports':
+        if path == '/reports' or path == '/reports/':
+            # Serve index.html from reports directory
+            return str(THINGI10K_REPORTS / "index.html")
+        elif path.startswith('/reports/'):
             # Serve from Thingi10K/reports/ directory
-            if path == '/reports':
-                return str(THINGI10K_REPORTS)
             rel_path = path[len('/reports/'):]
-            return str(THINGI10K_REPORTS / rel_path)
+            if rel_path:
+                return str(THINGI10K_REPORTS / rel_path)
+            return str(THINGI10K_REPORTS / "index.html")
         elif path.startswith('/fixed/'):
             # Serve from Thingi10K/fixed/ directory
             rel_path = path[len('/fixed/'):]
@@ -103,41 +107,21 @@ class MeshLabHandler(http.server.SimpleHTTPRequestHandler):
             else:
                 rel_path = path[len('/meshes/'):]
             return str(THINGI10K_RAW_MESHES / rel_path)
-        elif path.startswith('/MeshPrep/') or path.startswith('/poc/'):
-            # Serve from POC v3 directory (for dashboard, progress.json, etc.)
-            if path.startswith('/MeshPrep/poc/v3/'):
-                rel_path = path[len('/MeshPrep/poc/v3/'):]
-            elif path.startswith('/poc/v3/'):
-                rel_path = path[len('/poc/v3/'):]
-            elif path.startswith('/poc/'):
-                rel_path = path[len('/poc/'):]
-                return str(POC_V3_PATH.parent / rel_path)
-            else:
-                rel_path = path[len('/MeshPrep/'):]
-                return str(POC_V3_PATH.parent.parent / rel_path)
-            return str(POC_V3_PATH / rel_path)
-        elif path.startswith('/dashboard'):
-            # Shortcut for dashboard
-            if path == '/dashboard' or path == '/dashboard/':
-                return str(POC_V3_PATH / 'dashboard.html')
-            return str(POC_V3_PATH / path[1:])  # Remove leading /
-        elif path.startswith('/live_dashboard') or path == '/live':
+        elif path.startswith('/live_dashboard') or path == '/live' or path == '/':
+            # Live dashboard is the main entry point
             return str(POC_V3_PATH / 'live_dashboard.html')
         elif path.startswith('/learning') or path == '/learning-status':
-            # Learning status page - generate fresh if doesn't exist or requested
+            # Learning status page - generate fresh if doesn't exist
             status_path = POC_V3_PATH / 'learning_status.html'
             if not status_path.exists():
                 try:
+                    # Add POC v3 to path for imports
+                    sys.path.insert(0, str(POC_V3_PATH))
                     from generate_learning_status import generate_learning_status_page
                     generate_learning_status_page()
                 except Exception:
                     pass
             return str(status_path)
-        elif path.startswith('/progress.json') or path == '/progress':
-            return str(POC_V3_PATH / 'progress.json')
-        elif path == '/' or path == '':
-            # Root - show reports index
-            return str(THINGI10K_REPORTS)
         else:
             # Default: serve from Thingi10K base for backward compatibility
             if path.startswith('/'):
@@ -147,6 +131,11 @@ class MeshLabHandler(http.server.SimpleHTTPRequestHandler):
     def do_GET(self):
         """Handle GET requests."""
         parsed = urllib.parse.urlparse(self.path)
+        
+        # API endpoint for progress data (from SQLite)
+        if parsed.path == "/api/progress" or parsed.path == "/progress.json":
+            self.handle_get_progress()
+            return
         
         # API endpoint to open file in MeshLab
         if parsed.path == "/api/open-meshlab":
@@ -184,6 +173,30 @@ class MeshLabHandler(http.server.SimpleHTTPRequestHandler):
         self.send_response(405)
         self.end_headers()
     
+    def handle_get_progress(self):
+        """Get progress data from SQLite database."""
+        try:
+            # Add POC v3 to path for imports
+            sys.path.insert(0, str(POC_V3_PATH))
+            from progress_db import get_progress_db
+            
+            db = get_progress_db()
+            progress = db.get_progress()
+            
+            # Return as JSON (compatible with live_dashboard.html)
+            response = progress.to_dict()
+            
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("Cache-Control", "no-cache")
+            self.end_headers()
+            self.wfile.write(json.dumps(response).encode())
+            
+        except Exception as e:
+            print(f"[Progress] Error getting progress: {e}")
+            self.send_json_error(500, f"Failed to get progress: {e}")
+    
     def handle_meshlab_status(self):
         """Check if MeshLab is available."""
         meshlab = find_meshlab()
@@ -201,6 +214,7 @@ class MeshLabHandler(http.server.SimpleHTTPRequestHandler):
     def handle_refresh_learning_status(self):
         """Regenerate the learning status page."""
         try:
+            sys.path.insert(0, str(POC_V3_PATH))
             from generate_learning_status import generate_learning_status_page
             page_path = generate_learning_status_page()
             response = {
@@ -491,23 +505,21 @@ def main():
     
     print(f"[OK] Serving from: {THINGI10K_BASE}")
     print(f"[OK] Reports: {THINGI10K_REPORTS}")
-    print(f"[OK] Dashboard: {POC_V3_PATH}")
     print()
     print("=" * 60)
     print(f"Server running at: http://localhost:{args.port}/")
     print()
     print("Available URLs:")
+    print(f"  Live Dashboard:   http://localhost:{args.port}/live")
     print(f"  Reports Index:    http://localhost:{args.port}/reports/")
-    print(f"  Live Dashboard:   http://localhost:{args.port}/live_dashboard.html")
-    print(f"  Static Dashboard: http://localhost:{args.port}/dashboard")
     print(f"  Learning Status:  http://localhost:{args.port}/learning")
-    print(f"  Progress JSON:    http://localhost:{args.port}/progress.json")
     print()
     print("Additional paths:")
     print(f"  Raw Meshes:       http://localhost:{args.port}/raw_meshes/")
     print(f"  Fixed Meshes:     http://localhost:{args.port}/fixed/")
     print()
     print("API Endpoints:")
+    print(f"  GET  /api/progress                       - Get progress data (JSON)")
     print(f"  GET  /api/get-rating?fingerprint=MP:xxx  - Get rating for model")
     print(f"  POST /api/rate-model                     - Submit rating for model")
     print("=" * 60)

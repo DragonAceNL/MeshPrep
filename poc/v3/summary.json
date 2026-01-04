@@ -1,22 +1,22 @@
 {
   "progress": {
     "total_files": 10440,
-    "processed": 42,
-    "successful": 42,
+    "processed": 33,
+    "successful": 33,
     "failed": 0,
     "escalations": 0,
     "skipped": 0,
     "precheck_skipped": 0,
     "reconstructed": 0,
-    "start_time": "2026-01-04T13:38:27.029718",
-    "last_update": "2026-01-04T13:38:33.251570",
-    "current_file": "100027",
-    "current_action": "voxel-reconstruct-fragmented",
+    "start_time": "2026-01-04T13:43:33.783983",
+    "last_update": "2026-01-04T13:43:35.609900",
+    "current_file": "100026",
+    "current_action": "make-manifold-simple",
     "current_step": 2,
-    "total_steps": 11,
-    "total_duration_ms": 3423.3031272888184,
-    "avg_duration_ms": 1711.6515636444092,
-    "eta_seconds": 1.1666655540466309
+    "total_steps": 15,
+    "total_duration_ms": 1148.8242149353027,
+    "avg_duration_ms": 1148.8242149353027,
+    "eta_seconds": 0
   },
   "results": [
     {
@@ -26,7 +26,7 @@
       "error": null,
       "filter_used": "slicer-repair-loop",
       "escalation_used": false,
-      "duration_ms": 1120.0841999998374,
+      "duration_ms": 1255.346500000087,
       "model_fingerprint": "MP:f1f1a4d7239d",
       "original_file_hash": "",
       "precheck_passed": false,
@@ -52,7 +52,7 @@
       "result_holes": 0,
       "original_file_size": 0,
       "fixed_file_size": 0,
-      "timestamp": "2026-01-04T13:22:15.970206"
+      "timestamp": "2026-01-04T13:39:55.122268"
     },
     {
       "file_id": "100027",
@@ -61,7 +61,7 @@
       "error": null,
       "filter_used": "slicer-repair-loop",
       "escalation_used": false,
-      "duration_ms": 2129.115700001421,
+      "duration_ms": 2215.907199999492,
       "model_fingerprint": "MP:9e12d440a355",
       "original_file_hash": "",
       "precheck_passed": false,
@@ -87,7 +87,7 @@
       "result_holes": 0,
       "original_file_size": 0,
       "fixed_file_size": 0,
-      "timestamp": "2026-01-04T13:22:18.963653"
+      "timestamp": "2026-01-04T13:39:58.245297"
     },
     {
       "file_id": "100029",
@@ -96,7 +96,7 @@
       "error": null,
       "filter_used": "slicer-repair-loop",
       "escalation_used": false,
-      "duration_ms": 1034.6934000008332,
+      "duration_ms": 1063.104700000622,
       "model_fingerprint": "MP:24bf46eb22e1",
       "original_file_hash": "",
       "precheck_passed": false,
@@ -122,7 +122,7 @@
       "result_holes": 0,
       "original_file_size": 0,
       "fixed_file_size": 0,
-      "timestamp": "2026-01-04T13:22:22.860289"
+      "timestamp": "2026-01-04T13:40:02.278186"
     },
     {
       "file_id": "100030",
@@ -131,7 +131,7 @@
       "error": null,
       "filter_used": "slicer-repair-loop",
       "escalation_used": false,
-      "duration_ms": 5987.119299999904,
+      "duration_ms": 6130.951200000709,
       "model_fingerprint": "MP:52c9b8596eb7",
       "original_file_hash": "",
       "precheck_passed": false,
@@ -157,7 +157,7 @@
       "result_holes": 0,
       "original_file_size": 0,
       "fixed_file_size": 0,
-      "timestamp": "2026-01-04T13:22:29.838547"
+      "timestamp": "2026-01-04T13:40:09.392668"
     },
     {
       "file_id": "100031",
@@ -166,7 +166,7 @@
       "error": null,
       "filter_used": "slicer-repair-loop",
       "escalation_used": false,
-      "duration_ms": 1034.8472999994556,
+      "duration_ms": 1057.9949999992095,
       "model_fingerprint": "MP:0839ab38e7d0",
       "original_file_hash": "",
       "precheck_passed": false,
@@ -192,7 +192,7 @@
       "result_holes": 0,
       "original_file_size": 0,
       "fixed_file_size": 0,
-      "timestamp": "2026-01-04T13:18:05.637538"
+      "timestamp": "2026-01-04T13:40:15.774611"
     },
     {
       "file_id": "100032",
@@ -201,7 +201,7 @@
       "error": null,
       "filter_used": "slicer-repair-loop",
       "escalation_used": false,
-      "duration_ms": 1407.146499999726,
+      "duration_ms": 1386.6733000013483,
       "model_fingerprint": "MP:c819ba97c42a",
       "original_file_hash": "",
       "precheck_passed": false,
@@ -227,7 +227,7 @@
       "result_holes": 0,
       "original_file_size": 0,
       "fixed_file_size": 0,
-      "timestamp": "2026-01-04T13:18:07.543820"
+      "timestamp": "2026-01-04T13:40:17.641601"
     },
     {
       "file_id": "100033",
@@ -236,7 +236,7 @@
       "error": null,
       "filter_used": "slicer-repair-loop",
       "escalation_used": false,
-      "duration_ms": 1014.6486000012374,
+      "duration_ms": 1026.2987000005523,
       "model_fingerprint": "MP:3cd4fb7ffb6b",
       "original_file_hash": "",
       "precheck_passed": false,
@@ -262,7 +262,7 @@
       "result_holes": 0,
       "original_file_size": 0,
       "fixed_file_size": 0,
-      "timestamp": "2026-01-04T13:18:09.478899"
+      "timestamp": "2026-01-04T13:40:19.598132"
     },
     {
       "file_id": "100035",
@@ -271,7 +271,7 @@
       "error": null,
       "filter_used": "slicer-repair-loop",
       "escalation_used": false,
-      "duration_ms": 1047.5443999985146,
+      "duration_ms": 1027.9719000009209,
       "model_fingerprint": "MP:7b15bd385b5b",
       "original_file_hash": "",
       "precheck_passed": false,
@@ -297,7 +297,7 @@
       "result_holes": 0,
       "original_file_size": 0,
       "fixed_file_size": 0,
-      "timestamp": "2026-01-04T13:18:11.679833"
+      "timestamp": "2026-01-04T13:40:21.786974"
     },
     {
       "file_id": "100036",
@@ -306,7 +306,7 @@
       "error": null,
       "filter_used": "slicer-repair-loop",
       "escalation_used": false,
-      "duration_ms": 1028.7826000003406,
+      "duration_ms": 1134.047699999428,
       "model_fingerprint": "MP:cfe40a0758f3",
       "original_file_hash": "",
       "precheck_passed": false,
@@ -332,7 +332,7 @@
       "result_holes": 0,
       "original_file_size": 0,
       "fixed_file_size": 0,
-      "timestamp": "2026-01-04T13:05:22.473653"
+      "timestamp": "2026-01-04T13:40:23.330611"
     },
     {
       "file_id": "100037",
@@ -341,7 +341,7 @@
       "error": null,
       "filter_used": "slicer-repair-loop (blender)",
       "escalation_used": true,
-      "duration_ms": 6322.504100000515,
+      "duration_ms": 6382.609599999341,
       "model_fingerprint": "MP:12b6e5b19ec7",
       "original_file_hash": "",
       "precheck_passed": false,
@@ -367,7 +367,7 @@
       "result_holes": 0,
       "original_file_size": 0,
       "fixed_file_size": 0,
-      "timestamp": "2026-01-04T13:05:29.292585"
+      "timestamp": "2026-01-04T13:40:30.287646"
     },
     {
       "file_id": "100040",
@@ -376,7 +376,7 @@
       "error": null,
       "filter_used": "slicer-repair-loop",
       "escalation_used": false,
-      "duration_ms": 1190.5900000001566,
+      "duration_ms": 1372.079400000075,
       "model_fingerprint": "MP:425eb7e27d1c",
       "original_file_hash": "",
       "precheck_passed": false,
@@ -402,7 +402,7 @@
       "result_holes": 0,
       "original_file_size": 0,
       "fixed_file_size": 0,
-      "timestamp": "2026-01-04T13:05:33.903607"
+      "timestamp": "2026-01-04T13:40:35.006056"
     },
     {
       "file_id": "100173",
@@ -411,7 +411,7 @@
       "error": null,
       "filter_used": "slicer-repair-loop",
       "escalation_used": false,
-      "duration_ms": 1015.3737999989971,
+      "duration_ms": 988.2950999999593,
       "model_fingerprint": "MP:cd0bb7dd5df9",
       "original_file_hash": "",
       "precheck_passed": false,
@@ -426,7 +426,7 @@
       "original_manifold": false,
       "result_vertices": 128,
       "result_faces": 252,
-      "result_volume": 10070.636131079189,
+      "result_volume": 10070.630353763874,
       "result_watertight": true,
       "result_manifold": true,
       "volume_change_pct": 0,
@@ -437,7 +437,7 @@
       "result_holes": 0,
       "original_file_size": 0,
       "fixed_file_size": 0,
-      "timestamp": "2026-01-04T13:05:46.348544"
+      "timestamp": "2026-01-04T13:40:47.271311"
     },
     {
       "file_id": "100331",
@@ -446,7 +446,7 @@
       "error": null,
       "filter_used": "slicer-repair-loop",
       "escalation_used": false,
-      "duration_ms": 1095.1209000013478,
+      "duration_ms": 1152.071500000602,
       "model_fingerprint": "MP:7c9408439f0f",
       "original_file_hash": "",
       "precheck_passed": false,
@@ -472,42 +472,7 @@
       "result_holes": 0,
       "original_file_size": 0,
       "fixed_file_size": 0,
-      "timestamp": "2026-01-04T13:06:19.251353"
-    },
-    {
-      "file_id": "100335",
-      "file_path": "100335.stl",
-      "success": true,
-      "error": null,
-      "filter_used": "slicer-repair-loop",
-      "escalation_used": false,
-      "duration_ms": 6330.248899999788,
-      "model_fingerprint": "MP:6f1649d13715",
-      "original_file_hash": "",
-      "precheck_passed": false,
-      "precheck_skipped": false,
-      "is_reconstruction": false,
-      "reconstruction_method": "",
-      "geometry_loss_pct": 0,
-      "original_vertices": 35140,
-      "original_faces": 70298,
-      "original_volume": 0,
-      "original_watertight": false,
-      "original_manifold": false,
-      "result_vertices": 35135,
-      "result_faces": 70250,
-      "result_volume": 48312.28945420661,
-      "result_watertight": true,
-      "result_manifold": true,
-      "volume_change_pct": 0,
-      "face_change_pct": 0,
-      "original_components": 0,
-      "original_holes": 0,
-      "result_components": 0,
-      "result_holes": 0,
-      "original_file_size": 0,
-      "fixed_file_size": 0,
-      "timestamp": "2026-01-04T13:06:27.415870"
+      "timestamp": "2026-01-04T13:41:20.434804"
     },
     {
       "file_id": "100026",
@@ -516,7 +481,7 @@
       "error": null,
       "filter_used": "slicer-repair-loop",
       "escalation_used": false,
-      "duration_ms": 1166.6655540466309,
+      "duration_ms": 1148.8242149353027,
       "model_fingerprint": "MP:f1f1a4d7239d",
       "original_file_hash": "f1f1a4d7239df03d084d0e3dbfeba467f4e32a1f227b15b71e1e3881055479b5",
       "precheck_passed": false,
@@ -542,42 +507,7 @@
       "result_holes": 0,
       "original_file_size": 68170,
       "fixed_file_size": 12984,
-      "timestamp": "2026-01-04T13:38:27.033717"
-    },
-    {
-      "file_id": "100027",
-      "file_path": "C:\\Users\\Dragon Ace\\Source\\repos\\Thingi10K\\raw_meshes\\100027.stl",
-      "success": true,
-      "error": null,
-      "filter_used": "slicer-repair-loop",
-      "escalation_used": false,
-      "duration_ms": 2256.6375732421875,
-      "model_fingerprint": "MP:9e12d440a355",
-      "original_file_hash": "9e12d440a3552cba14df57c0e20a7ec5437b62c6611c215bf47860797f5e0d9c",
-      "precheck_passed": false,
-      "precheck_skipped": false,
-      "is_reconstruction": false,
-      "reconstruction_method": "",
-      "geometry_loss_pct": -3512.5984251968503,
-      "original_vertices": 218,
-      "original_faces": 508,
-      "original_volume": 0.0,
-      "original_watertight": false,
-      "original_manifold": false,
-      "result_vertices": 9162,
-      "result_faces": 18352,
-      "result_volume": 10408.0,
-      "result_watertight": true,
-      "result_manifold": true,
-      "volume_change_pct": 0.0,
-      "face_change_pct": -3512.5984251968503,
-      "original_components": 38,
-      "original_holes": 0,
-      "result_components": 1,
-      "result_holes": 0,
-      "original_file_size": 134440,
-      "fixed_file_size": 917684,
-      "timestamp": "2026-01-04T13:38:28.915476"
+      "timestamp": "2026-01-04T13:43:33.788983"
     }
   ]
 }

@@ -23,8 +23,7 @@ from meshprep_poc.quality_feedback import get_quality_engine, QualityRating
 
 from config import (
     REPORTS_PATH, FILTERS_PATH, FIXED_OUTPUT_PATH,
-    THINGI10K_PATH, CTM_MESHES_PATH,
-    PROGRESS_FILE, DASHBOARD_FILE, SUPPORTED_FORMATS,
+    THINGI10K_PATH, CTM_MESHES_PATH, SUPPORTED_FORMATS,
 )
 from progress_tracker import load_progress
 from mesh_utils import ADAPTIVE_THRESHOLDS_AVAILABLE
@@ -35,7 +34,7 @@ if ADAPTIVE_THRESHOLDS_AVAILABLE:
 
 def show_status():
     """Show current progress status."""
-    progress = load_progress(PROGRESS_FILE)
+    progress = load_progress()
     
     print("\n" + "=" * 50)
     print("MeshPrep Thingi10K Test Status")
@@ -46,7 +45,7 @@ def show_status():
     print(f"Escalations: {progress.escalations:,}")
     print(f"Currently: {progress.current_file}")
     print(f"ETA: {str(timedelta(seconds=int(progress.eta_seconds)))}")
-    print(f"Dashboard: {DASHBOARD_FILE}")
+    print(f"Live Dashboard: http://localhost:8000/live")
     print("=" * 50 + "\n")
 
 

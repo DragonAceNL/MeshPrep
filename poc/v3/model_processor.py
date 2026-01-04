@@ -42,6 +42,7 @@ from config import (
 )
 from test_result import TestResult
 from progress_tracker import Progress, save_progress
+from progress_db import get_progress_db
 from mesh_utils import (
     check_geometry_loss, decimate_mesh, extract_mesh_diagnostics, 
     render_mesh_image, ADAPTIVE_THRESHOLDS_AVAILABLE,
@@ -57,13 +58,16 @@ logger = logging.getLogger(__name__)
 
 # Global progress reference for callback
 _current_progress: Optional[Progress] = None
-_progress_file: Optional[Path] = None
 
 
-def set_progress_file(progress_file: Path) -> None:
-    """Set the progress file path for saving updates."""
-    global _progress_file
-    _progress_file = progress_file
+def set_progress_file(progress_file: Optional[Path]) -> None:
+    """Set the progress file path for saving updates.
+    
+    Args:
+        progress_file: Ignored (kept for backward compatibility)
+    """
+    # No longer needed - using SQLite now
+    pass
 
 
 def update_action_progress(action_index: int, action_name: str, total_actions: int) -> None:
@@ -74,12 +78,12 @@ def update_action_progress(action_index: int, action_name: str, total_actions: i
         action_name: Name of the action being executed
         total_actions: Total number of actions in the filter
     """
-    global _current_progress, _progress_file
-    if _current_progress and _progress_file:
+    global _current_progress
+    if _current_progress:
         _current_progress.current_action = action_name
         _current_progress.current_step = action_index + 1
         _current_progress.total_steps = total_actions
-        save_progress(_current_progress, _progress_file)
+        save_progress(_current_progress)
 
 
 def get_best_filter(mesh):

@@ -2,7 +2,7 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>MeshPrep Thingi10K Test Dashboard (Live)</title>
+    <title>MeshPrep Thingi10K Test Dashboard</title>
     <style>
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
@@ -157,14 +157,13 @@
         
         <div id="errorBox" class="error-box" style="display: none;">
             <h3>⚠️ Cannot Load Progress</h3>
-            <p>The dashboard cannot read the progress file. Make sure the reports server is running.</p>
+            <p>The dashboard cannot read progress data. Make sure the reports server is running.</p>
             <p><strong>To start the server:</strong></p>
             <ol>
                 <li>Open PowerShell in <code>C:\Users\Dragon Ace\Source\repos\MeshPrep\poc\v3</code></li>
                 <li>Run: <code>..\v2\.venv312\Scripts\python.exe reports_server.py</code></li>
-                <li>Open: <a href="http://localhost:8000/live_dashboard.html" style="color: #4fe8c4;">http://localhost:8000/live_dashboard.html</a></li>
+                <li>Open: <a href="http://localhost:8000/live" style="color: #4fe8c4;">http://localhost:8000/live</a></li>
             </ol>
-            <p>The server provides reports, dashboard, and MeshLab integration on a single port.</p>
         </div>
         
         <div id="mainContent" style="display: none;">
@@ -232,8 +231,7 @@
             
             <div class="links-row">
                 <a href="/reports/" class="link-btn primary">📋 Browse Reports Index</a>
-                <a href="/reports/index.html" class="link-btn">📊 Reports Table</a>
-                <a href="/dashboard" class="link-btn">📈 Static Dashboard</a>
+                <a href="/learning" class="link-btn">🧠 Learning Status</a>
             </div>
             
             <div class="info-box">
@@ -372,7 +370,8 @@
             document.getElementById('lastCheck').textContent = new Date().toLocaleTimeString();
             
             try {
-                const response = await fetch('progress.json?' + Date.now());
+                // Use the new API endpoint (also supports legacy progress.json path)
+                const response = await fetch('/api/progress?' + Date.now());
                 if (!response.ok) throw new Error('Not found');
                 const data = await response.json();
                 updateDashboard(data);

@@ -5,83 +5,53 @@
 """
 Progress tracking for MeshPrep batch processing.
 
-Contains the Progress dataclass for tracking batch processing status,
-along with functions for loading and saving progress to disk.
+This module provides backward-compatible functions that now use SQLite
+via progress_db.py instead of JSON files.
 """
 
-import json
-from dataclasses import dataclass, asdict
-from datetime import datetime
 from pathlib import Path
+from typing import Optional
+
+# Re-export Progress class from progress_db for backward compatibility
+from progress_db import Progress, get_progress_db, ModelResult
 
 
-@dataclass
-class Progress:
-    """Track overall progress of batch processing."""
-    total_files: int = 0
-    processed: int = 0
-    successful: int = 0
-    failed: int = 0
-    escalations: int = 0
-    skipped: int = 0
-    precheck_skipped: int = 0  # Models skipped because already clean
-    reconstructed: int = 0  # Models reconstructed (significant geometry change)
-    
-    start_time: str = ""
-    last_update: str = ""
-    current_file: str = ""
-    current_action: str = ""  # Current action being executed
-    current_step: int = 0  # Current step number (e.g., 1 of 4)
-    total_steps: int = 0  # Total steps in current filter
-    
-    # Timing
-    total_duration_ms: float = 0
-    avg_duration_ms: float = 0
-    
-    # ETA
-    eta_seconds: float = 0
-    
-    @property
-    def percent_complete(self) -> float:
-        """Calculate percentage of files processed."""
-        if self.total_files == 0:
-            return 0
-        return (self.processed / self.total_files) * 100
-    
-    @property
-    def success_rate(self) -> float:
-        """Calculate success rate as percentage."""
-        if self.processed == 0:
-            return 0
-        return (self.successful / self.processed) * 100
-
-
-def load_progress(progress_file: Path) -> Progress:
-    """Load progress from file.
+def load_progress(progress_file: Optional[Path] = None) -> Progress:
+    """Load progress from database.
     
     Args:
-        progress_file: Path to the progress JSON file
+        progress_file: Ignored (kept for backward compatibility)
         
     Returns:
-        Progress object (empty if file doesn't exist or is invalid)
+        Progress object from database
     """
-    if progress_file.exists():
-        try:
-            with open(progress_file) as f:
-                data = json.load(f)
-                return Progress(**data)
-        except Exception:
-            pass
-    return Progress()
+    db = get_progress_db()
+    return db.get_progress()
 
 
-def save_progress(progress: Progress, progress_file: Path) -> None:
-    """Save progress to file.
+def save_progress(progress: Progress, progress_file: Optional[Path] = None) -> None:
+    """Save progress to database.
     
     Args:
         progress: Progress object to save
-        progress_file: Path to save the progress JSON file
+        progress_file: Ignored (kept for backward compatibility)
     """
-    progress.last_update = datetime.now().isoformat()
-    with open(progress_file, "w") as f:
-        json.dump(asdict(progress), f, indent=2)
+    db = get_progress_db()
+    db.save_progress(progress)
+
+
+def reset_progress() -> None:
+    """Reset progress for a new batch run."""
+    db = get_progress_db()
+    db.reset_progress()
+
+
+# Re-export for convenience
+__all__ = [
+    "Progress",
+    "ModelResult", 
+    "load_progress",
+    "save_progress",
+    "reset_progress",
+    "get_progress_db",
+]

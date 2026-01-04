@@ -28,17 +28,17 @@ from meshprep_poc.quality_feedback import get_quality_engine
 from config import (
     THINGI10K_PATH, CTM_MESHES_PATH,
     REPORTS_PATH, FILTERS_PATH,
-    PROGRESS_FILE, SUMMARY_FILE, RESULTS_CSV, DASHBOARD_FILE,
+    SUMMARY_FILE, RESULTS_CSV,
     SUPPORTED_FORMATS,
-    DASHBOARD_UPDATE_INTERVAL, THRESHOLD_OPTIMIZE_INTERVAL, PROFILE_DISCOVERY_INTERVAL,
+    THRESHOLD_OPTIMIZE_INTERVAL, PROFILE_DISCOVERY_INTERVAL,
 )
 from test_result import TestResult
-from progress_tracker import Progress, save_progress
+from progress_tracker import Progress, save_progress, load_progress
+from progress_db import get_progress_db, ModelResult
 from mesh_utils import ADAPTIVE_THRESHOLDS_AVAILABLE
 from model_processor import process_single_model, set_progress_file
 from report_generator import generate_model_report
-from dashboard_generator import generate_dashboard as generate_dashboard_html
-from index_generator import generate_reports_index as generate_index_html, load_results_from_reports
+from index_generator import generate_reports_index
 
 if ADAPTIVE_THRESHOLDS_AVAILABLE:
     from meshprep_poc.adaptive_thresholds import get_adaptive_thresholds
@@ -52,6 +52,9 @@ except ImportError:
     get_discovery_engine = None
 
 logger = logging.getLogger(__name__)
+
+# Update interval for index regeneration (every N files)
+INDEX_UPDATE_INTERVAL = 10
 
 
 def get_all_mesh_files(limit: Optional[int] = None, ctm_priority: bool = False) -> List[Path]:
@@ -106,12 +109,9 @@ def get_all_mesh_files(limit: Optional[int] = None, ctm_priority: bool = False) 
 
 
 def get_processed_files() -> set:
-    """Get set of already processed file IDs."""
-    processed = set()
-    for html_file in REPORTS_PATH.glob("*.html"):
-        if html_file.stem != "index":
-            processed.add(html_file.stem)
-    return processed
+    """Get set of already processed file IDs from database."""
+    db = get_progress_db()
+    return db.get_processed_file_ids()
 
 
 def append_to_csv(result: TestResult) -> None:
@@ -171,6 +171,48 @@ def append_to_csv(result: TestResult) -> None:
         writer.writerow(row)
 
 
+def save_result_to_db(result: TestResult) -> None:
+    """Save a TestResult to the SQLite database."""
+    db = get_progress_db()
+    
+    model_result = ModelResult(
+        file_id=result.file_id,
+        model_fingerprint=result.model_fingerprint,
+        file_path=result.file_path,
+        success=result.success,
+        filter_used=result.filter_used,
+        escalation_used=result.escalation_used,
+        error=result.error or "",
+        precheck_passed=result.precheck_passed,
+        precheck_skipped=result.precheck_skipped,
+        is_reconstruction=result.is_reconstruction,
+        reconstruction_method=result.reconstruction_method,
+        geometry_loss_pct=result.geometry_loss_pct,
+        original_vertices=result.original_vertices,
+        original_faces=result.original_faces,
+        original_volume=result.original_volume,
+        original_watertight=result.original_watertight,
+        original_manifold=result.original_manifold,
+        original_components=result.original_components,
+        original_holes=result.original_holes,
+        original_file_size=result.original_file_size,
+        result_vertices=result.result_vertices,
+        result_faces=result.result_faces,
+        result_volume=result.result_volume,
+        result_watertight=result.result_watertight,
+        result_manifold=result.result_manifold,
+        result_components=result.result_components,
+        result_holes=result.result_holes,
+        fixed_file_size=result.fixed_file_size,
+        volume_change_pct=result.volume_change_pct,
+        face_change_pct=result.face_change_pct,
+        duration_ms=result.duration_ms,
+        timestamp=result.timestamp,
+    )
+    
+    db.save_result(model_result)
+
+
 def run_batch_test(
     limit: Optional[int] = None, 
     skip_existing: bool = True, 
@@ -185,8 +227,8 @@ def run_batch_test(
         ctm_priority: If True, process CTM meshes FIRST before other files
         auto_optimize: If True (default), automatically optimize thresholds during processing
     """
-    # Set the progress file for the model processor
-    set_progress_file(PROGRESS_FILE)
+    # No longer need progress file path - using SQLite now
+    set_progress_file(None)
     
     print("=" * 60, flush=True)
     print("MeshPrep Thingi10K Full Test - POC v3", flush=True)
@@ -286,8 +328,8 @@ def run_batch_test(
     # Check for already processed files
     processed_ids = get_processed_files()
     if processed_ids:
-        print(f"Found {len(processed_ids):,} existing reports", flush=True)
-        logger.info(f"Found {len(processed_ids):,} existing reports")
+        print(f"Found {len(processed_ids):,} existing results in database", flush=True)
+        logger.info(f"Found {len(processed_ids):,} existing results in database")
     
     # Determine which files to process
     if skip_existing:
@@ -304,24 +346,18 @@ def run_batch_test(
         logger.info("All files already processed! Use --fresh to reprocess.")
         return
     
-    # Load existing results from reports
-    existing_results = load_results_from_reports(REPORTS_PATH, FILTERS_PATH)
-    logger.info(f"Loaded {len(existing_results)} existing results from reports")
-    
     # Initialize progress
+    db = get_progress_db()
     progress = Progress(
         total_files=total_mesh_count,
         processed=len(processed_ids),
-        successful=len(processed_ids),
+        successful=len(processed_ids),  # Assume existing are successful
         start_time=datetime.now().isoformat(),
     )
     
     # Save initial progress
-    save_progress(progress, PROGRESS_FILE)
-    generate_dashboard_html(progress, existing_results, DASHBOARD_FILE)
+    save_progress(progress)
     
-    # Start with existing results
-    results: List[TestResult] = list(existing_results)
     new_results_count = 0
     
     # Process each file
@@ -344,10 +380,12 @@ def run_batch_test(
         
         # Process
         result = process_single_model(stl_path, progress=progress)
-        results.append(result)
         new_results_count += 1
         
-        # Append to CSV
+        # Save to database
+        save_result_to_db(result)
+        
+        # Append to CSV (keep for backward compatibility)
         append_to_csv(result)
         
         # Update stats
@@ -367,12 +405,11 @@ def run_batch_test(
             progress.avg_duration_ms = progress.total_duration_ms / new_results_count
         
         # Save progress after every file
-        save_progress(progress, PROGRESS_FILE)
+        save_progress(progress)
         
-        # Update dashboard periodically
-        if i % DASHBOARD_UPDATE_INTERVAL == 0:
-            generate_dashboard_html(progress, results, DASHBOARD_FILE)
-            generate_index_html(results, REPORTS_PATH, FILTERS_PATH)
+        # Update reports index periodically
+        if i % INDEX_UPDATE_INTERVAL == 0:
+            generate_reports_index(reports_path=REPORTS_PATH)
             try:
                 from generate_learning_status import generate_learning_status_page
                 generate_learning_status_page()
@@ -410,23 +447,22 @@ def run_batch_test(
         logger.info(f"  [{status}] [{escalation}] {result.filter_used} ({result.duration_ms:.0f}ms)")
     
     # Final save
-    save_progress(progress, PROGRESS_FILE)
-    generate_dashboard_html(progress, results, DASHBOARD_FILE)
-    generate_index_html(results, REPORTS_PATH, FILTERS_PATH)
+    save_progress(progress)
+    generate_reports_index(reports_path=REPORTS_PATH)
     
     # Summary
     print("", flush=True)
     print("=" * 60, flush=True)
     print("FINAL SUMMARY", flush=True)
     print("=" * 60, flush=True)
-    print(f"Total processed: {progress.processed:,} models", flush=True)
+    print(f"Total processed: {progress.processed:,}", flush=True)
     print(f"Successful: {progress.successful:,} ({progress.success_rate:.1f}%)", flush=True)
     print(f"Failed: {progress.failed:,}", flush=True)
     print(f"Escalations: {progress.escalations:,}", flush=True)
     print(f"Total time: {progress.total_duration_ms/1000/60:.1f} minutes", flush=True)
     print(f"Avg per model: {progress.avg_duration_ms/1000:.1f}s", flush=True)
     print("", flush=True)
-    print(f"Dashboard: {DASHBOARD_FILE}", flush=True)
+    print(f"Reports Index: {REPORTS_PATH / 'index.html'}", flush=True)
     print("=" * 60, flush=True)
     
     logger.info("")
@@ -440,7 +476,7 @@ def run_batch_test(
     logger.info(f"Total time: {progress.total_duration_ms/1000/60:.1f} minutes")
     logger.info(f"Avg per model: {progress.avg_duration_ms/1000:.1f}s")
     logger.info("")
-    logger.info(f"Dashboard: {DASHBOARD_FILE}")
+    logger.info(f"Reports Index: {REPORTS_PATH / 'index.html'}")
     logger.info("=" * 60)
     
     # Final threshold optimization
@@ -484,6 +520,6 @@ def run_batch_test(
     # Save final summary
     with open(SUMMARY_FILE, "w") as f:
         json.dump({
-            "progress": asdict(progress),
-            "results": [asdict(r) for r in results[-100:]],
+            "progress": progress.to_dict(),
+            "statistics": db.get_statistics(),
         }, f, indent=2)
