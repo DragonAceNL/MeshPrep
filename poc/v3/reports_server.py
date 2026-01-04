@@ -48,12 +48,35 @@ def find_meshlab() -> str | None:
     return None
 
 
+class SilentTCPServer(socketserver.TCPServer):
+    """TCPServer that silently handles connection errors."""
+    
+    def handle_error(self, request, client_address):
+        """Handle errors silently for common connection issues."""
+        exc_type, exc_value, _ = sys.exc_info()
+        
+        # Silently ignore connection abort/reset errors (browser closed connection)
+        if exc_type in (ConnectionAbortedError, ConnectionResetError, BrokenPipeError):
+            return
+        
+        # For other errors, use default handling
+        super().handle_error(request, client_address)
+
+
 class MeshLabHandler(http.server.SimpleHTTPRequestHandler):
     """HTTP handler with MeshLab integration."""
     
     def __init__(self, *args, **kwargs):
         # Don't set directory here - we'll handle routing manually
         super().__init__(*args, **kwargs)
+    
+    def handle(self):
+        """Handle requests with connection error suppression."""
+        try:
+            super().handle()
+        except (ConnectionAbortedError, ConnectionResetError, BrokenPipeError):
+            # Browser closed connection - this is normal, ignore silently
+            pass
     
     def translate_path(self, path):
         """Translate URL path to filesystem path with multi-directory support."""
@@ -316,7 +339,7 @@ def main():
     print("Press Ctrl+C to stop")
     print()
     
-    with socketserver.TCPServer(("", args.port), MeshLabHandler) as httpd:
+    with SilentTCPServer(("", args.port), MeshLabHandler) as httpd:
         try:
             httpd.serve_forever()
         except KeyboardInterrupt:

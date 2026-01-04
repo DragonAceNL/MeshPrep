@@ -41,57 +41,16 @@ import logging
 import os
 import sys
 import time
-from dataclasses import dataclass, asdict, field
+from dataclasses import asdict
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional, List, Dict, Any
 import traceback
 
-
-# =============================================================================
-# Colored Logging Formatter
-# =============================================================================
-class ColoredFormatter(logging.Formatter):
-    """Custom formatter that adds colors to log levels in terminal output."""
-    
-    # ANSI color codes
-    COLORS = {
-        'DEBUG': '\033[36m',     # Cyan
-        'INFO': '\033[32m',      # Green
-        'WARNING': '\033[33m',   # Yellow
-        'ERROR': '\033[31m',     # Red
-        'CRITICAL': '\033[35m',  # Magenta
-    }
-    RESET = '\033[0m'
-    BOLD = '\033[1m'
-    
-    def __init__(self, fmt=None, datefmt=None, use_colors=True):
-        super().__init__(fmt, datefmt)
-        self.use_colors = use_colors
-    
-    def format(self, record):
-        # Save original levelname
-        original_levelname = record.levelname
-        
-        if self.use_colors and record.levelname in self.COLORS:
-            color = self.COLORS[record.levelname]
-            # Color the entire line for ERROR and WARNING, just levelname for others
-            if record.levelname in ('ERROR', 'CRITICAL'):
-                record.levelname = f"{self.BOLD}{color}{record.levelname}{self.RESET}"
-                record.msg = f"{self.BOLD}{color}{record.msg}{self.RESET}"
-            elif record.levelname == 'WARNING':
-                record.levelname = f"{color}{record.levelname}{self.RESET}"
-                record.msg = f"{color}{record.msg}{self.RESET}"
-            else:
-                record.levelname = f"{color}{record.levelname}{self.RESET}"
-        
-        result = super().format(record)
-        
-        # Restore original levelname for other handlers (like file handler)
-        record.levelname = original_levelname
-        
-        return result
-
+# Import local classes (separated for cleaner code)
+from test_result import TestResult
+from progress_tracker import Progress, load_progress, save_progress
+from colored_logging import ColoredFormatter, setup_logging
 
 # Setup logging with file output
 LOG_DIR = Path(__file__).parent / "logs"
@@ -182,117 +141,18 @@ FILTERS_PATH.mkdir(parents=True, exist_ok=True)
 FIXED_OUTPUT_PATH.mkdir(parents=True, exist_ok=True)
 
 
-@dataclass
-class TestResult:
-    """Result of a single model test."""
-    file_id: str
-    file_path: str
-    success: bool = False
-    error: Optional[str] = None
-    filter_used: str = ""
-    escalation_used: bool = False
-    duration_ms: float = 0
-    
-    # Model fingerprint for filter script discovery
-    model_fingerprint: str = ""  # Searchable fingerprint: MP:xxxxxxxxxxxx
-    original_file_hash: str = ""  # Full SHA256 for exact matching
-    
-    # Pre-check result (slicer --info before repair)
-    precheck_passed: bool = False  # True if model was already clean
-    precheck_skipped: bool = False  # True if we skipped repair due to precheck
-    
-    # Reconstruction mode (for extreme-fragmented meshes)
-    is_reconstruction: bool = False  # True if mesh was reconstructed (not repaired)
-    reconstruction_method: str = ""  # Pipeline that performed reconstruction
-    geometry_loss_pct: float = 0  # Face loss percentage
-    
-    # Original metrics
-    original_vertices: int = 0
-    original_faces: int = 0
-    original_volume: float = 0
-    original_watertight: bool = False
-    original_manifold: bool = False
-    
-    # Result metrics
-    result_vertices: int = 0
-    result_faces: int = 0
-    result_volume: float = 0
-    result_watertight: bool = False
-    result_manifold: bool = False
-    
-    # Geometry change
-    volume_change_pct: float = 0
-    face_change_pct: float = 0
-    
-    # Additional diagnostics
-    original_components: int = 0
-    original_holes: int = 0
-    result_components: int = 0
-    result_holes: int = 0
-    
-    # File sizes (bytes)
-    original_file_size: int = 0
-    fixed_file_size: int = 0
-    
-    timestamp: str = field(default_factory=lambda: datetime.now().isoformat())
+# =============================================================================
+# Progress save wrapper (uses module-level path)
+# =============================================================================
+
+def save_progress_to_file(progress: Progress):
+    """Save progress to the default progress file."""
+    save_progress(progress, PROGRESS_FILE)
 
 
-@dataclass
-class Progress:
-    """Track overall progress."""
-    total_files: int = 0
-    processed: int = 0
-    successful: int = 0
-    failed: int = 0
-    escalations: int = 0
-    skipped: int = 0
-    precheck_skipped: int = 0  # Models skipped because already clean
-    reconstructed: int = 0  # NEW: Models reconstructed (significant geometry change)
-    
-    start_time: str = ""
-    last_update: str = ""
-    current_file: str = ""
-    current_action: str = ""  # Current action being executed
-    current_step: int = 0  # Current step number (e.g., 1 of 4)
-    total_steps: int = 0  # Total steps in current filter
-    
-    # Timing
-    total_duration_ms: float = 0
-    avg_duration_ms: float = 0
-    
-    # ETA
-    eta_seconds: float = 0
-    
-    @property
-    def percent_complete(self) -> float:
-        if self.total_files == 0:
-            return 0
-        return (self.processed / self.total_files) * 100
-    
-    @property
-    def success_rate(self) -> float:
-        if self.processed == 0:
-            return 0
-        return (self.successful / self.processed) * 100
-
-
-def load_progress() -> Progress:
-    """Load progress from file."""
-    if PROGRESS_FILE.exists():
-        try:
-            with open(PROGRESS_FILE) as f:
-                data = json.load(f)
-                return Progress(**data)
-        except Exception:
-            pass
-    return Progress()
-
-
-def save_progress(progress: Progress):
-    """Save progress to file."""
-    progress.last_update = datetime.now().isoformat()
-    with open(PROGRESS_FILE, "w") as f:
-        json.dump(asdict(progress), f, indent=2)
+def load_progress_from_file() -> Progress:
+    """Load progress from the default progress file."""
+    return load_progress(PROGRESS_FILE)
 
 
 def get_all_mesh_files(limit: Optional[int] = None, ctm_priority: bool = False) -> List[Path]:
@@ -666,7 +526,7 @@ def update_action_progress(action_index: int, action_name: str, total_actions: i
         _current_progress.current_action = action_name
         _current_progress.current_step = action_index + 1
         _current_progress.total_steps = total_actions
-        save_progress(_current_progress)
+        save_progress_to_file(_current_progress)
 
 
 def process_single_model(stl_path: Path, skip_if_clean: bool = True, progress: Optional[Progress] = None) -> TestResult:
@@ -1288,7 +1148,7 @@ def run_batch_test(limit: Optional[int] = None, skip_existing: bool = True, ctm_
     )
     
     # Save initial progress immediately so dashboard shows correct state
-    save_progress(progress)
+    save_progress_to_file(progress)
     generate_dashboard_wrapper(progress, existing_results)  # Use wrapper function
     
     # Start with existing results, new results will be added
@@ -1338,7 +1198,7 @@ def run_batch_test(limit: Optional[int] = None, skip_existing: bool = True, ctm_
             progress.avg_duration_ms = progress.total_duration_ms / new_results_count
         
         # Save progress after every file (for live dashboard)
-        save_progress(progress)
+        save_progress_to_file(progress)
         
         # Update dashboard every 10 files (slower operation)
         if i % 10 == 0:
@@ -1370,7 +1230,7 @@ def run_batch_test(limit: Optional[int] = None, skip_existing: bool = True, ctm_
         logger.info(f"  [{status}] [{escalation}] {result.filter_used} ({result.duration_ms:.0f}ms)")
     
     # Final save
-    save_progress(progress)
+    save_progress_to_file(progress)
     generate_dashboard_wrapper(progress, results)
     generate_reports_index_wrapper(results)  # Generate navigable index in reports folder
     
@@ -1430,7 +1290,7 @@ def run_batch_test(limit: Optional[int] = None, skip_existing: bool = True, ctm_
 
 def show_status():
     """Show current progress status."""
-    progress = load_progress()
+    progress = load_progress_from_file()
     
     print("\n" + "=" * 50)
     print("MeshPrep Thingi10K Test Status")
@@ -1673,7 +1533,7 @@ def rate_model_by_fingerprint(fingerprint: str, rating: int, comment: Optional[s
         profile = "standard";
         volume_change_pct = 0.0
         face_count_change_pct = 0.0
-        escalated = False
+        escalated = False;
         
         # Try to find matching report
         for report_file in REPORTS_PATH.rglob("report.json"):
