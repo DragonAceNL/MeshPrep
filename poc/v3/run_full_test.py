@@ -1101,9 +1101,9 @@ def generate_report(stl_path: Path, original, repaired, result: TestResult, fixe
     # Duration formatting
     duration_sec = result.duration_ms / 1000
     if duration_sec >= 60:
-        duration_text = f"{duration_sec/60:.1f} minutes"
+        duration_text = f"{duration_sec/60:.1f}m"
     else:
-        duration_text = f"{duration_sec:.1f} seconds"
+        duration_text = f"{duration_sec:.1f}s"
     
     html_content = f"""<!DOCTYPE html>
 <html>
@@ -1319,7 +1319,7 @@ def generate_report(stl_path: Path, original, repaired, result: TestResult, fixe
                 console.log('Response:', data);
                 
                 if (!response.ok || !data.success) {{
-                    alert('Failed to open in MeshLab:\n\n' + (data.error || 'Unknown error'));
+                    alert('Failed to open in MeshLab:\n\n' + (data.error or 'Unknown error'));
                 }} else {{
                     btn.innerHTML = '&#10003; Opened!';
                     setTimeout(() => {{ btn.innerHTML = originalText; btn.disabled = false; }}, 2000);
@@ -1373,7 +1373,7 @@ def generate_report(stl_path: Path, original, repaired, result: TestResult, fixe
                     el.textContent = original;
                     el.style.background = '#0f1720';
                 }}, 1500);
-            }}).catch(err => {{
+            }}.catch(err => {{
                 // Fallback for older browsers
                 const el = document.querySelector('.fingerprint-value');
                 const range = document.createRange();
@@ -1630,17 +1630,24 @@ def generate_dashboard(progress: Progress, results: List[TestResult]):
             text-align: left;
             border-bottom: 1px solid #2a3a43;
         }}
-        th {{ background: #0f1720; color: #4fe8c4; }}
+        th {{
+            background: #0f1720;
+            color: #4fe8c4;
+            cursor: pointer;
+            user-select: none;
+            position: sticky;
+            top: 0;
+        }}
+        th:hover {{ background: #1a2a35; }}
         tr:hover {{ background: #2a3a43; }}
         
         .success {{ color: #2ecc71; }}
         .failed {{ color: #e74c3c; }}
+        .skipped {{ color: #3498db; }}
         .escalated {{ color: #f39c12; }}
         
         a {{ color: #4fe8c4; text-decoration: none; }}
         a:hover {{ text-decoration: underline; }}
-        
-        .eta {{ font-size: 14px; color: #888; }}
     </style>
 </head>
 <body>
@@ -1718,7 +1725,8 @@ def generate_dashboard(progress: Progress, results: List[TestResult]):
                     <th>Status</th>
                     <th>Filter</th>
                     <th>Duration</th>
-                    <th>Faces</th>
+                    <th>Faces Before</th>
+                    <th>Faces After</th>
                     <th>Report</th>
                 </tr>
             </thead>
@@ -1731,15 +1739,21 @@ def generate_dashboard(progress: Progress, results: List[TestResult]):
         if r.escalation_used:
             status_text += " 🚀"
         
-        report_link = f"{REPORTS_PATH}/{r.file_id}.md"
+        # Duration formatting
+        duration_sec = r.duration_ms / 1000
+        if duration_sec >= 60:
+            duration_text = f"{duration_sec/60:.1f}m"
+        else:
+            duration_text = f"{duration_sec:.1f}s"
         
         html += f"""                <tr>
-                    <td>{r.file_id}</td>
+                    <td><strong>{r.file_id}</strong></td>
                     <td class="{status_class}">{status_text}</td>
                     <td>{r.filter_used}</td>
-                    <td>{r.duration_ms/1000:.1f}s</td>
-                    <td>{r.original_faces:,} -> {r.result_faces:,}</td>
-                    <td><a href="file:///{report_link}">View</a></td>
+                    <td>{duration_text}</td>
+                    <td>{r.original_faces:,}</td>
+                    <td>{r.result_faces:,}</td>
+                    <td><a href="/reports/{r.file_id}.html">View</a></td>
                 </tr>
 """
     
@@ -1822,8 +1836,11 @@ def load_results_from_reports() -> List[TestResult]:
                     success=True,
                     filter_used="unknown",
                 ))
+
+    # Remove duplicates (in case of multiple reports for the same file)
+    unique_results = {r.file_id: r for r in results}.values()
     
-    return results
+    return list(unique_results)
 
 
 def generate_reports_index(results: List[TestResult] = None):
@@ -1981,11 +1998,9 @@ def generate_reports_index(results: List[TestResult] = None):
                     <th onclick="sortTable(0)">Model ID</th>
                     <th onclick="sortTable(1)">Status</th>
                     <th onclick="sortTable(2)">Filter</th>
-                    <th onclick="sortTable(3)">Faces Before</th>
-                    <th onclick="sortTable(4)">Faces After</th>
-                    <th onclick="sortTable(5)">Face Change</th>
-                    <th onclick="sortTable(6)">Volume Change</th>
-                    <th onclick="sortTable(7)">Duration</th>
+                    <th onclick="sortTable(3)">Duration</th>
+                    <th onclick="sortTable(4)">Faces Before</th>
+                    <th onclick="sortTable(5)">Faces After</th>
                     <th>Report</th>
                 </tr>
             </thead>
@@ -2012,91 +2027,32 @@ def generate_reports_index(results: List[TestResult] = None):
             status_text = "&#10007; Failed"  # X mark
             status_data = "failed"
         
-        # Face change
-        face_change = r.result_faces - r.original_faces
-        face_change_pct = (face_change / r.original_faces * 100) if r.original_faces > 0 else 0
-        if face_change > 0:
-            face_change_class = "change-positive"
-            face_change_text = f"+{face_change:,} ({face_change_pct:+.1f}%)"
-        elif face_change < 0:
-            face_change_class = "change-negative"
-            face_change_text = f"{face_change:,} ({face_change_pct:+.1f}%)"
+        # Duration formatting
+        duration_sec = r.duration_ms / 1000
+        if duration_sec >= 60:
+            duration_text = f"{duration_sec/60:.1f}m"
         else:
-            face_change_class = "change-neutral"
-            face_change_text = "No change"
+            duration_text = f"{duration_sec:.1f}s"
         
-        # Volume change
-        if r.volume_change_pct > 5:
-            vol_change_class = "change-positive"
-        elif r.volume_change_pct < -5:
-            vol_change_class = "change-negative"
-        else:
-            vol_change_class = "change-neutral"
-        vol_change_text = f"{r.volume_change_pct:+.1f}%" if r.volume_change_pct != 0 else "~0%"
-        
-        html += f"""                <tr data-status="{status_data}">
+        html += f"""                <tr>
                     <td><strong>{r.file_id}</strong></td>
                     <td class="{status_class}">{status_text}</td>
                     <td>{r.filter_used}</td>
+                    <td>{duration_text}</td>
                     <td>{r.original_faces:,}</td>
                     <td>{r.result_faces:,}</td>
-                    <td class="{face_change_class}">{face_change_text}</td>
-                    <td class="{vol_change_class}">{vol_change_text}</td>
-                    <td>{duration_text}</td>
                     <td><a href="{r.file_id}.html">View</a></td>
                 </tr>
 """
     
     html += """            </tbody>
         </table>
+        
+        <p style="margin-top: 30px; color: #666; font-size: 12px;">
+            Dashboard auto-refreshes every 30 seconds. 
+            <a href="javascript:location.reload()">Refresh now</a>
+        </p>
     </div>
-    
-    <script>
-        let sortDirection = {};
-        
-        function sortTable(columnIndex) {
-            const table = document.getElementById('resultsTable');
-            const tbody = table.querySelector('tbody');
-            const rows = Array.from(tbody.querySelectorAll('tr'));
-            
-            // Toggle sort direction
-            sortDirection[columnIndex] = !sortDirection[columnIndex];
-            const dir = sortDirection[columnIndex] ? 1 : -1;
-            
-            rows.sort((a, b) => {
-                let aVal = a.cells[columnIndex].textContent.trim();
-                let bVal = b.cells[columnIndex].textContent.trim();
-                
-                // Try numeric sort first
-                const aNum = parseFloat(aVal.replace(/[^\\d.-]/g, ''));
-                const bNum = parseFloat(bVal.replace(/[^\\d.-]/g, ''));
-                
-                if (!isNaN(aNum) && !isNaN(bNum)) {
-                    return (aNum - bNum) * dir;
-                }
-                
-                return aVal.localeCompare(bVal) * dir;
-            });
-            
-            rows.forEach(row => tbody.appendChild(row));
-        }
-        
-        function filterTable() {
-            const statusFilter = document.getElementById('statusFilter').value;
-            const searchText = document.getElementById('searchBox').value.toLowerCase();
-            const rows = document.querySelectorAll('#resultsTable tbody tr');
-            
-            rows.forEach(row => {
-                const status = row.getAttribute('data-status');
-                const modelId = row.cells[0].textContent.toLowerCase();
-                
-                let showByStatus = statusFilter === 'all' || status === statusFilter;
-                let showBySearch = modelId.includes(searchText);
-                
-                row.style.display = (showByStatus && showBySearch) ? '' : 'none';
-            });
-        }
-    </script>
 </body>
 </html>
 """
@@ -2379,10 +2335,10 @@ def run_batch_test(limit: Optional[int] = None, skip_existing: bool = True, ctm_
                 logger.debug(f"Auto-optimization failed: {e}")
         
         # Log result
-        status = "[OK]" if result.success else "[FAIL]"
-        escalation = " [BLENDER]" if result.escalation_used else ""
-        print(f"  {status}{escalation} {result.filter_used} ({result.duration_ms:.0f}ms)", flush=True)
-        logger.info(f"  {status}{escalation} {result.filter_used} ({result.duration_ms:.0f}ms)")
+        status = "SUCCESS" if result.success else "FAIL"
+        escalation = "BLENDER" if result.escalation_used else " "
+        print(f"  [{status}] [{escalation}] {result.filter_used} ({result.duration_ms:.0f}ms)", flush=True)
+        logger.info(f"  [{status}] [{escalation}] {result.filter_used} ({result.duration_ms:.0f}ms)")
     
     # Final save
     save_progress(progress)
@@ -2635,8 +2591,8 @@ def rate_model_by_fingerprint(fingerprint: str, rating: int, comment: Optional[s
                     data = json.load(f)
                 if data.get("model_fingerprint") == fingerprint:
                     model_filename = Path(data.get("input_file", "unknown")).name
-                    pipeline_used = data.get("filter_script", "unknown")
-                    escalated = data.get("escalation_used", False)
+                    pipeline_used = data.get("filter_script", "unknown");
+                    escalated = data.get("escalation_used", False);
                     
                     # Get metrics
                     orig = data.get("original_diagnostics", {})
@@ -2739,6 +2695,7 @@ def reprocess_single_model(model_id: str):
     
     # Summary
     status = "SUCCESS" if result.success else "FAILED"
+    escalation = "BLENDER" if result.escalation_used else " "
     print(f"Result: {status}")
     print(f"Filter: {result.filter_used}")
     print(f"Duration: {result.duration_ms/1000:.1f}s")
@@ -2910,9 +2867,6 @@ def main():
         return
     
     if args.rate:
-        if not args.rating:
-            print("Error: --rating is required when using --rate")
-            return
         rate_model_by_fingerprint(args.rate, args.rating, args.comment)
         return
     

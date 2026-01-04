@@ -97,6 +97,30 @@ That's it! The test will run automatically.
 | `run_full_test.py --limit 100` | Test only the first 100 models |
 | `run_full_test.py --ctm-priority` | Process CTM meshes FIRST before other files |
 | `run_full_test.py --learning-stats` | Show learning engine statistics |
+| `run_full_test.py --reprocess MODEL_ID` | Reprocess a specific model by ID |
+
+### Quality Feedback Commands
+
+Rate models to help improve the repair quality:
+
+| Command | Description |
+|---------|-------------|
+| `run_full_test.py --rate MP:abc123 --rating 5` | Rate a model (1-5 stars) |
+| `run_full_test.py --rate MP:abc123 --rating 4 --comment "Minor issues"` | Rate with comment |
+| `run_full_test.py --quality-stats` | Show quality feedback statistics |
+
+**Rating scale:**
+- ⭐⭐⭐⭐⭐ (5) - Perfect repair, no issues
+- ⭐⭐⭐⭐ (4) - Good repair, minor issues
+- ⭐⭐⭐ (3) - Acceptable, noticeable changes
+- ⭐⭐ (2) - Poor, significant problems
+- ⭐ (1) - Failed, unusable result
+
+**Example:**
+```powershell
+# Find the fingerprint in the report, then rate:
+python run_full_test.py --rate MP:f1f1a4d7239d --rating 5 --comment "Perfect fix"
+```
 
 ## Features
 
