@@ -1,6 +1,6 @@
 # Copyright 2025 Allard Peper (Dragon Ace / DragonAceNL)
 # Licensed under the Apache License, Version 2.0 (see LICENSE).
-# This file is part of MeshPrep — https://github.com/DragonAceNL/MeshPrep
+# This file is part of MeshPrep ï¿½ https://github.com/DragonAceNL/MeshPrep
 
 """
 SQLite database for MeshPrep batch processing progress and results.
@@ -56,6 +56,12 @@ CREATE TABLE IF NOT EXISTS batch_progress (
     current_action TEXT,
     current_step INTEGER DEFAULT 0,
     total_steps INTEGER DEFAULT 0,
+    
+    -- Action timeout tracking
+    action_start_time TEXT,
+    action_soft_timeout_s REAL DEFAULT 0,
+    action_hard_timeout_s REAL DEFAULT 0,
+    action_timeout_factor REAL DEFAULT 0,
     
     total_duration_ms REAL DEFAULT 0,
     avg_duration_ms REAL DEFAULT 0,
@@ -151,6 +157,12 @@ class Progress:
     current_action: str = ""
     current_step: int = 0
     total_steps: int = 0
+    
+    # Action timeout tracking
+    action_start_time: str = ""        # When current action started
+    action_soft_timeout_s: float = 0    # Soft timeout in seconds
+    action_hard_timeout_s: float = 0    # Hard timeout (kill) in seconds
+    action_timeout_factor: float = 0    # Learned timeout factor
     
     total_duration_ms: float = 0
     avg_duration_ms: float = 0
@@ -255,6 +267,20 @@ class ProgressDatabase:
         with self._get_connection() as conn:
             row = conn.execute("SELECT * FROM batch_progress WHERE id = 1").fetchone()
             if row:
+                # Handle both old schema (without timeout fields) and new schema
+                action_start_time = ""
+                action_soft_timeout_s = 0.0
+                action_hard_timeout_s = 0.0
+                action_timeout_factor = 0.0
+                
+                try:
+                    action_start_time = row["action_start_time"] or ""
+                    action_soft_timeout_s = row["action_soft_timeout_s"] or 0.0
+                    action_hard_timeout_s = row["action_hard_timeout_s"] or 0.0
+                    action_timeout_factor = row["action_timeout_factor"] or 0.0
+                except (IndexError, KeyError):
+                    pass  # Old schema, use defaults
+                
                 return Progress(
                     total_files=row["total_files"] or 0,
                     processed=row["processed"] or 0,
@@ -270,6 +296,10 @@ class ProgressDatabase:
                     current_action=row["current_action"] or "",
                     current_step=row["current_step"] or 0,
                     total_steps=row["total_steps"] or 0,
+                    action_start_time=action_start_time,
+                    action_soft_timeout_s=action_soft_timeout_s,
+                    action_hard_timeout_s=action_hard_timeout_s,
+                    action_timeout_factor=action_timeout_factor,
                     total_duration_ms=row["total_duration_ms"] or 0,
                     avg_duration_ms=row["avg_duration_ms"] or 0,
                     eta_seconds=row["eta_seconds"] or 0,
@@ -281,6 +311,24 @@ class ProgressDatabase:
         progress.last_update = datetime.now().isoformat()
         
         with self._get_connection() as conn:
+            # Try to add timeout columns if they don't exist (migration)
+            try:
+                conn.execute("ALTER TABLE batch_progress ADD COLUMN action_start_time TEXT")
+            except sqlite3.OperationalError:
+                pass  # Column already exists
+            try:
+                conn.execute("ALTER TABLE batch_progress ADD COLUMN action_soft_timeout_s REAL DEFAULT 0")
+            except sqlite3.OperationalError:
+                pass
+            try:
+                conn.execute("ALTER TABLE batch_progress ADD COLUMN action_hard_timeout_s REAL DEFAULT 0")
+            except sqlite3.OperationalError:
+                pass
+            try:
+                conn.execute("ALTER TABLE batch_progress ADD COLUMN action_timeout_factor REAL DEFAULT 0")
+            except sqlite3.OperationalError:
+                pass
+            
             conn.execute("""
                 UPDATE batch_progress SET
                     total_files = ?,
@@ -297,6 +345,10 @@ class ProgressDatabase:
                     current_action = ?,
                     current_step = ?,
                     total_steps = ?,
+                    action_start_time = ?,
+                    action_soft_timeout_s = ?,
+                    action_hard_timeout_s = ?,
+                    action_timeout_factor = ?,
                     total_duration_ms = ?,
                     avg_duration_ms = ?,
                     eta_seconds = ?
@@ -316,6 +368,10 @@ class ProgressDatabase:
                 progress.current_action,
                 progress.current_step,
                 progress.total_steps,
+                progress.action_start_time,
+                progress.action_soft_timeout_s,
+                progress.action_hard_timeout_s,
+                progress.action_timeout_factor,
                 progress.total_duration_ms,
                 progress.avg_duration_ms,
                 progress.eta_seconds,

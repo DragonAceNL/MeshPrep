@@ -106,9 +106,34 @@ def update_action_progress(action_index: int, action_name: str, total_actions: i
     """
     global _current_progress
     if _current_progress:
+        from datetime import datetime
+        
         _current_progress.current_action = action_name
         _current_progress.current_step = action_index + 1
         _current_progress.total_steps = total_actions
+        _current_progress.action_start_time = datetime.now().isoformat()
+        
+        # Try to get timeout prediction for this action
+        try:
+            from meshprep_poc.action_duration_predictor import get_duration_predictor, MeshCharacteristics
+            
+            # Get mesh characteristics from current model being processed
+            # This is a bit of a hack - we store it globally when processing starts
+            if hasattr(update_action_progress, '_mesh_chars') and update_action_progress._mesh_chars:
+                predictor = get_duration_predictor()
+                prediction = predictor.predict_duration(action_name, update_action_progress._mesh_chars)
+                _current_progress.action_soft_timeout_s = prediction.soft_timeout_ms / 1000
+                _current_progress.action_hard_timeout_s = prediction.hard_timeout_ms / 1000
+                _current_progress.action_timeout_factor = prediction.timeout_factor
+            else:
+                _current_progress.action_soft_timeout_s = 0
+                _current_progress.action_hard_timeout_s = 0
+                _current_progress.action_timeout_factor = 0
+        except Exception:
+            _current_progress.action_soft_timeout_s = 0
+            _current_progress.action_hard_timeout_s = 0
+            _current_progress.action_timeout_factor = 0
+        
         save_progress(_current_progress)
 
 
@@ -184,6 +209,17 @@ def process_single_model(
             result.original_components = len(original.split(only_watertight=False))
         except:
             result.original_components = 1
+        
+        # Set mesh characteristics for timeout prediction
+        try:
+            from meshprep_poc.action_duration_predictor import MeshCharacteristics
+            update_action_progress._mesh_chars = MeshCharacteristics(
+                face_count=result.original_faces,
+                vertex_count=result.original_vertices,
+                body_count=result.original_components,
+            )
+        except Exception:
+            update_action_progress._mesh_chars = None
         
         # Run slicer repair loop (includes STRICT pre-check)
         repair_result = run_slicer_repair_loop(

@@ -340,13 +340,40 @@
                     progressText = `(step ${p.current_step} of ${p.total_steps})`;
                 }
                 
-                // Show elapsed time for long-running actions (> 30 seconds)
-                if (secondsSinceUpdate > 30) {
+                // Show elapsed time and timeout for long-running actions
+                if (p.action_start_time) {
+                    const actionStart = new Date(p.action_start_time);
+                    const elapsed = (now - actionStart) / 1000;
+                    
+                    if (elapsed > 5) {  // Show after 5 seconds
+                        const elapsedStr = formatDuration(elapsed);
+                        progressText += ` — running for ${elapsedStr}`;
+                        
+                        // Show timeout info if available
+                        if (p.action_hard_timeout_s && p.action_hard_timeout_s > 0) {
+                            const timeoutStr = formatDuration(p.action_hard_timeout_s);
+                            const remaining = p.action_hard_timeout_s - elapsed;
+                            
+                            if (remaining > 0) {
+                                const remainingStr = formatDuration(remaining);
+                                progressText += ` (timeout: ${timeoutStr}, ${remainingStr} left)`;
+                            } else {
+                                progressText += ` <span style="color: #e74c3c;">(past timeout!)</span>`;
+                            }
+                            
+                            // Show learned factor if available
+                            if (p.action_timeout_factor && p.action_timeout_factor > 0) {
+                                progressText += ` [${p.action_timeout_factor.toFixed(1)}x]`;
+                            }
+                        }
+                    }
+                } else if (secondsSinceUpdate > 30) {
+                    // Fallback: use last_update if no action_start_time
                     const elapsed = formatDuration(secondsSinceUpdate);
                     progressText += ` — running for ${elapsed}`;
                 }
                 
-                actionProgress.textContent = progressText;
+                actionProgress.innerHTML = progressText;
             } else if (isRunning) {
                 actionContainer.style.display = 'block';
                 currentAction.textContent = 'Waiting...';

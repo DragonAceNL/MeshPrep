@@ -1,6 +1,6 @@
 # Copyright 2025 Allard Peper (Dragon Ace / DragonAceNL)
 # Licensed under the Apache License, Version 2.0 (see LICENSE).
-# This file is part of MeshPrep — https://github.com/DragonAceNL/MeshPrep
+# This file is part of MeshPrep ï¿½ https://github.com/DragonAceNL/MeshPrep
 
 """
 Individual model report HTML generator.
@@ -355,7 +355,7 @@ def _get_report_scripts(fingerprint: str, file_id: str) -> str:
                     el.textContent = original;
                     el.style.background = '#0f1720';
                 }}, 1500);
-            }}.catch(err => {{
+            }}).catch(err => {{
                 const el = document.querySelector('.fingerprint-value');
                 const range = document.createRange();
                 range.selectNodeContents(el);
