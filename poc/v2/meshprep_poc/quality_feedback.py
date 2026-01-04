@@ -972,3 +972,142 @@ def reset_quality_engine() -> None:
     """Reset the singleton instance (mainly for testing)."""
     global _quality_engine
     _quality_engine = None
+
+
+# =============================================================================
+# Quality-Aware Pipeline Selection
+# =============================================================================
+
+def get_quality_adjusted_pipeline_order(
+    pipelines: List[str],
+    profile: str,
+    issues: Optional[List[str]] = None,
+) -> List[str]:
+    """
+    Reorder pipelines based on USER quality ratings.
+    
+    This function uses historical USER ratings (not auto-estimated) to rank
+    pipelines. Pipelines that received higher quality ratings from users
+    for similar profiles are ranked higher.
+    
+    The system learns from manual ratings via --rate command:
+        python run_full_test.py --rate MP:abc123 --rating 4
+    
+    Args:
+        pipelines: Original ordered list of pipelines to try
+        profile: Mesh profile (e.g., "standard", "fragmented")
+        issues: Optional list of issues detected in the mesh
+    
+    Returns:
+        Reordered list of pipelines with quality-aware ranking
+    """
+    try:
+        engine = get_quality_engine()
+        all_stats = engine.get_all_pipeline_quality_stats()
+        
+        if not all_stats:
+            return pipelines  # No user ratings yet
+        
+        # Calculate quality scores for each pipeline based on USER ratings
+        pipeline_quality_scores: Dict[str, float] = {}
+        
+        for pipeline in pipelines:
+            if pipeline not in all_stats:
+                pipeline_quality_scores[pipeline] = 3.0  # Neutral score (no data)
+                continue
+            
+            profile_stats = all_stats[pipeline]
+            
+            # Get stats for this profile if available
+            if profile in profile_stats:
+                stats = profile_stats[profile]
+                if stats.total_ratings >= 3:  # Minimum samples for confidence
+                    pipeline_quality_scores[pipeline] = stats.avg_rating
+                else:
+                    pipeline_quality_scores[pipeline] = 3.0  # Not enough user ratings
+            elif profile_stats:
+                # Use average across all profiles (user rated)
+                total_ratings = sum(s.total_ratings for s in profile_stats.values())
+                if total_ratings >= 3:
+                    weighted_avg = sum(
+                        s.avg_rating * s.total_ratings 
+                        for s in profile_stats.values()
+                    ) / total_ratings
+                    pipeline_quality_scores[pipeline] = weighted_avg
+                else:
+                    pipeline_quality_scores[pipeline] = 3.0
+            else:
+                pipeline_quality_scores[pipeline] = 3.0
+        
+        # Sort pipelines by user quality score (highest first)
+        # Preserve original order for ties
+        sorted_pipelines = sorted(
+            pipelines,
+            key=lambda p: (pipeline_quality_scores.get(p, 3.0), -pipelines.index(p)),
+            reverse=True
+        )
+        
+        # Log if quality data influenced the order
+        if any(s != 3.0 for s in pipeline_quality_scores.values()):
+            logger.debug(
+                f"Quality-adjusted pipeline order for {profile}: "
+                f"{sorted_pipelines[:3]} (scores: {[pipeline_quality_scores.get(p, 3.0) for p in sorted_pipelines[:3]]})"
+            )
+        
+        return sorted_pipelines
+        
+    except Exception as e:
+        logger.debug(f"Quality-adjusted pipeline ordering failed: {e}")
+        return pipelines  # Return original order on error
+
+
+def should_warn_low_quality(
+    pipeline: str,
+    profile: str,
+    volume_change_pct: float,
+    face_change_pct: float,
+) -> Tuple[bool, Optional[str]]:
+    """
+    Check if user ratings suggest this pipeline produces poor quality for this profile.
+    
+    This is used to warn users when a repair completes but historical user
+    ratings suggest the result may have quality issues.
+    
+    Args:
+        pipeline: Pipeline that was used
+        profile: Mesh profile
+        volume_change_pct: Volume change percentage
+        face_change_pct: Face change percentage
+    
+    Returns:
+        Tuple of (should_warn, warning_message)
+    """
+    try:
+        engine = get_quality_engine()
+        stats_list = engine.get_pipeline_quality_stats(pipeline, profile)
+        
+        if not stats_list or stats_list[0].total_ratings < 5:
+            return False, None  # Not enough user ratings to warn
+        
+        stats = stats_list[0]
+        
+        # Warn if users have consistently rated this pipeline poorly
+        if stats.avg_rating < 2.5:
+            return True, (
+                f"Users have rated '{pipeline}' repairs for '{profile}' models "
+                f"poorly (avg {stats.avg_rating:.1f}/5 from {stats.total_ratings} ratings). "
+                f"Consider manual review."
+            )
+        
+        # Warn if acceptance rate is low
+        if stats.acceptance_rate < 0.5:
+            return True, (
+                f"Only {stats.acceptance_rate:.0%} of users accepted '{pipeline}' repairs "
+                f"for '{profile}' models. Consider manual review."
+            )
+        
+        return False, None
+        
+    except Exception as e:
+        logger.debug(f"Quality warning check failed: {e}")
+        return False, None

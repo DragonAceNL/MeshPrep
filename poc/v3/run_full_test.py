@@ -144,6 +144,11 @@ from meshprep_poc.quality_feedback import (
     QualityFeedbackEngine,
 )
 
+# Import HTML generators (separated for cleaner code)
+from report_generator import generate_model_report
+from dashboard_generator import generate_dashboard as generate_dashboard_html
+from index_generator import generate_reports_index as generate_index_html, load_results_from_reports
+
 # Try to import adaptive thresholds
 try:
     from meshprep_poc.adaptive_thresholds import get_adaptive_thresholds, DEFAULT_THRESHOLDS
@@ -1042,7 +1047,6 @@ def render_mesh_image(mesh, output_path: Path, title: str = ""):
 
 def generate_report(stl_path: Path, original, repaired, result: TestResult, fixed_path: Optional[Path] = None):
     """Generate HTML report in the reports subfolder."""
-    report_path = REPORTS_PATH / f"{stl_path.stem}.html"
     images_dir = REPORTS_PATH / "images"
     images_dir.mkdir(exist_ok=True)
     
@@ -1053,1014 +1057,24 @@ def generate_report(stl_path: Path, original, repaired, result: TestResult, fixe
     render_mesh_image(original, before_img, "Before")
     render_mesh_image(repaired, after_img, "After")
     
-    # Get adjacent files for navigation
-    all_files = sorted(THINGI10K_PATH.glob("*.stl"))
-    current_idx = next((i for i, f in enumerate(all_files) if f.name == stl_path.name), -1)
-    
-    prev_file = all_files[current_idx - 1] if current_idx > 0 else None
-    next_file = all_files[current_idx + 1] if current_idx < len(all_files) - 1 else None
-    
-    # Status
-    if result.precheck_skipped:
-        status_class = "skipped"
-        status_text = "&#10003; Already Clean"
-    elif result.success:
-        if result.escalation_used:
-            status_class = "escalated"
-            status_text = "&#10003; Fixed (Blender)"
-        else:
-            status_class = "success"
-            status_text = "&#10003; Fixed"
-    else:
-        status_class = "failed"
-        status_text = "&#10007; Failed"
-    
-    # Calculate changes
-    vertex_change = result.result_vertices - result.original_vertices
-    face_change = result.result_faces - result.original_faces
-    face_change_pct = (face_change / result.original_faces * 100) if result.original_faces > 0 else 0
-    
-    # Navigation links
-    prev_link = f'<a href="{prev_file.stem}.html">&lt; {prev_file.stem}</a>' if prev_file else '<span class="disabled">&lt; Previous</span>'
-    next_link = f'<a href="{next_file.stem}.html">{next_file.stem} &gt;</a>' if next_file else '<span class="disabled">Next &gt;</span>'
-    
-    # Fixed model link - use relative path (works when served via http server)
-    if fixed_path and fixed_path.exists():
-        fixed_rel_path = f"../fixed/{fixed_path.name}"
-        fixed_link = f'''<a href="{fixed_rel_path}" class="download-btn" download>&#11015; Download Fixed</a>
-            <button class="download-btn meshlab-btn" onclick="openInMeshLab('{fixed_rel_path}')">&#128065; MeshLab</button>'''
-    elif result.precheck_skipped:
-        # Model was already clean, no need to save a fixed version
-        fixed_link = '<span class="no-file">Original is already clean</span>'
-    else:
-        fixed_link = '<span class="no-file">Repair failed - no fixed model</span>'
-    
-    # Original model link - use relative path
-    original_rel_path = f'../{stl_path.name}'
-    
-    # Duration formatting
-    duration_sec = result.duration_ms / 1000
-    if duration_sec >= 60:
-        duration_text = f"{duration_sec/60:.1f}m"
-    else:
-        duration_text = f"{duration_sec:.1f}s"
-    
-    html_content = f"""<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8">
-    <title>{stl_path.stem} - MeshPrep Report</title>
-    <style>
-        body {{
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: #0f1720;
-            color: #dff6fb;
-            margin: 0;
-            padding: 20px;
-        }}
-        .container {{ max-width: 1200px; margin: 0 auto; }}
-        h1 {{ color: #4fe8c4; margin-bottom: 5px; }}
-        
-        .nav-bar {{
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            background: #1b2b33;
-            padding: 10px 20px;
-            border-radius: 8px;
-            margin-bottom: 20px;
-        }}
-        .nav-bar a {{ color: #4fe8c4; text-decoration: none; padding: 5px 10px; }}
-        .nav-bar a:hover {{ background: #2a3a43; border-radius: 4px; }}
-        .nav-bar .disabled {{ color: #555; }}
-        
-        .status-badge {{
-            display: inline-block;
-            padding: 8px 16px;
-            border-radius: 20px;
-            font-weight: bold;
-            margin-bottom: 20px;
-        }}
-        .status-badge.success {{ background: #2ecc71; color: #0f1720; }}
-        .status-badge.failed {{ background: #e74c3c; color: white; }}
-        .status-badge.skipped {{ background: #3498db; color: white; }}
-        .status-badge.escalated {{ background: #f39c12; color: #0f1720; }}
-        
-        .info-grid {{
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 15px;
-            margin-bottom: 30px;
-        }}
-        .info-card {{
-            background: #1b2b33;
-            padding: 15px;
-            border-radius: 8px;
-        }}
-        .info-card .label {{ color: #888; font-size: 12px; margin-bottom: 5px; }}
-        .info-card .value {{ font-size: 18px; font-weight: bold; }}
-        
-        .comparison {{
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 20px;
-            margin-bottom: 30px;
-        }}
-        .comparison-panel {{
-            background: #1b2b33;
-            border-radius: 12px;
-            overflow: hidden;
-        }}
-        .comparison-panel h3 {{
-            margin: 0;
-            padding: 15px;
-            background: #0f1720;
-            color: #4fe8c4;
-        }}
-        .comparison-panel img {{
-            width: 100%;
-            height: 400px;
-            object-fit: contain;
-            background: #0a0f14;
-        }}
-        
-        .metrics-table {{
-            width: 100%;
-            border-collapse: collapse;
-            background: #1b2b33;
-            border-radius: 12px;
-            overflow: hidden;
-            margin-bottom: 30px;
-        }}
-        .metrics-table th, .metrics-table td {{
-            padding: 12px 15px;
-            text-align: left;
-            border-bottom: 1px solid #2a3a43;
-        }}
-        .metrics-table th {{ background: #0f1720; color: #4fe8c4; }}
-        
-        .change-positive {{ color: #e74c3c; }}
-        .change-negative {{ color: #2ecc71; }}
-        .change-neutral {{ color: #888; }}
-        
-        .downloads {{
-            display: flex;
-            gap: 15px;
-            margin-bottom: 30px;
-        }}
-        .download-btn {{
-            display: inline-block;
-            background: #4fe8c4;
-            color: #0f1720;
-            padding: 12px 24px;
-            border-radius: 8px;
-            text-decoration: none;
-            font-weight: bold;
-        }}
-        .download-btn:hover {{ background: #3dd4b0; }}
-        .download-btn.secondary {{ background: #1b2b33; color: #4fe8c4; }}
-        .no-file {{ color: #888; padding: 12px 24px; }}
-        
-        .error-box {{
-            background: #2a1a1a;
-            border: 1px solid #e74c3c;
-            border-radius: 8px;
-            padding: 15px;
-            margin-bottom: 30px;
-        }}
-        .error-box h3 {{ color: #e74c3c; margin-top: 0; }}
-        .error-box pre {{ margin: 0; white-space: pre-wrap; }}
-        
-        .footer {{ color: #555; font-size: 12px; margin-top: 30px; }}
-        
-        a {{ color: #4fe8c4; }}
-        
-        .meshlab-btn {{
-            background: #9b59b6 !important;
-            color: white !important;
-            border: none;
-            cursor: pointer;
-        }}
-        .meshlab-btn:hover {{ background: #8e44ad !important; }}
-        
-        .meshlab-status {{
-            padding: 8px 16px;
-            border-radius: 8px;
-            font-size: 12px;
-            margin-left: 10px;
-        }}
-        .meshlab-available {{ background: #27ae60; color: white; }}
-        .meshlab-unavailable {{ background: #e74c3c; color: white; }}
-        
-        /* Fingerprint box for filter script discovery */
-        .fingerprint-box {{
-            background: linear-gradient(135deg, #1b2b33 0%, #2a3a43 100%);
-            border: 2px solid #4fe8c4;
-            border-radius: 12px;
-            padding: 20px;
-            margin-bottom: 25px;
-            text-align: center;
-        }}
-        .fingerprint-label {{
-            color: #888;
-            font-size: 14px;
-            margin-bottom: 10px;
-        }}
-        .fingerprint-value {{
-            font-family: 'Consolas', 'Monaco', monospace;
-            font-size: 28px;
-            font-weight: bold;
-            color: #4fe8c4;
-            background: #0f1720;
-            padding: 15px 25px;
-            border-radius: 8px;
-            display: inline-block;
-            cursor: pointer;
-            user-select: all;
-            transition: all 0.2s;
-        }}
-        .fingerprint-value:hover {{
-            background: #1a2530;
-            transform: scale(1.02);
-        }}
-        .fingerprint-help {{
-            margin-top: 12px;
-            font-size: 13px;
-            color: #666;
-        }}
-        .fingerprint-help a {{
-            color: #4fe8c4;
-            text-decoration: none;
-            padding: 4px 8px;
-            border-radius: 4px;
-            background: #1b2b33;
-        }}
-        .fingerprint-help a:hover {{
-            background: #2a3a43;
-        }}
-        .copy-hint {{
-            color: #555;
-            font-style: italic;
-        }}
-    </style>
-    <script>
-        async function openInMeshLab(filePath) {{
-            const btn = event.target;
-            const originalText = btn.innerHTML;
-            btn.innerHTML = '&#8987; Opening...';
-            btn.disabled = true;
-            
-            try {{
-                const url = '/api/open-meshlab?file=' + encodeURIComponent(filePath);
-                console.log('Requesting:', url);
-                
-                const response = await fetch(url);
-                const data = await response.json();
-                console.log('Response:', data);
-                
-                if (!response.ok || !data.success) {{
-                    alert('Failed to open in MeshLab:\n\n' + (data.error or 'Unknown error'));
-                }} else {{
-                    btn.innerHTML = '&#10003; Opened!';
-                    setTimeout(() => {{ btn.innerHTML = originalText; btn.disabled = false; }}, 2000);
-                    return;
-                }}
-            }} catch (e) {{
-                console.error('Error:', e);
-                alert('Error: ' + e.message + '\n\nMake sure you are using the MeshPrep reports server:\n\ncd poc/v3\npython reports_server.py');
-            }}
-            
-            btn.innerHTML = originalText;
-            btn.disabled = false;
-        }}
-        
-        // Check MeshLab availability on page load
-        async function checkMeshLab() {{
-            try {{
-                const response = await fetch('/api/meshlab-status');
-                const data = await response.json();
-                const indicator = document.getElementById('meshlab-indicator');
-                if (indicator) {{
-                    if (data.available) {{
-                        indicator.className = 'meshlab-status meshlab-available';
-                        indicator.textContent = '\u2713 MeshLab Ready';
-                        indicator.title = 'MeshLab: ' + data.path;
-                    }} else {{
-                        indicator.className = 'meshlab-status meshlab-unavailable';
-                        indicator.textContent = '\u2717 MeshLab Not Found';
-                    }}
-                }}
-            }} catch (e) {{
-                // Server doesn't support MeshLab API
-                const indicator = document.getElementById('meshlab-indicator');
-                if (indicator) {{
-                    indicator.className = 'meshlab-status meshlab-unavailable';
-                    indicator.textContent = 'Use reports_server.py';
-                    indicator.title = 'Run: python reports_server.py';
-                }}
-            }}
-        }}
-        
-        // Copy fingerprint to clipboard
-        function copyFingerprint() {{
-            const fingerprint = '{result.model_fingerprint}';
-            navigator.clipboard.writeText(fingerprint).then(() => {{
-                const el = document.querySelector('.fingerprint-value');
-                const original = el.textContent;
-                el.textContent = '\u2713 Copied!';
-                el.style.background = '#27ae60';
-                setTimeout(() => {{
-                    el.textContent = original;
-                    el.style.background = '#0f1720';
-                }}, 1500);
-            }}.catch(err => {{
-                // Fallback for older browsers
-                const el = document.querySelector('.fingerprint-value');
-                const range = document.createRange();
-                range.selectNodeContents(el);
-                window.getSelection().removeAllRanges();
-                window.getSelection().addRange(range);
-                document.execCommand('copy');
-                window.getSelection().removeAllRanges();
-            }});
-        }}
-        
-        window.onload = checkMeshLab;
-    </script>
-</head>
-<body>
-    <div class="container">
-        <div class="nav-bar">
-            <div>{prev_link}</div>
-            <div>
-                <a href="index.html">&#128209; Index</a>
-                <a href="/dashboard">&#128202; Dashboard</a>
-                <span id="meshlab-indicator" class="meshlab-status">Checking MeshLab...</span>
-            </div>
-            <div>{next_link}</div>
-        </div>
-        
-        <h1>{stl_path.stem}</h1>
-        <span class="status-badge {status_class}">{status_text}</span>
-        
-        <!-- Fingerprint Box - for searching/sharing filter scripts -->
-        <div class="fingerprint-box">
-            <div class="fingerprint-label">&#128269; Model Fingerprint (search this on Reddit to find filter scripts)</div>
-            <div class="fingerprint-value" onclick="copyFingerprint()" title="Click to copy">{result.model_fingerprint}</div>
-            <div class="fingerprint-help">
-                <a href="https://www.reddit.com/search/?q={result.model_fingerprint}" target="_blank">Search Reddit</a> | 
-                <a href="https://www.google.com/search?q={result.model_fingerprint}" target="_blank">Search Google</a> |
-                <a href="https://github.com/DragonAceNL/MeshPrep" target="_blank">MeshPrep GitHub</a> |
-                <span class="copy-hint">Click fingerprint to copy</span>
-            </div>
-        </div>
-        
-        <div class="info-grid">
-            <div class="info-card">
-                <div class="label">Filter Used</div>
-                <div class="value">{result.filter_used}</div>
-            </div>
-            <div class="info-card">
-                <div class="label">Duration</div>
-                <div class="value">{duration_text}</div>
-            </div>
-            <div class="info-card">
-                <div class="label">Original Faces</div>
-                <div class="value">{result.original_faces:,}</div>
-            </div>
-            <div class="info-card">
-                <div class="label">Result Faces</div>
-                <div class="value">{result.result_faces:,}</div>
-            </div>
-        </div>
-        
-        <div class="downloads">
-            <a href="{original_rel_path}" class="download-btn secondary" download>&#11015; Download Original</a>
-            <button class="download-btn meshlab-btn" onclick="openInMeshLab('{original_rel_path}')">&#128065; MeshLab</button>
-            {fixed_link}
-            <a href="filters/{stl_path.stem}.json" class="download-btn secondary">&#128196; Filter Script</a>
-        </div>
-        
-        <h2>Visual Comparison</h2>
-        <div class="comparison">
-            <div class="comparison-panel">
-                <h3>Before</h3>
-                <img src="images/{stl_path.stem}_before.png" alt="Before">
-            </div>
-            <div class="comparison-panel">
-                <h3>After</h3>
-                <img src="images/{stl_path.stem}_after.png" alt="After">
-            </div>
-        </div>
-        
-        <h2>Metrics</h2>
-        <table class="metrics-table">
-            <thead>
-                <tr>
-                    <th>Metric</th>
-                    <th>Before</th>
-                    <th>After</th>
-                    <th>Change</th>
-                </tr>
-            </thead>
-            <tbody>
-                <tr>
-                    <td>Vertices</td>
-                    <td>{result.original_vertices:,}</td>
-                    <td>{result.result_vertices:,}</td>
-                    <td class="{'change-positive' if vertex_change > 0 else 'change-negative' if vertex_change < 0 else 'change-neutral'}">{vertex_change:+,}</td>
-                </tr>
-                <tr>
-                    <td>Faces</td>
-                    <td>{result.original_faces:,}</td>
-                    <td>{result.result_faces:,}</td>
-                    <td class="{'change-positive' if face_change > 0 else 'change-negative' if face_change < 0 else 'change-neutral'}">{face_change:+,} ({face_change_pct:+.1f}%)</td>
-                </tr>
-                <tr>
-                    <td>Volume</td>
-                    <td>{result.original_volume:.2f}</td>
-                    <td>{result.result_volume:.2f}</td>
-                    <td class="{'change-positive' if result.volume_change_pct > 5 else 'change-negative' if result.volume_change_pct < -5 else 'change-neutral'}">{result.volume_change_pct:+.1f}%</td>
-                </tr>
-                <tr>
-                    <td>Watertight</td>
-                    <td>{'&#10003; Yes' if result.original_watertight else '&#10007; No'}</td>
-                    <td>{'&#10003; Yes' if result.result_watertight else '&#10007; No'}</td>
-                    <td>-</td>
-                </tr>
-                <tr>
-                    <td>Manifold</td>
-                    <td>{'&#10003; Yes' if result.original_manifold else '&#10007; No'}</td>
-                    <td>{'&#10003; Yes' if result.result_manifold else '&#10007; No'}</td>
-                    <td>-</td>
-                </tr>
-            </tbody>
-        </table>
-"""
-    
-    if result.error:
-        html_content += f"""        <div class="error-box">
-            <h3>&#9888; Error</h3>
-            <pre>{result.error}</pre>
-        </div>
-"""
-    
-    html_content += f"""        <div class="footer">
-            Generated: {result.timestamp}
-        </div>
-    </div>
-</body>
-</html>
-"""
-    
-    with open(report_path, "w", encoding="utf-8") as f:
-        f.write(html_content)
+    # Use the dedicated report generator module
+    generate_model_report(
+        stl_path=stl_path,
+        result=result,
+        reports_path=REPORTS_PATH,
+        thingi10k_path=THINGI10K_PATH,
+        fixed_path=fixed_path,
+    )
 
 
-def generate_dashboard(progress: Progress, results: List[TestResult]):
-    """Generate HTML dashboard for easy overview."""
-    
-    # Calculate statistics
-    successful = [r for r in results if r.success]
-    failed = [r for r in results if not r.success]
-    escalated = [r for r in results if r.escalation_used]
-    
-    avg_duration = sum(r.duration_ms for r in results) / len(results) if results else 0
-    
-    # Recent results (last 20)
-    recent = results[-20:] if len(results) > 20 else results
-    
-    html = f"""<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8">
-    <title>MeshPrep Thingi10K Test Dashboard</title>
-    <meta http-equiv="refresh" content="30">
-    <style>
-        body {{
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: #0f1720;
-            color: #dff6fb;
-            margin: 0;
-            padding: 20px;
-        }}
-        .container {{ max-width: 1400px; margin: 0 auto; }}
-        h1 {{ color: #4fe8c4; margin-bottom: 10px; }}
-        .subtitle {{ color: #888; margin-bottom: 30px; }}
-        
-        .nav-links {{
-            margin-bottom: 20px;
-        }}
-        .nav-links a {{
-            color: #4fe8c4;
-            text-decoration: none;
-            padding: 8px 16px;
-            background: #1b2b33;
-            border-radius: 6px;
-            margin-right: 10px;
-        }}
-        .nav-links a:hover {{
-            background: #2a3a43;
-        }}
-        
-        .stats-grid {{
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 20px;
-            margin-bottom: 30px;
-        }}
-        .stat-card {{
-            background: #1b2b33;
-            border-radius: 12px;
-            padding: 20px;
-            text-align: center;
-        }}
-        .stat-value {{
-            font-size: 36px;
-            font-weight: bold;
-            color: #4fe8c4;
-        }}
-        .stat-label {{ color: #888; margin-top: 5px; }}
-        
-        .progress-bar {{
-            background: #1b2b33;
-            border-radius: 10px;
-            height: 30px;
-            overflow: hidden;
-            margin-bottom: 30px;
-        }}
-        .progress-fill {{
-            background: linear-gradient(90deg, #4fe8c4, #2ecc71);
-            height: 100%;
-            transition: width 0.5s;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-weight: bold;
-        }}
-        
-        .current-file {{
-            background: #1b2b33;
-            border-radius: 12px;
-            padding: 15px 20px;
-            margin-bottom: 30px;
-            display: flex;
-            align-items: center;
-            gap: 15px;
-        }}
-        .spinner {{
-            width: 20px;
-            height: 20px;
-            border: 3px solid #333;
-            border-top-color: #4fe8c4;
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
-        }}
-        @keyframes spin {{ to {{ transform: rotate(360deg); }} }}
-        
-        table {{
-            width: 100%;
-            border-collapse: collapse;
-            background: #1b2b33;
-            border-radius: 12px;
-            overflow: hidden;
-        }}
-        th, td {{
-            padding: 10px 12px;
-            text-align: left;
-            border-bottom: 1px solid #2a3a43;
-        }}
-        th {{
-            background: #0f1720;
-            color: #4fe8c4;
-            cursor: pointer;
-            user-select: none;
-            position: sticky;
-            top: 0;
-        }}
-        th:hover {{ background: #1a2a35; }}
-        tr:hover {{ background: #2a3a43; }}
-        
-        .success {{ color: #2ecc71; }}
-        .failed {{ color: #e74c3c; }}
-        .skipped {{ color: #3498db; }}
-        .escalated {{ color: #f39c12; }}
-        
-        a {{ color: #4fe8c4; text-decoration: none; }}
-        a:hover {{ text-decoration: underline; }}
-    </style>
-</head>
-<body>
-    <div class="container">
-        <h1>🔧 MeshPrep Thingi10K Test Dashboard</h1>
-        <p class="subtitle">
-            Started: {progress.start_time[:19] if progress.start_time else 'Not started'} | 
-            Last Update: {progress.last_update[:19] if progress.last_update else 'Never'}
-            <span class="eta">| ETA: {str(timedelta(seconds=int(progress.eta_seconds))) if progress.eta_seconds > 0 else 'Calculating...'}</span>
-        </p>
-        
-        <div class="nav-links">
-            <a href="/reports/index.html">📋 Reports Index</a>
-            <a href="/learning">🧠 Learning Status</a>
-            <a href="/live">📺 Live Dashboard</a>
-        </div>
-        
-        <div class="progress-bar">
-            <div class="progress-fill" style="width: {progress.percent_complete:.1f}%">
-                {progress.percent_complete:.1f}% ({progress.processed:,} / {progress.total_files:,})
-            </div>
-        </div>
-        
-        <div class="current-file">
-            <div class="spinner"></div>
-            <div style="flex: 1;">
-                <div>Currently processing: <strong>{progress.current_file or 'Waiting...'}</strong></div>
-                <div style="margin-top: 5px; font-size: 14px; color: #888;">
-                    Action: <span style="color: #4fe8c4;">{progress.current_action or '-'}</span>
-                    {f'(step {progress.current_step} of {progress.total_steps})' if progress.current_step else ''}
-                </div>
-            </div>
-        </div>
-        
-        <div class="stats-grid">
-            <div class="stat-card">
-                <div class="stat-value">{progress.total_files:,}</div>
-                <div class="stat-label">Total Models</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-value success">{progress.successful:,}</div>
-                <div class="stat-label">Successful</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-value failed">{progress.failed:,}</div>
-                <div class="stat-label">Failed</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-value escalated">{progress.escalations:,}</div>
-                <div class="stat-label">Escalations</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-value" style="color: #3498db;">{progress.precheck_skipped:,}</div>
-                <div class="stat-label">Already Clean</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-value" style="color: #9b59b6;">{progress.reconstructed:,}</div>
-                <div class="stat-label">Reconstructed</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-value">{progress.success_rate:.1f}%</div>
-                <div class="stat-label">Success Rate</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-value">{avg_duration/1000:.1f}s</div>
-                <div class="stat-label">Avg Duration</div>
-            </div>
-        </div>
-        
-        <h2>Recent Results</h2>
-        <table>
-            <thead>
-                <tr>
-                    <th>Model</th>
-                    <th>Status</th>
-                    <th>Filter</th>
-                    <th>Duration</th>
-                    <th>Faces Before</th>
-                    <th>Faces After</th>
-                    <th>Report</th>
-                </tr>
-            </thead>
-            <tbody>
-"""
-    
-    for r in reversed(recent):
-        status_class = "success" if r.success else "failed"
-        status_text = "✅" if r.success else "❌"
-        if r.escalation_used:
-            status_text += " 🚀"
-        
-        # Duration formatting
-        duration_sec = r.duration_ms / 1000
-        if duration_sec >= 60:
-            duration_text = f"{duration_sec/60:.1f}m"
-        else:
-            duration_text = f"{duration_sec:.1f}s"
-        
-        html += f"""                <tr>
-                    <td><strong>{r.file_id}</strong></td>
-                    <td class="{status_class}">{status_text}</td>
-                    <td>{r.filter_used}</td>
-                    <td>{duration_text}</td>
-                    <td>{r.original_faces:,}</td>
-                    <td>{r.result_faces:,}</td>
-                    <td><a href="/reports/{r.file_id}.html">View</a></td>
-                </tr>
-"""
-    
-    html += """            </tbody>
-        </table>
-        
-        <p style="margin-top: 30px; color: #666; font-size: 12px;">
-            Dashboard auto-refreshes every 30 seconds. 
-            <a href="javascript:location.reload()">Refresh now</a>
-        </p>
-    </div>
-</body>
-</html>
-"""
-    
-    with open(DASHBOARD_FILE, "w", encoding="utf-8") as f:
-        f.write(html)
+def generate_dashboard_wrapper(progress: Progress, results: List[TestResult]):
+    """Generate HTML dashboard - wrapper for the module function."""
+    generate_dashboard_html(progress, results, DASHBOARD_FILE)
 
 
-def load_results_from_reports() -> List[TestResult]:
-    """Load test results from existing HTML reports and filter JSON files."""
-    results = []
-    
-    # Get all HTML reports (excluding index.html)
-    for html_file in REPORTS_PATH.glob("*.html"):
-        if html_file.stem == "index":
-            continue
-        
-        file_id = html_file.stem
-        filter_json = FILTERS_PATH / f"{file_id}.json"
-        
-        # Try to load from filter JSON which has more accurate data
-        if filter_json.exists():
-            try:
-                with open(filter_json, 'r', encoding='utf-8') as f:
-                    data = json.load(f)
-                
-                result = TestResult(
-                    file_id=file_id,
-                    file_path=str(THINGI10K_PATH / f"{file_id}.stl"),
-                    success=True,  # If report exists, assume success
-                    filter_used=data.get("filter_name", "unknown"),
-                    escalation_used=data.get("escalated_to_blender", False),
-                    precheck_skipped=data.get("precheck_skipped", False),
-                    precheck_passed=data.get("precheck_passed", False),
-                    timestamp=data.get("timestamp", ""),
-                )
-                results.append(result)
-            except Exception as e:
-                logger.warning(f"Failed to load filter JSON for {file_id}: {e}")
-                # Create minimal result
-                results.append(TestResult(
-                    file_id=file_id,
-                    file_path=str(THINGI10K_PATH / f"{file_id}.stl"),
-                    success=True,
-                    filter_used="unknown",
-                ))
-        else:
-            # No filter JSON - try to parse HTML for status
-            try:
-                with open(html_file, 'r', encoding='utf-8') as f:
-                    html_content = f.read()
-                
-                # Check if it's an "Already Clean" report
-                is_clean = 'Already Clean' in html_content or 'already clean' in html_content.lower()
-                is_skipped = 'skipped' in html_content.lower() or 'none (already clean)' in html_content.lower()
-                
-                results.append(TestResult(
-                    file_id=file_id,
-                    file_path=str(THINGI10K_PATH / f"{file_id}.stl"),
-                    success=True,
-                    filter_used="none (already clean)" if (is_clean or is_skipped) else "unknown",
-                    precheck_skipped=(is_clean or is_skipped),
-                ))
-            except Exception as e:
-                logger.warning(f"Failed to parse HTML for {file_id}: {e}")
-                results.append(TestResult(
-                    file_id=file_id,
-                    file_path=str(THINGI10K_PATH / f"{file_id}.stl"),
-                    success=True,
-                    filter_used="unknown",
-                ))
-
-    # Remove duplicates (in case of multiple reports for the same file)
-    unique_results = {r.file_id: r for r in results}.values()
-    
-    return list(unique_results)
-
-
-def generate_reports_index(results: List[TestResult] = None):
-    """Generate an index.html in the reports folder for easy navigation.
-    
-    If results is None or empty, loads results from existing reports.
-    """
-    # If no results passed, load from existing reports
-    if not results:
-        results = load_results_from_reports()
-    
-    if not results:
-        logger.warning("No results to generate index from")
-        return
-    
-    index_path = REPORTS_PATH / "index.html"
-    
-    # Sort results by file_id
-    sorted_results = sorted(results, key=lambda r: r.file_id)
-    
-    # Calculate stats
-    total = len(results)
-    successful = sum(1 for r in results if r.success)
-    failed = total - successful
-    precheck_skipped = sum(1 for r in results if r.precheck_skipped)
-    escalations = sum(1 for r in results if r.escalation_used)
-    
-    html = f"""<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8">
-    <title>MeshPrep Reports Index</title>
-    <style>
-        body {{
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: #0f1720;
-            color: #dff6fb;
-            margin: 0;
-            padding: 20px;
-        }}
-        .container {{ max-width: 1600px; margin: 0 auto; }}
-        h1 {{ color: #4fe8c4; margin-bottom: 10px; }}
-        .subtitle {{ color: #888; margin-bottom: 20px; }}
-        
-        .stats-row {{
-            display: flex;
-            gap: 20px;
-            margin-bottom: 20px;
-            flex-wrap: wrap;
-        }}
-        .stat {{
-            background: #1b2b33;
-            padding: 10px 20px;
-            border-radius: 8px;
-        }}
-        .stat-value {{ font-size: 24px; font-weight: bold; color: #4fe8c4; }}
-        .stat-label {{ font-size: 12px; color: #888; }}
-        
-        .filters {{
-            background: #1b2b33;
-            padding: 15px;
-            border-radius: 8px;
-            margin-bottom: 20px;
-            display: flex;
-            gap: 15px;
-            align-items: center;
-            flex-wrap: wrap;
-        }}
-        .filters label {{ color: #888; }}
-        .filters select, .filters input {{
-            background: #0f1720;
-            color: #dff6fb;
-            border: 1px solid #333;
-            padding: 8px 12px;
-            border-radius: 4px;
-        }}
-        
-        table {{
-            width: 100%;
-            border-collapse: collapse;
-            background: #1b2b33;
-            border-radius: 12px;
-            overflow: hidden;
-        }}
-        th, td {{
-            padding: 10px 12px;
-            text-align: left;
-            border-bottom: 1px solid #2a3a43;
-        }}
-        th {{
-            background: #0f1720;
-            color: #4fe8c4;
-            cursor: pointer;
-            user-select: none;
-            position: sticky;
-            top: 0;
-        }}
-        th:hover {{ background: #1a2a35; }}
-        tr:hover {{ background: #2a3a43; }}
-        
-        .success {{ color: #2ecc71; }}
-        .failed {{ color: #e74c3c; }}
-        .skipped {{ color: #3498db; }}
-        .escalated {{ color: #f39c12; }}
-        
-        a {{ color: #4fe8c4; text-decoration: none; }}
-        a:hover {{ text-decoration: underline; }}
-    </style>
-</head>
-<body>
-    <div class="container">
-        <h1>📋 MeshPrep Reports Index</h1>
-        <p class="subtitle">Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} | Total: {total} models</p>
-        
-        <div class="stats-row">
-            <div class="stat">
-                <div class="stat-value">{total}</div>
-                <div class="stat-label">Total</div>
-            </div>
-            <div class="stat">
-                <div class="stat-value success">{successful}</div>
-                <div class="stat-label">Successful</div>
-            </div>
-            <div class="stat">
-                <div class="stat-value failed">{failed}</div>
-                <div class="stat-label">Failed</div>
-            </div>
-            <div class="stat">
-                <div class="stat-value skipped">{precheck_skipped}</div>
-                <div class="stat-label">Already Clean</div>
-            </div>
-            <div class="stat">
-                <div class="stat-value escalated">{escalations}</div>
-                <div class="stat-label">Blender</div>
-            </div>
-        </div>
-        
-        <div class="filters">
-            <label>Filter:</label>
-            <select id="statusFilter" onchange="filterTable()">
-                <option value="all">All</option>
-                <option value="success">Successful</option>
-                <option value="failed">Failed</option>
-                <option value="skipped">Already Clean</option>
-                <option value="escalated">Blender Escalation</option>
-            </select>
-            
-            <label>Search:</label>
-            <input type="text" id="searchBox" class="search-box" placeholder="Search by model ID..." onkeyup="filterTable()">
-        </div>
-        
-        <table id="resultsTable">
-            <thead>
-                <tr>
-                    <th onclick="sortTable(0)">Model ID</th>
-                    <th onclick="sortTable(1)">Status</th>
-                    <th onclick="sortTable(2)">Filter</th>
-                    <th onclick="sortTable(3)">Duration</th>
-                    <th onclick="sortTable(4)">Faces Before</th>
-                    <th onclick="sortTable(5)">Faces After</th>
-                    <th>Report</th>
-                </tr>
-            </thead>
-            <tbody>
-"""
-    
-    for r in sorted_results:
-        # Status
-        if r.precheck_skipped:
-            status_class = "skipped"
-            status_text = "&#10003; Clean"  # checkmark
-            status_data = "skipped"
-        elif r.success:
-            if r.escalation_used:
-                status_class = "escalated"
-                status_text = "&#10003; Blender"  # checkmark
-                status_data = "escalated"
-            else:
-                status_class = "success"
-                status_text = "&#10003; Fixed"  # checkmark
-                status_data = "success"
-        else:
-            status_class = "failed"
-            status_text = "&#10007; Failed"  # X mark
-            status_data = "failed"
-        
-        # Duration formatting
-        duration_sec = r.duration_ms / 1000
-        if duration_sec >= 60:
-            duration_text = f"{duration_sec/60:.1f}m"
-        else:
-            duration_text = f"{duration_sec:.1f}s"
-        
-        html += f"""                <tr>
-                    <td><strong>{r.file_id}</strong></td>
-                    <td class="{status_class}">{status_text}</td>
-                    <td>{r.filter_used}</td>
-                    <td>{duration_text}</td>
-                    <td>{r.original_faces:,}</td>
-                    <td>{r.result_faces:,}</td>
-                    <td><a href="{r.file_id}.html">View</a></td>
-                </tr>
-"""
-    
-    html += """            </tbody>
-        </table>
-        
-        <p style="margin-top: 30px; color: #666; font-size: 12px;">
-            Dashboard auto-refreshes every 30 seconds. 
-            <a href="javascript:location.reload()">Refresh now</a>
-        </p>
-    </div>
-</body>
-</html>
-"""
-    
-    with open(index_path, "w", encoding='utf-8') as f:
-        f.write(html)
-    
-    logger.info(f"Generated reports index: {index_path}")
+def generate_reports_index_wrapper(results: Optional[List[TestResult]] = None):
+    """Generate reports index - wrapper for the module function."""
+    generate_index_html(results, REPORTS_PATH, FILTERS_PATH)
 
 
 def get_processed_files() -> set:
@@ -2187,6 +1201,21 @@ def run_batch_test(limit: Optional[int] = None, skip_existing: bool = True, ctm_
         print(f"[WARN] Learning engine unavailable: {e}", flush=True)
         logger.warning(f"Learning engine error: {e}")
     
+    # Initialize quality feedback engine (creates DB if not exists)
+    try:
+        quality_engine = get_quality_engine()
+        quality_stats = quality_engine.get_summary_stats()
+        if quality_stats["total_ratings"] > 0:
+            print(f"[OK] Quality feedback: {quality_stats['total_ratings']} user ratings", flush=True)
+            print(f"     Avg rating: {quality_stats['avg_rating']:.1f}/5, Acceptance: {quality_stats['overall_acceptance_rate']:.0f}%", flush=True)
+            logger.info(f"Quality feedback loaded: {quality_stats['total_ratings']} ratings")
+        else:
+            print("[OK] Quality feedback: No user ratings yet (use --rate to add)", flush=True)
+            logger.info("Quality feedback: No ratings yet")
+    except Exception as e:
+        print(f"[WARN] Quality feedback unavailable: {e}", flush=True)
+        logger.warning(f"Quality feedback error: {e}")
+    
     # Initialize adaptive thresholds and show stats
     if ADAPTIVE_THRESHOLDS_AVAILABLE:
         try:
@@ -2246,7 +1275,7 @@ def run_batch_test(limit: Optional[int] = None, skip_existing: bool = True, ctm_
         return
     
     # Load existing results from reports (for index regeneration)
-    existing_results = load_results_from_reports()
+    existing_results = load_results_from_reports(REPORTS_PATH, FILTERS_PATH)
     existing_ids = {r.file_id for r in existing_results}
     logger.info(f"Loaded {len(existing_results)} existing results from reports")
     
@@ -2260,7 +1289,7 @@ def run_batch_test(limit: Optional[int] = None, skip_existing: bool = True, ctm_
     
     # Save initial progress immediately so dashboard shows correct state
     save_progress(progress)
-    generate_dashboard(progress, existing_results)  # Use existing results for initial dashboard
+    generate_dashboard_wrapper(progress, existing_results)  # Use wrapper function
     
     # Start with existing results, new results will be added
     results: List[TestResult] = list(existing_results)
@@ -2313,8 +1342,8 @@ def run_batch_test(limit: Optional[int] = None, skip_existing: bool = True, ctm_
         
         # Update dashboard every 10 files (slower operation)
         if i % 10 == 0:
-            generate_dashboard(progress, results)
-            generate_reports_index(results)
+            generate_dashboard_wrapper(progress, results)
+            generate_reports_index_wrapper(results)
             # Also update learning status page
             try:
                 from generate_learning_status import generate_learning_status_page
@@ -2342,8 +1371,8 @@ def run_batch_test(limit: Optional[int] = None, skip_existing: bool = True, ctm_
     
     # Final save
     save_progress(progress)
-    generate_dashboard(progress, results)
-    generate_reports_index(results)  # Generate navigable index in reports folder
+    generate_dashboard_wrapper(progress, results)
+    generate_reports_index_wrapper(results)  # Generate navigable index in reports folder
     
     # Summary
     print("", flush=True)
@@ -2550,6 +1579,68 @@ def show_learning_stats():
     print("=" * 60)
 
 
+def show_quality_stats():
+    """Display quality feedback statistics."""
+    print("=" * 60)
+    print("MeshPrep Quality Feedback Statistics")
+    print("=" * 60)
+    
+    try:
+        quality_engine = get_quality_engine()
+        summary = quality_engine.get_summary_stats()
+        
+        print(f"\nTotal user ratings: {summary['total_ratings']}")
+        
+        if summary['total_ratings'] == 0:
+            print("\nNo ratings yet. Use --rate to add quality ratings:")
+            print("  python run_full_test.py --rate MP:abc123 --rating 4")
+            print("  python run_full_test.py --rate MP:abc123 --rating 3 --comment 'Minor issues'")
+            print("\nRating scale:")
+            print("  5 = Perfect - Indistinguishable from original")
+            print("  4 = Good - Minor smoothing/simplification, fully usable")
+            print("  3 = Acceptable - Noticeable changes but recognizable")
+            print("  2 = Poor - Significant detail loss")
+            print("  1 = Rejected - Unrecognizable or destroyed")
+            return
+        
+        print(f"Average rating: {summary['avg_rating']:.2f}/5")
+        print(f"Acceptance rate: {summary['overall_acceptance_rate']:.1f}% (ratings >= 3)")
+        print(f"Pipeline/profile combinations: {summary['pipeline_profile_combinations']}")
+        print(f"Ready for prediction: {'Yes' if summary['ready_for_prediction'] else 'No (need more ratings)'}")
+        
+        # Rating distribution
+        if summary.get('rating_distribution'):
+            print("\nRating distribution:")
+            for rating in range(5, 0, -1):
+                count = summary['rating_distribution'].get(rating, 0)
+                bar = "█" * (count // 2 + 1) if count > 0 else ""
+                print(f"  {rating} stars: {count:3d} {bar}")
+        
+        # Get all pipeline stats
+        all_stats = quality_engine.get_all_pipeline_quality_stats()
+        if all_stats:
+            print(f"\nPipeline quality by profile:")
+            print(f"  {'Pipeline':<30} {'Profile':<15} {'Avg':>6} {'Count':>6} {'Accept':>7}")
+            print(f"  {'-'*30} {'-'*15} {'-'*6} {'-'*6} {'-'*7}")
+            for pipeline, profiles in all_stats.items():
+                for profile, stats in profiles.items():
+                    accept_pct = stats.acceptance_rate * 100
+                    print(f"  {pipeline:<30} {profile:<15} {stats.avg_rating:>5.1f} {stats.total_ratings:>6} {accept_pct:>6.0f}%")
+        
+        print("\n" + "-" * 60)
+        print("Quality feedback helps the system learn:")
+        print("  1. Which pipelines produce best results for each profile")
+        print("  2. When to warn about potential quality issues")
+        print("  3. How to reorder pipelines for better results")
+        print("\nAdd more ratings to improve pipeline selection!")
+        print("=" * 60)
+        
+    except Exception as e:
+        print(f"Error loading quality stats: {e}")
+        import traceback
+        traceback.print_exc()
+
+
 def rate_model_by_fingerprint(fingerprint: str, rating: int, comment: Optional[str] = None):
     """Rate a model by its fingerprint."""
     print("=" * 60)
@@ -2578,8 +1669,8 @@ def rate_model_by_fingerprint(fingerprint: str, rating: int, comment: Optional[s
         # Find matching report to get context
         # Search in reports directory for matching fingerprint
         model_filename = "unknown"
-        pipeline_used = "unknown"
-        profile = "standard"
+        pipeline_used = "unknown";
+        profile = "standard";
         volume_change_pct = 0.0
         face_count_change_pct = 0.0
         escalated = False
