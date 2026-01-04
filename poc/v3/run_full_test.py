@@ -196,6 +196,11 @@ class TestResult:
     precheck_passed: bool = False  # True if model was already clean
     precheck_skipped: bool = False  # True if we skipped repair due to precheck
     
+    # Reconstruction mode (for extreme-fragmented meshes)
+    is_reconstruction: bool = False  # True if mesh was reconstructed (not repaired)
+    reconstruction_method: str = ""  # Pipeline that performed reconstruction
+    geometry_loss_pct: float = 0  # Face loss percentage
+    
     # Original metrics
     original_vertices: int = 0
     original_faces: int = 0
@@ -236,14 +241,15 @@ class Progress:
     failed: int = 0
     escalations: int = 0
     skipped: int = 0
-    precheck_skipped: int = 0  # NEW: Models skipped because already clean
+    precheck_skipped: int = 0  # Models skipped because already clean
+    reconstructed: int = 0  # NEW: Models reconstructed (significant geometry change)
     
     start_time: str = ""
     last_update: str = ""
     current_file: str = ""
-    current_action: str = ""  # NEW: Current action being executed
-    current_step: int = 0  # NEW: Current step number (e.g., 1 of 4)
-    total_steps: int = 0  # NEW: Total steps in current filter
+    current_action: str = ""  # Current action being executed
+    current_step: int = 0  # Current step number (e.g., 1 of 4)
+    total_steps: int = 0  # Total steps in current filter
     
     # Timing
     total_duration_ms: float = 0
@@ -720,6 +726,11 @@ def process_single_model(stl_path: Path, skip_if_clean: bool = True, progress: O
         # Capture pre-check results from repair loop
         result.precheck_passed = repair_result.precheck_passed
         result.precheck_skipped = repair_result.precheck_skipped
+        
+        # Capture reconstruction info from repair loop
+        result.is_reconstruction = repair_result.is_reconstruction
+        result.reconstruction_method = repair_result.reconstruction_method or ""
+        result.geometry_loss_pct = repair_result.geometry_loss_pct
         
         if repair_result.precheck_skipped:
             # Model was already clean - no repair needed
@@ -1615,7 +1626,7 @@ def generate_dashboard(progress: Progress, results: List[TestResult]):
             overflow: hidden;
         }}
         th, td {{
-            padding: 12px 15px;
+            padding: 10px 12px;
             text-align: left;
             border-bottom: 1px solid #2a3a43;
         }}
@@ -1686,6 +1697,10 @@ def generate_dashboard(progress: Progress, results: List[TestResult]):
                 <div class="stat-label">Already Clean</div>
             </div>
             <div class="stat-card">
+                <div class="stat-value" style="color: #9b59b6;">{progress.reconstructed:,}</div>
+                <div class="stat-label">Reconstructed</div>
+            </div>
+            <div class="stat-card">
                 <div class="stat-value">{progress.success_rate:.1f}%</div>
                 <div class="stat-label">Success Rate</div>
             </div>
@@ -1718,8 +1733,7 @@ def generate_dashboard(progress: Progress, results: List[TestResult]):
         
         report_link = f"{REPORTS_PATH}/{r.file_id}.md"
         
-        html += f"""
-                <tr>
+        html += f"""                <tr>
                     <td>{r.file_id}</td>
                     <td class="{status_class}">{status_text}</td>
                     <td>{r.filter_used}</td>
@@ -1729,8 +1743,7 @@ def generate_dashboard(progress: Progress, results: List[TestResult]):
                 </tr>
 """
     
-    html += """
-            </tbody>
+    html += """            </tbody>
         </table>
         
         <p style="margin-top: 30px; color: #666; font-size: 12px;">
@@ -1816,7 +1829,7 @@ def load_results_from_reports() -> List[TestResult]:
 def generate_reports_index(results: List[TestResult] = None):
     """Generate an index.html in the reports folder for easy navigation.
     
-    If results is None or empty, loads results from existing report files.
+    If results is None or empty, loads results from existing reports.
     """
     # If no results passed, load from existing reports
     if not results:
@@ -2037,13 +2050,6 @@ def generate_reports_index(results: List[TestResult] = None):
         else:
             vol_change_class = "change-neutral"
         vol_change_text = f"{r.volume_change_pct:+.1f}%" if r.volume_change_pct != 0 else "~0%"
-        
-        # Duration
-        duration_sec = r.duration_ms / 1000
-        if duration_sec >= 60:
-            duration_text = f"{duration_sec/60:.1f}m"
-        else:
-            duration_text = f"{duration_sec:.1f}s"
         
         html += f"""                <tr data-status="{status_data}">
                     <td><strong>{r.file_id}</strong></td>
@@ -2405,7 +2411,7 @@ def run_batch_test(limit: Optional[int] = None, skip_existing: bool = True, ctm_
     print("=" * 60, flush=True)
     print("FINAL SUMMARY", flush=True)
     print("=" * 60, flush=True)
-    print(f"Total processed: {progress.processed:,}", flush=True)
+    print(f"Total processed: {progress.processed:,} models", flush=True)
     print(f"Successful: {progress.successful:,} ({progress.success_rate:.1f}%)", flush=True)
     print(f"Failed: {progress.failed:,}", flush=True)
     print(f"Escalations: {progress.escalations:,}", flush=True)
@@ -2500,9 +2506,7 @@ def show_learning_stats():
             if stats['recent_adjustments']:
                 print(f"\nRecent adjustments:")
                 for adj in stats['recent_adjustments'][:5]:
-                    print(f"  {adj['threshold']}: {adj['old']:.2f} -> {adj['new']:.2f}")
-                    print(f"    Reason: {adj['reason']}")
-            
+                    print(f"  {adj['threshold']}: {adj['old_value']:.2f} -> {adj['new_value']:.2f}")
         except Exception as e:
             print(f"Error loading adaptive thresholds: {e}")
     else:
@@ -2598,8 +2602,6 @@ def show_learning_stats():
             print(f"  {'-'*40} {'-'*8} {'-'*8}")
             for p in stats['top_profiles'][:5]:
                 print(f"  {p['name']:<40} {p['total_models']:>8} {p['success_rate']*100:>7.1f}%")
-        else:
-            print("\nNo discovered profiles yet. Run --discover-profiles after processing enough models.")
         
     except ImportError:
         print("\nProfile discovery not available.")
@@ -2607,207 +2609,6 @@ def show_learning_stats():
         print(f"Error loading profile discovery stats: {e}")
     
     print("=" * 60)
-
-
-def run_profile_discovery(min_samples: int = 50):
-    """Run profile discovery to create new profiles from clustered data."""
-    print("=" * 60)
-    print("MeshPrep Profile Discovery")
-    print("=" * 60)
-    
-    try:
-        from meshprep_poc.profile_discovery import get_discovery_engine
-        
-        discovery = get_discovery_engine()
-        stats = discovery.get_stats_summary()
-        
-        print(f"\nCurrent state:")
-        print(f"  Total clusters: {stats['total_clusters']}")
-        print(f"  Models clustered: {stats['total_models_clustered']:,}")
-        print(f"  Active profiles: {stats['active_profiles']}")
-        print(f"  Unassigned clusters: {stats['unassigned_clusters']}")
-        print(f"  Unassigned models: {stats.get('unassigned_models', 0):,}")
-        
-        if stats['total_models_clustered'] < min_samples:
-            print(f"\nNot enough samples for discovery ({stats['total_models_clustered']} < {min_samples})")
-            print("Process more models first.")
-            return
-        
-        print(f"\nRunning profile discovery (min_samples={min_samples})...")
-        
-        profiles = discovery.run_discovery(min_samples=min_samples)
-        
-        if profiles:
-            print(f"\n[OK] Discovered {len(profiles)} new profiles:")
-            for p in profiles:
-                print(f"  - {p.name}")
-                print(f"    {p.description}")
-                print(f"    Models: {p.total_models}, Success rate: {p.success_rate*100:.1f}%")
-                if p.best_pipeline:
-                    print(f"    Best pipeline: {p.best_pipeline}")
-        else:
-            print("\nNo new profiles discovered.")
-            print("This could mean:")
-            print("  - All clusters are already assigned to profiles")
-            print("  - No clusters meet the minimum size requirements")
-        
-        # Show updated stats
-        stats = discovery.get_stats_summary()
-        print(f"\nUpdated state:")
-        print(f"  Active profiles: {stats['active_profiles']}")
-        print(f"  Models with profiles: {stats.get('models_with_profiles', 0):,}")
-        print(f"  Avg profile success rate: {stats.get('avg_profile_success_rate', 0)*100:.0f}%")
-        
-        if stats.get('top_profiles'):
-            print(f"\nTop profiles:")
-            print(f"  {'Name':<40} {'Models':>8} {'Success':>8}")
-            print(f"  {'-'*40} {'-'*8} {'-'*8}")
-            for p in stats['top_profiles'][:5]:
-                print(f"  {p['name']:<40} {p['total_models']:>8} {p['success_rate']*100:>7.1f}%")
-        
-    except ImportError:
-        print("\nProfile discovery engine not available.")
-        print("Make sure meshprep_poc.profile_discovery is importable.")
-    except Exception as e:
-        print(f"\nError during profile discovery: {e}")
-        import traceback
-        traceback.print_exc()
-    
-    print("\n" + "=" * 60)
-
-
-def optimize_adaptive_thresholds(min_samples: int = 20):
-    """Optimize adaptive thresholds based on collected observations."""
-    print("=" * 60)
-    print("MeshPrep Adaptive Thresholds Optimization")
-    print("=" * 60)
-    
-    if not ADAPTIVE_THRESHOLDS_AVAILABLE:
-        print("\nAdaptive thresholds not available.")
-        return
-    
-    try:
-        adaptive = get_adaptive_thresholds()
-        stats = adaptive.get_stats_summary()
-        
-        print(f"\nCurrent state:")
-        print(f"  Total observations: {stats['total_observations']:,}")
-        print(f"  Thresholds adjusted: {stats['thresholds_adjusted']} / {stats['total_thresholds']}")
-        
-        if stats['total_observations'] < min_samples:
-            print(f"\nNot enough observations for optimization ({stats['total_observations']} < {min_samples})")
-            print("Process more models first.")
-            return
-        
-        print(f"\nRunning optimization (min_samples={min_samples})...")
-        
-        adjustments = adaptive.optimize_thresholds(min_samples=min_samples)
-        
-        if adjustments:
-            print(f"\n[OK] Made {len(adjustments)} adjustments:")
-            for adj in adjustments:
-                print(f"  {adj['threshold']}: {adj['old_value']:.2f} -> {adj['new_value']:.2f}")
-                print(f"    Reason: {adj['reason']}")
-                print(f"    Based on {adj['observations']} observations")
-        else:
-            print("\nNo adjustments needed.")
-            print("Current thresholds are optimal based on observations.")
-        
-        # Show updated stats
-        stats = adaptive.get_stats_summary()
-        print(f"\nUpdated state:")
-        print(f"  Thresholds adjusted: {stats['thresholds_adjusted']} / {stats['total_thresholds']}")
-        
-        if stats['threshold_status']:
-            print(f"\nCurrent thresholds:")
-            print(f"  {'Threshold':<35} {'Current':>12} {'Default':>12}")
-            print(f"  {'-'*35} {'-'*12} {'-'*12}")
-            for t in stats['threshold_status']:
-                if t['changed']:
-                    print(f"* {t['name']:<35} {t['current']:>12.2f} {t['default']:>12.2f}")
-        
-    except Exception as e:
-        print(f"\nError during optimization: {e}")
-        import traceback
-        traceback.print_exc()
-    
-    print("\n" + "=" * 60)
-
-
-def reset_adaptive_thresholds():
-    """Reset all adaptive thresholds to defaults."""
-    print("=" * 60)
-    print("MeshPrep Adaptive Thresholds Reset")
-    print("=" * 60)
-    
-    if not ADAPTIVE_THRESHOLDS_AVAILABLE:
-        print("\nAdaptive thresholds not available.")
-        return
-    
-    try:
-        adaptive = get_adaptive_thresholds()
-        stats = adaptive.get_stats_summary()
-        
-        print(f"\nCurrent state:")
-        print(f"  Thresholds adjusted: {stats['thresholds_adjusted']} / {stats['total_thresholds']}")
-        
-        if stats['thresholds_adjusted'] == 0:
-            print("\nNo thresholds have been adjusted from defaults.")
-            return
-        
-        print("\nResetting all thresholds to defaults...")
-        adaptive.reset_to_defaults()
-        
-        print("[OK] All thresholds reset to default values.")
-        print("\nNote: Observation history is preserved for future optimization.")
-        
-    except Exception as e:
-        print(f"\nError during reset: {e}")
-    
-    print("\n" + "=" * 60)
-
-
-def show_quality_stats():
-    """Show quality feedback statistics."""
-    print("=" * 60)
-    print("MeshPrep Quality Feedback Statistics")
-    print("=" * 60)
-    
-    try:
-        quality_engine = get_quality_engine()
-        stats = quality_engine.get_summary_stats()
-        
-        print(f"\nTotal ratings: {stats['total_ratings']:,}")
-        print(f"Average rating: {stats['avg_rating']:.2f}/5")
-        print(f"Overall acceptance rate: {stats['overall_acceptance_rate']:.1f}%")
-        print(f"Pipeline/profile combinations tracked: {stats['pipeline_profile_combinations']}")
-        print(f"Ready for prediction: {'Yes' if stats['ready_for_prediction'] else 'No (need more ratings)'}")
-        
-        if stats['rating_distribution']:
-            print("\nRating distribution:")
-            for score in range(5, 0, -1):
-                count = stats['rating_distribution'].get(score, 0)
-                bar = "#" * min(count, 50)
-                print(f"  {score} stars: {count:>5} {bar}")
-        
-        # Show pipeline quality stats
-        all_stats = quality_engine.get_all_pipeline_quality_stats()
-        if all_stats:
-            print("\nPipeline quality by profile:")
-            print(f"  {'Pipeline':<25} {'Profile':<15} {'Ratings':>8} {'Avg':>6} {'Accept%':>8}")
-            print(f"  {'-'*25} {'-'*15} {'-'*8} {'-'*6} {'-'*8}")
-            
-            for pipeline, profiles in all_stats.items():
-                for profile, pstats in profiles.items():
-                    if pstats.total_ratings > 0:
-                        print(f"  {pipeline:<25} {profile:<15} {pstats.total_ratings:>8} {pstats.avg_rating:>6.2f} {pstats.acceptance_rate*100:>7.1f}%")
-        
-    except Exception as e:
-        print(f"\nError getting quality stats: {e}")
-        import traceback
-        traceback.print_exc()
-    
-    print("\n" + "=" * 60)
 
 
 def rate_model_by_fingerprint(fingerprint: str, rating: int, comment: Optional[str] = None):
@@ -2927,7 +2728,7 @@ def main():
     parser.add_argument(
         "--status", "-s",
         action="store_true",
-        help="Show current progress status"
+        help="Show current progress"
     )
     parser.add_argument(
         "--ctm-priority",
@@ -3000,6 +2801,14 @@ def main():
         help="Optional comment when rating a model"
     )
     
+    # Reprocess specific model
+    parser.add_argument(
+        "--reprocess",
+        type=str,
+        metavar="MODEL_ID",
+        help="Reprocess a specific model by ID (e.g., 100i, 100027). Deletes existing report and reprocesses."
+    )
+    
     args = parser.parse_args()
     
     if args.status:
@@ -3041,7 +2850,7 @@ def main():
             print(f"Thresholds adjusted: {stats['thresholds_adjusted']} / {stats['total_thresholds']}")
             
             if stats['threshold_status']:
-                print(f"\nCurrent thresholds:")
+                print(f"\nCurrent thresholds (changed from default marked with *):")
                 print(f"  {'Threshold':<35} {'Current':>12} {'Default':>12} {'Change':>10}")
                 print(f"  {'-'*35} {'-'*12} {'-'*12} {'-'*10}")
                 for t in stats['threshold_status']:
@@ -3049,10 +2858,15 @@ def main():
                     change_str = f"{t['change_pct']:+.1f}%" if t['changed'] else "-"
                     print(f"{marker} {t['name']:<35} {t['current']:>12.2f} {t['default']:>12.2f} {change_str:>10}")
             
-            print("=" * 60)
-        else:
-            print("Adaptive thresholds not available.")
-        return
+            if stats['recent_adjustments']:
+                print(f"\nRecent adjustments:")
+                for adj in stats['recent_adjustments'][:5]:
+                    print(f"  {adj['threshold']}: {adj['old_value']:.2f} -> {adj['new_value']:.2f}")
+        except Exception as e:
+            print(f"Error loading adaptive thresholds: {e}")
+    else:
+        print("Adaptive thresholds not available.")
+    return
     
     if args.quality_stats:
         show_quality_stats()
@@ -3063,6 +2877,10 @@ def main():
             print("Error: --rating is required when using --rate")
             return
         rate_model_by_fingerprint(args.rate, args.rating, args.comment)
+        return
+    
+    if args.reprocess:
+        reprocess_single_model(args.reprocess)
         return
     
     # If --fresh is passed, reprocess all files (but don't delete existing results)

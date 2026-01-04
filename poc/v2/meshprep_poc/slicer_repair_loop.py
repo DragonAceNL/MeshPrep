@@ -61,11 +61,16 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 
-# Geometry loss thresholds
+# Geometry loss thresholds (defaults - can be overridden by adaptive thresholds)
 MAX_FACE_LOSS_PERCENT = 50  # Reject if more than 50% faces lost
 MAX_VOLUME_LOSS_PERCENT = 40  # Reject if more than 40% volume lost
 MIN_FACES_ABSOLUTE = 20  # Reject if result has fewer than 20 faces
 MAX_FACE_INCREASE_FACTOR = 100  # Reject if faces increase by more than 100x
+
+# Reconstruction mode thresholds (for extreme-fragmented meshes)
+# These are much more lenient because reconstruction creates new geometry
+RECONSTRUCTION_FACE_LOSS_PERCENT = 95  # Allow up to 95% face loss for reconstruction
+RECONSTRUCTION_VOLUME_LOSS_PERCENT = 80  # Allow up to 80% volume loss for reconstruction
 
 
 def _extract_mesh_state(mesh: trimesh.Trimesh) -> dict:
@@ -135,34 +140,66 @@ def _log_action_execution(
     except Exception as e:
         logger.debug(f"Failed to log action details: {e}")
 
-def check_geometry_loss(original_mesh: trimesh.Trimesh, repaired_mesh: trimesh.Trimesh) -> tuple[bool, str]:
+def check_geometry_loss(
+    original_mesh: trimesh.Trimesh, 
+    repaired_mesh: trimesh.Trimesh,
+    is_reconstruction_mode: bool = False,
+    profile: str = "unknown",
+) -> tuple[bool, str, float]:
     """
     Check if repair caused unacceptable geometry loss or excessive increase.
+    
+    For reconstruction mode (extreme-fragmented meshes), much higher geometry
+    loss is acceptable because we're creating new geometry from scattered fragments.
     
     Args:
         original_mesh: Original mesh before repair
         repaired_mesh: Mesh after repair
+        is_reconstruction_mode: If True, use lenient reconstruction thresholds
+        profile: Mesh profile for adaptive threshold lookup
         
     Returns:
-        Tuple of (is_acceptable, reason_if_not)
+        Tuple of (is_acceptable, reason_if_not, face_loss_pct)
     """
     original_faces = len(original_mesh.faces)
     result_faces = len(repaired_mesh.faces)
+    face_loss_pct = 0.0
+    
+    # Get adaptive thresholds if available
+    try:
+        from .adaptive_thresholds import get_adaptive_thresholds
+        thresholds = get_adaptive_thresholds()
+        
+        if is_reconstruction_mode:
+            max_face_loss = thresholds.get("reconstruction_face_loss_limit_pct", profile)
+            max_volume_loss = thresholds.get("reconstruction_volume_loss_limit_pct", profile)
+        else:
+            max_face_loss = thresholds.get("face_loss_limit_pct", profile)
+            max_volume_loss = thresholds.get("volume_loss_limit_pct", profile)
+    except Exception:
+        # Fallback to hardcoded defaults
+        if is_reconstruction_mode:
+            max_face_loss = RECONSTRUCTION_FACE_LOSS_PERCENT
+            max_volume_loss = RECONSTRUCTION_VOLUME_LOSS_PERCENT
+        else:
+            max_face_loss = MAX_FACE_LOSS_PERCENT
+            max_volume_loss = MAX_VOLUME_LOSS_PERCENT
     
     # Check absolute minimum
     if result_faces < MIN_FACES_ABSOLUTE:
-        return False, f"Result has only {result_faces} faces (minimum: {MIN_FACES_ABSOLUTE})"
+        return False, f"Result has only {result_faces} faces (minimum: {MIN_FACES_ABSOLUTE})", 100.0
     
     # Check face loss percentage
     if original_faces > 0:
         face_loss_pct = (original_faces - result_faces) / original_faces * 100
-        if face_loss_pct > MAX_FACE_LOSS_PERCENT:
-            return False, f"Face loss {face_loss_pct:.1f}% exceeds threshold {MAX_FACE_LOSS_PERCENT}%"
+        if face_loss_pct > 0:  # Only check loss, not gain
+            if face_loss_pct > max_face_loss:
+                return False, f"Face loss {face_loss_pct:.1f}% exceeds threshold {max_face_loss:.0f}%", face_loss_pct
         
         # Check excessive face increase (e.g., Blender remesh creating millions of faces)
         face_increase_factor = result_faces / original_faces
         if face_increase_factor > MAX_FACE_INCREASE_FACTOR:
-            return False, f"Face count increased {face_increase_factor:.0f}x (max: {MAX_FACE_INCREASE_FACTOR}x)"
+            return False, f"Face count increased {face_increase_factor:.0f}x (max: {MAX_FACE_INCREASE_FACTOR}x)", face_loss_pct
     
     # Check volume loss (if both have valid volumes)
     try:
@@ -171,12 +208,12 @@ def check_geometry_loss(original_mesh: trimesh.Trimesh, repaired_mesh: trimesh.T
         
         if original_volume > 0 and result_volume > 0:
             volume_loss_pct = abs(original_volume - result_volume) / original_volume * 100
-            if volume_loss_pct > MAX_VOLUME_LOSS_PERCENT:
-                return False, f"Volume change {volume_loss_pct:.1f}% exceeds threshold {MAX_VOLUME_LOSS_PERCENT}%"
+            if volume_loss_pct > max_volume_loss:
+                return False, f"Volume change {volume_loss_pct:.1f}% exceeds threshold {max_volume_loss:.0f}%", face_loss_pct
     except Exception:
         pass  # Volume check is optional
     
-    return True, ""
+    return True, "", face_loss_pct
 
 
 @dataclass
@@ -286,6 +323,13 @@ class SlicerRepairResult:
     precheck_skipped: bool = False  # True if we skipped repair due to precheck
     precheck_mesh_info: Optional[MeshInfo] = None  # Mesh info from pre-check
     
+    # Reconstruction mode (for extreme-fragmented meshes)
+    # When True, the mesh was reconstructed rather than repaired
+    # This means geometry changed significantly but result is printable
+    is_reconstruction: bool = False  # True if result is a reconstruction
+    reconstruction_method: Optional[str] = None  # Pipeline/action that succeeded
+    geometry_loss_pct: float = 0.0  # Actual face loss percentage
+    
     def to_dict(self) -> dict:
         """Convert to dictionary for JSON export."""
         return {
@@ -302,6 +346,9 @@ class SlicerRepairResult:
             } if self.precheck_mesh_info else None,
             "issues_found": self.issues_found,
             "issues_resolved": self.issues_resolved,
+            "is_reconstruction": self.is_reconstruction,
+            "reconstruction_method": self.reconstruction_method,
+            "geometry_loss_pct": self.geometry_loss_pct,
             "attempts": [
                 {
                     "attempt": a.attempt_number,
@@ -528,11 +575,15 @@ def run_slicer_repair_loop(
     issues = result.issues_found if result.issues_found else ["unknown"]
     pipelines = get_pipelines_for_issues(issues, is_fragmented=blender_unsafe)
     
+    # Determine the profile for adaptive thresholds
+    profile = "extreme-fragmented" if is_extreme_fragmented else "fragmented" if blender_unsafe else "standard"
+    
     logger.info(f"Starting pipeline-based repair loop")
     logger.info(f"  Issues: {issues}")
     logger.info(f"  Available pipelines: {len(pipelines)}")
     logger.info(f"  Max attempts: {max_attempts}")
     logger.info(f"  Blender remesh allowed: {not blender_unsafe}")
+    logger.info(f"  Reconstruction mode: {is_extreme_fragmented}")
     logger.info(f"  NOTE: Each pipeline starts fresh from the original mesh")
     
     # =========================================================================
@@ -540,6 +591,7 @@ def run_slicer_repair_loop(
     # =========================================================================
     best_mesh = None
     best_score = -1
+    best_face_loss_pct = 100.0
     attempted_pipelines = set()
     
     for attempt_num in range(1, min(max_attempts, len(pipelines)) + 1):
@@ -589,7 +641,7 @@ def run_slicer_repair_loop(
                 action_name = action_def["action"]
                 action_params = action_def.get("params", {})
                 
-                logger.debug(f"      Executing: {action_name} {action_params}")
+                logger.info(f"Executing action: {action_name} with params: {action_params}")
                 
                 # Capture mesh state before action
                 mesh_before = working_mesh.copy()
@@ -625,11 +677,15 @@ def run_slicer_repair_loop(
             geom_valid = validate_geometry(repaired_mesh)
             attempt_result.geometry_valid = geom_valid.is_printable
             
-            # Check for geometry loss
-            geom_acceptable, geom_loss_reason = check_geometry_loss(original_mesh, repaired_mesh)
+            # Check for geometry loss - use reconstruction mode for extreme-fragmented
+            geom_acceptable, geom_loss_reason, face_loss_pct = check_geometry_loss(
+                original_mesh, repaired_mesh, 
+                is_reconstruction_mode=is_extreme_fragmented,
+                profile=profile
+            )
             
             if geom_valid.is_printable and geom_acceptable:
-                logger.info(f"    Pipeline completed, geometry valid")
+                logger.info(f"    Pipeline completed, geometry valid (face loss: {face_loss_pct:.1f}%)")
                 
                 # Run slicer validation
                 logger.info(f"    Running slicer validation...")
@@ -642,6 +698,14 @@ def run_slicer_repair_loop(
                     result.final_mesh = repaired_mesh
                     result.final_slicer_result = slicer_result
                     result.issues_resolved.append(pipeline.name)
+                    result.geometry_loss_pct = face_loss_pct
+                    
+                    # Mark as reconstruction if significant geometry loss
+                    if face_loss_pct > 50:
+                        result.is_reconstruction = True
+                        result.reconstruction_method = pipeline.name
+                        logger.info(f"    [RECONSTRUCTION] Model reconstructed with {face_loss_pct:.1f}% face loss")
+                    
                     attempt_result.success = True
                     attempt_result.duration_ms = (time.perf_counter() - attempt_start) * 1000
                     result.attempts.append(attempt_result)
@@ -649,18 +713,28 @@ def run_slicer_repair_loop(
                 else:
                     logger.info(f"    [X] Slicer validation FAILED")
                     
-                    # Track best result
+                    # Track best result (prefer lower face loss when scores tie)
                     score = (1 if repaired_mesh.is_watertight else 0) + (1 if repaired_mesh.is_volume else 0)
-                    if score > best_score:
+                    if score > best_score or (score == best_score and face_loss_pct < best_face_loss_pct):
                         best_score = score
                         best_mesh = repaired_mesh
-                        logger.info(f"    New best mesh (score: {score})")
+                        best_face_loss_pct = face_loss_pct
+                        logger.info(f"    New best mesh (score: {score}, face_loss: {face_loss_pct:.1f}%)")
                     
                     attempt_result.error = f"Slicer issues remain"
             elif geom_valid.is_printable and not geom_acceptable:
                 logger.warning(f"    [X] Geometry loss: {geom_loss_reason}")
                 attempt_result.error = f"Geometry loss: {geom_loss_reason}"
                 attempt_result.geometry_valid = False
+                
+                # For reconstruction mode, track this as potential best even if exceeds threshold
+                if is_extreme_fragmented and repaired_mesh.is_watertight:
+                    score = 2  # watertight + volume
+                    if score > best_score or (score == best_score and face_loss_pct < best_face_loss_pct):
+                        best_score = score
+                        best_mesh = repaired_mesh
+                        best_face_loss_pct = face_loss_pct
+                        logger.info(f"    Tracking as potential reconstruction candidate (face_loss: {face_loss_pct:.1f}%)")
             else:
                 logger.warning(f"    [X] Geometry invalid: {geom_valid.issues}")
                 attempt_result.error = f"Geometry invalid: {geom_valid.issues}"
@@ -721,17 +795,28 @@ def run_slicer_repair_loop(
                     
                     repaired_mesh = working_mesh
                     geom_valid = validate_geometry(repaired_mesh)
-                    geom_acceptable, _ = check_geometry_loss(original_mesh, repaired_mesh)
+                    geom_acceptable, _, face_loss_pct = check_geometry_loss(
+                        original_mesh, repaired_mesh,
+                        is_reconstruction_mode=is_extreme_fragmented,
+                        profile=profile
+                    )
                     
                     if geom_valid.is_printable and geom_acceptable:
                         slicer_result = validate_mesh(repaired_mesh, slicer=slicer, timeout=timeout, strict=True)
                         
                         if slicer_result.success:
-                            logger.info(f"    V EVOLVED PIPELINE SUCCESS!")
+                            logger.info(f"    [OK] EVOLVED PIPELINE SUCCESS!")
                             result.success = True
                             result.final_mesh = repaired_mesh
                             result.final_slicer_result = slicer_result
                             result.issues_resolved.append(f"[EVOLVED] {evolved.name}")
+                            result.geometry_loss_pct = face_loss_pct
+                            
+                            # Mark as reconstruction if significant geometry loss
+                            if face_loss_pct > 50:
+                                result.is_reconstruction = True
+                                result.reconstruction_method = f"[EVOLVED] {evolved.name}"
+                            
                             attempt_result.success = True
                             
                             # Record success for learning
@@ -808,17 +893,28 @@ def run_slicer_repair_loop(
                         
                         repaired_mesh = working_mesh
                         geom_valid = validate_geometry(repaired_mesh)
-                        geom_acceptable, _ = check_geometry_loss(original_mesh, repaired_mesh)
+                        geom_acceptable, _, face_loss_pct = check_geometry_loss(
+                            original_mesh, repaired_mesh,
+                            is_reconstruction_mode=is_extreme_fragmented,
+                            profile=profile
+                        )
                         
                         if geom_valid.is_printable and geom_acceptable:
                             slicer_result = validate_mesh(repaired_mesh, slicer=slicer, timeout=timeout, strict=True)
                             
                             if slicer_result.success:
-                                logger.info(f"    V NEW EVOLVED PIPELINE SUCCESS!")
+                                logger.info(f"    [OK] NEW EVOLVED PIPELINE SUCCESS!")
                                 result.success = True
                                 result.final_mesh = repaired_mesh
                                 result.final_slicer_result = slicer_result
                                 result.issues_resolved.append(f"[NEW EVOLVED] {new_evolved.name}")
+                                result.geometry_loss_pct = face_loss_pct
+                                
+                                # Mark as reconstruction if significant geometry loss
+                                if face_loss_pct > 50:
+                                    result.is_reconstruction = True
+                                    result.reconstruction_method = f"[NEW EVOLVED] {new_evolved.name}"
+                                
                                 attempt_result.success = True
                                 
                                 evolution_engine.record_pipeline_result(
@@ -846,6 +942,7 @@ def run_slicer_repair_loop(
     
     if not result.success:
         result.final_mesh = best_mesh if best_mesh is not None else original_mesh
+        result.geometry_loss_pct = best_face_loss_pct if best_mesh is not None else 0
         if not result.error:
             result.error = f"Failed after {result.total_attempts} pipeline attempts"
     

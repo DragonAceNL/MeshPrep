@@ -30,9 +30,14 @@ logger = logging.getLogger(__name__)
 
 # Default threshold values (used when no learning data available)
 DEFAULT_THRESHOLDS = {
-    # Geometry loss thresholds
+    # Geometry loss thresholds (for standard repair)
     "volume_loss_limit_pct": 30.0,
     "face_loss_limit_pct": 40.0,
+    
+    # Reconstruction thresholds (for extreme-fragmented meshes)
+    # These allow higher geometry loss because reconstruction creates new geometry
+    "reconstruction_face_loss_limit_pct": 95.0,  # Allow up to 95% face loss for reconstruction
+    "reconstruction_volume_loss_limit_pct": 80.0,  # Allow up to 80% volume loss for reconstruction
     
     # Decimation settings
     "decimation_trigger_faces": 100000,

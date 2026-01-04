@@ -217,6 +217,10 @@
                     <div class="stat-label">Already Clean</div>
                 </div>
                 <div class="stat-card">
+                    <div class="stat-value" style="color: #9b59b6;" id="reconstructed">0</div>
+                    <div class="stat-label">Reconstructed</div>
+                </div>
+                <div class="stat-card">
                     <div class="stat-value" id="successRate">0%</div>
                     <div class="stat-label">Success Rate</div>
                 </div>
@@ -359,6 +363,7 @@
             document.getElementById('failed').textContent = p.failed.toLocaleString();
             document.getElementById('escalations').textContent = p.escalations.toLocaleString();
             document.getElementById('precheckSkipped').textContent = (p.precheck_skipped || 0).toLocaleString();
+            document.getElementById('reconstructed').textContent = (p.reconstructed || 0).toLocaleString();
             document.getElementById('successRate').textContent = successRate.toFixed(1) + '%';
             document.getElementById('avgDuration').textContent = (p.avg_duration_ms / 1000).toFixed(1) + 's';
         }
