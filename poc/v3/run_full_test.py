@@ -1,4 +1,4 @@
-﻿# Copyright 2025 Allard Peper (Dragon Ace / DragonAceNL)
+# Copyright 2025 Allard Peper (Dragon Ace / DragonAceNL)
 # Licensed under the Apache License, Version 2.0 (see LICENSE).
 # This file is part of MeshPrep — https://github.com/DragonAceNL/MeshPrep
 
@@ -90,11 +90,6 @@ def main():
         "--status", "-s",
         action="store_true",
         help="Show current progress"
-    )
-    parser.add_argument(
-        "--ctm-priority",
-        action="store_true",
-        help="Process CTM meshes FIRST before other files"
     )
     parser.add_argument(
         "--learning-stats",
@@ -235,7 +230,6 @@ def main():
     run_batch_test(
         limit=args.limit,
         skip_existing=not args.fresh,
-        ctm_priority=args.ctm_priority,
         auto_optimize=not args.no_auto_optimize,
     )
 

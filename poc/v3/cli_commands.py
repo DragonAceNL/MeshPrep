@@ -1,6 +1,6 @@
 # Copyright 2025 Allard Peper (Dragon Ace / DragonAceNL)
 # Licensed under the Apache License, Version 2.0 (see LICENSE).
-# This file is part of MeshPrep — https://github.com/DragonAceNL/MeshPrep
+# This file is part of MeshPrep ï¿½ https://github.com/DragonAceNL/MeshPrep
 
 """
 CLI display and interaction commands for POC v3.
@@ -23,7 +23,7 @@ from meshprep_poc.quality_feedback import get_quality_engine, QualityRating
 
 from config import (
     REPORTS_PATH, FILTERS_PATH, FIXED_OUTPUT_PATH,
-    THINGI10K_PATH, CTM_MESHES_PATH, SUPPORTED_FORMATS,
+    THINGI10K_PATH, SUPPORTED_FORMATS,
 )
 from progress_tracker import load_progress
 from mesh_utils import ADAPTIVE_THRESHOLDS_AVAILABLE
@@ -397,7 +397,7 @@ def reprocess_single_model(model_id: str):
     # Find model file in CTM or raw_meshes
     model_path = None
     for ext in SUPPORTED_FORMATS:
-        for search_path in [CTM_MESHES_PATH, THINGI10K_PATH]:
+        for search_path in [THINGI10K_PATH]:
             candidate = search_path / f"{model_id}{ext}"
             if candidate.exists():
                 model_path = candidate
