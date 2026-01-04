@@ -54,6 +54,18 @@ NumPy
   Website: https://numpy.org/
   Copyright: NumPy developers
 
+SciPy
+  License: BSD 3-Clause License
+  Website: https://scipy.org/
+  Copyright: SciPy developers
+
+scikit-image
+  License: BSD 3-Clause License
+  Website: https://scikit-image.org/
+  Copyright: scikit-image developers
+  Note: Used for morphological operations in voxel-based surface
+        reconstruction for extremely fragmented meshes.
+
 Blender (optional, for escalation features)
   License: GPL v3
   Website: https://www.blender.org/

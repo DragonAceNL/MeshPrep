@@ -23,8 +23,74 @@ MeshPrep/
 ├── filters/           # Filter script presets (JSON/YAML)
 ├── tests/             # Unit and integration tests
 │   └── fixtures/      # Test STL files
-└── docs/              # Documentation
+├── docs/              # Documentation (single source of truth per topic)
+└── learning_data/     # Self-learning databases (SQLite)
 ```
+
+---
+
+## ⚠️ CRITICAL: Single Source of Truth Principle
+
+**This is the most important documentation rule for MeshPrep.**
+
+### The Rule
+
+Each topic has ONE authoritative document. All other documents must **reference** it, never duplicate the information.
+
+### Why This Matters
+
+1. **Prevents token limit errors** — Duplicated content causes prompt overflow
+2. **Ensures consistency** — One place to update, no conflicting information
+3. **Easier maintenance** — Changes only need to be made once
+4. **Clear ownership** — Everyone knows where to find/update information
+
+### Source of Truth Map
+
+| Topic | Authoritative Document |
+|-------|------------------------|
+| **Overview & high-level flow** | `docs/functional_spec.md` |
+| **CLI commands & options** | `docs/cli_reference.md` |
+| **Filter actions catalog** | `docs/filter_actions.md` |
+| **Model profiles** | `docs/model_profiles.md` |
+| **GUI layout & theming** | `docs/gui_spec.md` |
+| **Validation criteria** | `docs/validation.md` |
+| **Repair tool behavior** | `docs/repair_strategy_guide.md` |
+| **Pipeline stages** | `docs/repair_pipeline.md` |
+| **Learning systems** | `docs/learning_systems.md` |
+| **Benchmark testing** | `docs/thingi10k_testing.md` |
+| **Code style & headers** | `docs/CODE_STYLE.md` |
+| **Third-party licenses** | `NOTICE` |
+| **Contribution process** | `CONTRIBUTING.md` |
+
+### ✅ Correct Pattern
+
+```markdown
+See [Filter Actions](filter_actions.md) for the complete action catalog.
+```
+
+### ❌ Incorrect Pattern
+
+```markdown
+The available actions are: trimesh_basic, fill_holes, validate...
+<!-- WRONG: This duplicates content from filter_actions.md -->
+```
+
+### When Writing Documentation
+
+1. **Before adding content** — Check if it belongs in an existing source-of-truth document
+2. **If it does** — Add it there, then reference it from other docs
+3. **If it doesn't** — Consider if a new focused document is needed
+4. **Keep documents focused** — Each doc should cover ONE topic well
+5. **Use tables over prose** — More compact, easier to scan
+6. **Remove verbose code examples** — Implementation belongs in source files
+
+### When Updating Documentation
+
+1. **Update the source-of-truth document first**
+2. **Check all cross-references** — Ensure they still point to valid sections
+3. **Don't duplicate** — If you find yourself copying content, stop and reference instead
+
+---
 
 ## Code Style Requirements
 
@@ -49,18 +115,6 @@ Every new Python file MUST start with this header:
 ### Example Function
 
 ```python
-# Copyright 2025 Allard Peper (Dragon Ace / DragonAceNL)
-# Licensed under the Apache License, Version 2.0 (see LICENSE).
-# This file is part of MeshPrep — https://github.com/DragonAceNL/MeshPrep
-
-"""Module for mesh validation checks."""
-
-from pathlib import Path
-from typing import Optional
-
-import trimesh
-
-
 def check_watertight(mesh: trimesh.Trimesh) -> bool:
     """Check if a mesh is watertight (closed, no holes).
 
@@ -73,140 +127,23 @@ def check_watertight(mesh: trimesh.Trimesh) -> bool:
     return mesh.is_watertight
 ```
 
+---
+
 ## Key Technologies
 
 | Component | Library | Notes |
 |-----------|---------|-------|
 | Mesh processing | `trimesh` | Primary mesh library |
 | Mesh repair | `pymeshfix` | Hole filling, manifold fixes |
-| Surface reconstruction | `open3d` | Screened Poisson, ball pivoting (for extreme fragmentation) |
+| Surface reconstruction | `open3d` | Screened Poisson, ball pivoting |
+| Morphological reconstruction | `scikit-image` | Voxel-based reconstruction |
+| Spatial operations | `scipy` | KD-trees, Hausdorff distance |
 | File I/O | `meshio` | Additional format support |
 | GUI | `PySide6` | Qt for Python |
 | Testing | `pytest` | Test framework |
 | Optional | Blender (external) | Escalation for difficult meshes |
 
-## Filter Scripts
-
-Filter scripts are JSON/YAML documents that define repair workflows:
-
-```json
-{
-  "name": "basic-cleanup",
-  "version": "1.0.0",
-  "actions": [
-    { "name": "trimesh_basic", "params": {} },
-    { "name": "fill_holes", "params": { "max_hole_size": 1000 } },
-    { "name": "validate", "params": {} }
-  ]
-}
-```
-
-Actions are registered in the action registry and map to implementations.
-
-## GUI Components (PySide6)
-
-- Main window uses a stacked widget for step navigation
-- Filter Script Editor uses QSplitter with three panels
-- Long operations run in QThread with signals for progress updates
-- Theme colors defined in `docs/gui_spec.md`
-
-### Dark Theme Colors
-
-| Element | Color |
-|---------|-------|
-| Background | `#0f1720` |
-| Panel | `#111822` |
-| Accent | `#4fe8c4` |
-| Text | `#dff6fb` |
-| Button | `#1b2b33` |
-
-## Testing
-
-- Unit tests in `tests/test_*.py`
-- Test fixtures (STL files) in `tests/fixtures/`
-- Run tests: `pytest tests/`
-- Each model profile should have at least one test fixture
-
-## Common Patterns
-
-### Action Implementation
-
-```python
-def action_fill_holes(mesh: trimesh.Trimesh, params: dict) -> trimesh.Trimesh:
-    """Fill holes in a mesh.
-
-    Args:
-        mesh: Input mesh.
-        params: Action parameters (max_hole_size, method).
-
-    Returns:
-        Modified mesh with holes filled.
-    """
-    max_size = params.get("max_hole_size", 1000)
-    trimesh.repair.fill_holes(mesh)
-    return mesh
-```
-
-### GUI Signal Pattern
-
-```python
-class WorkerThread(QThread):
-    progress = Signal(int, str)  # (percentage, message)
-    finished = Signal(bool, str)  # (success, result_or_error)
-
-    def run(self):
-        try:
-            # Long operation
-            self.progress.emit(50, "Processing...")
-            self.finished.emit(True, "Complete")
-        except Exception as e:
-            self.finished.emit(False, str(e))
-```
-
-## Documentation
-
-- `docs/functional_spec.md` — Requirements and high-level design
-- `docs/gui_spec.md` — GUI specification with mockups
-- `docs/model_profiles.md` — Model profile definitions
-- `docs/CODE_STYLE.md` — Code style and header requirements
-
-### Single Source of Truth
-
-Maintain ONE authoritative document for each topic. Other documents should **reference** the source document rather than duplicating information.
-
-| Topic | Source of Truth |
-|-------|----------------|
-| Filter actions catalog | `docs/functional_spec.md` |
-| GUI layout and theming | `docs/gui_spec.md` |
-| Model profiles | `docs/model_profiles.md` |
-| Code style and headers | `docs/CODE_STYLE.md` |
-| **Repair strategies & tool behavior** | `docs/repair_strategy_guide.md` |
-| Third-party licenses | `NOTICE` |
-| Contribution process | `CONTRIBUTING.md` |
-
-**Example — correct:**
-```markdown
-See `docs/functional_spec.md` for the complete action catalog with parameters.
-```
-
-**Example — incorrect:**
-```markdown
-The available actions are: trimesh_basic, fill_holes, validate...  <!-- duplicating info -->
-```
-
-### Keep Documentation Up to Date
-
-Before generating or modifying code:
-
-1. **Check** that referenced documentation is current and accurate
-2. **Update** docs when adding features, changing APIs, or modifying behavior
-3. **Verify** cross-references still point to valid sections
-4. **Flag** any outdated information found during development
-
-When making changes that affect documented behavior:
-- Update the source-of-truth document first
-- Ensure all referencing documents still make sense
-- Add changelog entries for significant changes
+---
 
 ## Do NOT
 
@@ -215,78 +152,55 @@ When making changes that affect documented behavior:
 - Do not forget the license header on new files
 - Do not bundle or link to Blender — invoke as subprocess only
 - Do not modify third-party library code
-- Do not duplicate information — reference the source-of-truth document instead
-- Do not leave documentation outdated after making changes
-- Do not make assumptions about the situation but also don't over-gather context when you have sufficient information to proceed.
-- **Do not delete existing test results** — POC v3 batch tests take many hours to run. Never use `--fresh` flag or delete reports/fixed files when testing. The auto-resume feature will skip already-processed files.
+- **Do not duplicate information** — reference the source-of-truth document instead
+- **Do not leave documentation outdated** after making changes
+- Do not make assumptions — gather context when needed
+- **Do not delete existing test results** — POC v3 batch tests take hours to run
+
+---
 
 ## When Adding or Removing Dependencies
 
-**ALWAYS update ALL of the following files when adding, removing, or updating a dependency:**
+**ALWAYS update ALL of the following files:**
 
-1. **`poc/v2/requirements.txt`** — Add/update the package with version constraint
-2. **`NOTICE`** — Add third-party attribution (license, website, copyright)
-3. **`docs/functional_spec.md`** — Update:
-   - Scope/Tools section if it's a core tool
-   - Tool Compatibility Matrix (`config/compatibility.json` example)
-   - `checkenv.py` output example
-   - Filter Library Action Catalog if adding new actions
-4. **`.github/copilot-instructions.md`** — Update Key Technologies table
-5. **`poc/v3/learning_status.html`** — Package list in Environment section (if status page exists)
+1. **`poc/v2/requirements.txt`** — Package with version constraint
+2. **`NOTICE`** — Third-party attribution
+3. **`docs/functional_spec.md`** — If it's a core tool
+4. **`.github/copilot-instructions.md`** — Key Technologies table
 
-### Example Checklist for Adding a New Dependency
-
-```markdown
-- [ ] requirements.txt: Added `newpackage>=1.0.0`
-- [ ] NOTICE: Added attribution with license (MIT/BSD/Apache/etc.)
-- [ ] functional_spec.md: Updated Scope, compatibility.json, checkenv output
-- [ ] copilot-instructions.md: Updated Key Technologies table
-- [ ] learning_status.html: Added to package list (if applicable)
-```
+---
 
 ## Helpful Context
 
 When generating code for MeshPrep:
 
-1. **Check documentation first** — verify specs are current before implementing
-2. Check `docs/functional_spec.md` for the action catalog
-3. Check `docs/gui_spec.md` for UI component specifications
-4. Check `docs/model_profiles.md` for profile detection logic
-5. Check `docs/repair_strategy_guide.md` for repair tool behavior and best practices
-6. Follow the patterns in existing code
-7. Always add the license header to new files
-8. **Update docs** if your changes affect documented behavior
+1. **Check the source-of-truth document first** for the topic you're working on
+2. Follow patterns in existing code
+3. Always add the license header to new files
+4. **Update docs** if your changes affect documented behavior
+5. Reference docs, don't duplicate content
+
+---
 
 ## Repair Strategy Guide Maintenance
 
-The `docs/repair_strategy_guide.md` document captures critical lessons learned about mesh repair. **You MUST update this document** when:
+The `docs/repair_strategy_guide.md` captures critical lessons learned. **Update it when:**
 
-1. **Discovering new tool behavior** — e.g., how a tool handles edge cases
-2. **Finding bugs or limitations** — document workarounds
-3. **Adding new repair actions** — document parameters, risks, and best practices
-4. **Observing unexpected results** — capture the issue and solution
-5. **Changing repair algorithms** — update the optimal algorithm section
-6. **Testing new model categories** — add category-specific guidance
+- Discovering new tool behavior or edge cases
+- Finding bugs or limitations (document workarounds)
+- Adding new repair actions
+- Observing unexpected results
+- Testing new model categories
 
-### What to Document
+---
 
-- Tool parameters and their effects
-- When to use / not use each tool
-- Performance characteristics (speed, memory)
-- Known issues and workarounds
-- Detection strategies for problematic meshes
-- Red flags that indicate repair failure
+## Quick Reference
 
-### Example Update
-
-If you discover that `pymeshfix` fails on meshes with > 100 self-intersections:
-
-```markdown
-### Issue: pymeshfix Fails on Heavily Self-Intersecting Meshes
-
-**Symptom:** pymeshfix removes > 80% of geometry on meshes with many self-intersections.
-
-**Threshold:** Observed failure when self-intersections > 100.
-
-**Workaround:** Escalate directly to Blender for meshes with high self-intersection count.
-```
+| Need to know about... | Check this document |
+|----------------------|---------------------|
+| What actions exist | `docs/filter_actions.md` |
+| CLI options | `docs/cli_reference.md` |
+| Validation thresholds | `docs/validation.md` |
+| Which tool to use when | `docs/repair_strategy_guide.md` |
+| Learning system details | `docs/learning_systems.md` |
+| GUI components | `docs/gui_spec.md` |
