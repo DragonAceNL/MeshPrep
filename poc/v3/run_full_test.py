@@ -521,7 +521,7 @@ def save_filter_info(
             # Include slicer validation results if available
             if attempt.slicer_result:
                 attempt_info["slicer_validation"] = {
-                    "valid": attempt.slicer_result.valid,
+                    "success": attempt.slicer_result.success,
                     "issues": attempt.slicer_result.issues,
                     "warnings": attempt.slicer_result.warnings[:5] if attempt.slicer_result.warnings else [],  # Limit
                     "errors": attempt.slicer_result.errors[:5] if attempt.slicer_result.errors else [],  # Limit
@@ -1929,25 +1929,8 @@ def generate_reports_index(results: List[TestResult] = None):
         .skipped {{ color: #3498db; }}
         .escalated {{ color: #f39c12; }}
         
-        .change-positive {{ color: #e74c3c; }}  /* Red for increase */
-        .change-negative {{ color: #2ecc71; }}  /* Green for decrease */
-        .change-neutral {{ color: #888; }}
-        
         a {{ color: #4fe8c4; text-decoration: none; }}
         a:hover {{ text-decoration: underline; }}
-        
-        .thumbnail {{
-            width: 60px;
-            height: 60px;
-            object-fit: contain;
-            background: #0f1720;
-            border-radius: 4px;
-        }}
-        
-        .search-box {{
-            flex: 1;
-            min-width: 200px;
-        }}
     </style>
 </head>
 <body>
@@ -2118,7 +2101,7 @@ def generate_reports_index(results: List[TestResult] = None):
 </html>
 """
     
-    with open(index_path, "w", encoding="utf-8") as f:
+    with open(index_path, "w", encoding='utf-8') as f:
         f.write(html)
     
     logger.info(f"Generated reports index: {index_path}")
@@ -2711,6 +2694,59 @@ def rate_model_by_fingerprint(fingerprint: str, rating: int, comment: Optional[s
     print("\n" + "=" * 60)
 
 
+def reprocess_single_model(model_id: str):
+    """Reprocess a specific model by ID.
+    
+    Finds the model file, deletes existing report/filter/fixed files, and reprocesses.
+    
+    Args:
+        model_id: Model ID (filename without extension, e.g., "100i", "100027")
+    """
+    print(f"Reprocessing model: {model_id}")
+    
+    # Find model file in CTM or raw_meshes
+    model_path = None
+    for ext in SUPPORTED_FORMATS:
+        for search_path in [CTM_MESHES_PATH, THINGI10K_PATH]:
+            candidate = search_path / f"{model_id}{ext}"
+            if candidate.exists():
+                model_path = candidate
+                break
+        if model_path:
+            break
+    
+    if not model_path:
+        print(f"[ERROR] Model not found: {model_id}")
+        print(f"Searched: {CTM_MESHES_PATH}, {THINGI10K_PATH}")
+        return
+    
+    print(f"Found: {model_path}")
+    
+    # Delete existing files
+    for path, label in [
+        (REPORTS_PATH / f"{model_id}.html", "Report"),
+        (FILTERS_PATH / f"{model_id}.json", "Filter"),
+        (FIXED_OUTPUT_PATH / f"{model_id}.stl", "Fixed"),
+    ]:
+        if path.exists():
+            path.unlink()
+            print(f"Deleted: {label}")
+    
+    # Process
+    print("-" * 40)
+    result = process_single_model(model_path)
+    print("-" * 40)
+    
+    # Summary
+    status = "SUCCESS" if result.success else "FAILED"
+    print(f"Result: {status}")
+    print(f"Filter: {result.filter_used}")
+    print(f"Duration: {result.duration_ms/1000:.1f}s")
+    print(f"Fingerprint: {result.model_fingerprint}")
+    if result.error:
+        print(f"Error: {result.error}")
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Run MeshPrep repair against all Thingi10K models (auto-resumes by default)"
@@ -2840,33 +2876,34 @@ def main():
     
     if args.threshold_stats:
         if ADAPTIVE_THRESHOLDS_AVAILABLE:
-            adaptive = get_adaptive_thresholds()
-            stats = adaptive.get_stats_summary()
-            
-            print("=" * 60)
-            print("Adaptive Thresholds Statistics")
-            print("=" * 60)
-            print(f"\nTotal observations: {stats['total_observations']:,}")
-            print(f"Thresholds adjusted: {stats['thresholds_adjusted']} / {stats['total_thresholds']}")
-            
-            if stats['threshold_status']:
-                print(f"\nCurrent thresholds (changed from default marked with *):")
-                print(f"  {'Threshold':<35} {'Current':>12} {'Default':>12} {'Change':>10}")
-                print(f"  {'-'*35} {'-'*12} {'-'*12} {'-'*10}")
-                for t in stats['threshold_status']:
-                    marker = "*" if t['changed'] else " "
-                    change_str = f"{t['change_pct']:+.1f}%" if t['changed'] else "-"
-                    print(f"{marker} {t['name']:<35} {t['current']:>12.2f} {t['default']:>12.2f} {change_str:>10}")
-            
-            if stats['recent_adjustments']:
-                print(f"\nRecent adjustments:")
-                for adj in stats['recent_adjustments'][:5]:
-                    print(f"  {adj['threshold']}: {adj['old_value']:.2f} -> {adj['new_value']:.2f}")
-        except Exception as e:
-            print(f"Error loading adaptive thresholds: {e}")
-    else:
-        print("Adaptive thresholds not available.")
-    return
+            try:
+                adaptive = get_adaptive_thresholds()
+                stats = adaptive.get_stats_summary()
+                
+                print("=" * 60)
+                print("Adaptive Thresholds Statistics")
+                print("=" * 60)
+                print(f"\nTotal observations: {stats['total_observations']:,}")
+                print(f"Thresholds adjusted: {stats['thresholds_adjusted']} / {stats['total_thresholds']}")
+                
+                if stats['threshold_status']:
+                    print(f"\nCurrent thresholds (changed from default marked with *):")
+                    print(f"  {'Threshold':<35} {'Current':>12} {'Default':>12} {'Change':>10}")
+                    print(f"  {'-'*35} {'-'*12} {'-'*12} {'-'*10}")
+                    for t in stats['threshold_status']:
+                        marker = "*" if t['changed'] else " "
+                        change_str = f"{t['change_pct']:+.1f}%" if t['changed'] else "-"
+                        print(f"{marker} {t['name']:<35} {t['current']:>12.2f} {t['default']:>12.2f} {change_str:>10}")
+                
+                if stats['recent_adjustments']:
+                    print(f"\nRecent adjustments:")
+                    for adj in stats['recent_adjustments'][:5]:
+                        print(f"  {adj['threshold']}: {adj['old_value']:.2f} -> {adj['new_value']:.2f}")
+            except Exception as e:
+                print(f"Error loading adaptive thresholds: {e}")
+        else:
+            print("Adaptive thresholds not available.")
+        return
     
     if args.quality_stats:
         show_quality_stats()
