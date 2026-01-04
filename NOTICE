@@ -32,6 +32,13 @@ pymeshfix
   Website: https://github.com/pyvista/pymeshfix
   Copyright: PyVista developers
 
+Open3D
+  License: MIT License
+  Website: http://www.open3d.org/
+  Copyright: Open3D team, Intel ISL
+  Note: Used for advanced surface reconstruction (Screened Poisson,
+        Ball Pivoting, Alpha Shape) on extremely fragmented meshes.
+
 meshio
   License: MIT License
   Website: https://github.com/nschloe/meshio

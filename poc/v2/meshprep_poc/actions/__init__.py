@@ -21,4 +21,10 @@ try:
 except ImportError:
     pass  # pymeshlab not installed
 
+# Reconstruction actions for extreme fragmentation (optional - requires open3d)
+try:
+    from .reconstruction_actions import *
+except ImportError:
+    pass  # open3d not installed
+
 __all__ = ["ActionRegistry", "register_action"]

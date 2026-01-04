@@ -17,7 +17,7 @@ Goal
 Scope
 - Input: 3D mesh files in various formats. While the primary workflow targets STL files (ASCII or binary), MeshPrep accepts models in any format supported by `trimesh` or `meshio` and automatically converts them to STL for processing. The tool will scan the selected model to produce a suggested, generic filter script that fits the model's profile; users can review and tweak the suggested filter script before applying it. The software will not accept a directory of files as the primary workflow — each model is treated individually to allow per-model tuning and reproducible presets.
 - Output: cleaned STL files suitable for slicing and a CSV/JSON report with diagnostics and the chosen filter script for the model.
-- Tools: Python-based stack using `trimesh`, `pymeshfix`, `meshio`. External tools (Blender, slicers) are automatically detected and installed if missing — no manual setup required.
+- Tools: Python-based stack using `trimesh`, `pymeshfix`, `meshio`, `open3d` (for advanced surface reconstruction). External tools (Blender, slicers) are automatically detected and installed if missing — no manual setup required.
 
 Supported Input Formats
 -----------------------
@@ -763,6 +763,27 @@ The following is the initial catalog of filter actions available in MeshPrep, gr
 | `export_ply` | trimesh | Export mesh to PLY format. | `path` (string) |
 | `export_3mf` | meshio | Export mesh to 3MF format (preferred for 3D printing). | `path` (string) |
 
+#### Category: Surface Reconstruction (Extreme Fragmentation)
+
+These actions are essential for fixing extremely fragmented meshes (1000+ disconnected bodies) that cannot be repaired with traditional methods. They treat the mesh as a point cloud and reconstruct the surface from scratch.
+
+| Action | Tool | Description | Parameters |
+|--------|------|-------------|------------|
+| `fragment_aware_reconstruct` | open3d/internal | Intelligent fragment analysis - auto-selects best reconstruction method based on mesh characteristics. | `min_fragment_faces` (int, default 10), `merge_distance` (float, auto) |
+| `open3d_screened_poisson` | open3d | Screened Poisson surface reconstruction - gold standard for point cloud to mesh. Best quality for organic shapes. | `depth` (int, 8-12, default 9), `width` (int, default 0), `scale` (float, default 1.1), `linear_fit` (bool) |
+| `open3d_ball_pivoting` | open3d | Ball Pivoting Algorithm - rolls a ball over point cloud to create triangles. Good for uniform point density. | `radii_factor` (float, default 1.0) |
+| `open3d_alpha_shape` | open3d | Alpha shape surface reconstruction - creates shape from point cloud using alpha complex. Good for varying density. | `alpha` (float, auto if None) |
+| `morphological_voxel_reconstruct` | trimesh/scipy | Voxelizes mesh, applies morphological dilation to fill gaps between fragments, then erosion to restore shape. | `resolution` (int, default 100), `dilation_iterations` (int, default 2), `erosion_iterations` (int, default 1) |
+| `shrinkwrap_reconstruct` | trimesh/scipy | Creates envelope mesh (icosphere) and iteratively projects it onto fragment point cloud. Similar to Blender's shrinkwrap modifier. | `subdivision_level` (int, 2-5, default 3), `iterations` (int, default 50), `method` (string: "project", "nearest") |
+
+**When to use these actions:**
+- Meshes with 1000+ disconnected bodies (extreme fragmentation)
+- CTM files from marketplaces that are "mesh soup"
+- Scanned data that failed triangulation
+- Any mesh where traditional repair destroys the geometry
+
+**Note:** These actions are computationally intensive and may take longer than standard repairs. They are automatically selected by the `extreme-fragmented` profile.
+
 #### Category: Blender-Specific (Escalation)
 
 | Action | Tool | Description | Parameters |
@@ -1427,7 +1448,9 @@ MeshPrep maintains a compatibility matrix in `config/compatibility.json` that de
     "trimesh": {"min": "4.0.0", "recommended": "4.5.0", "max": null},
     "pymeshfix": {"min": "0.16.0", "recommended": "0.17.0", "max": null},
     "pymeshlab": {"min": "2023.12", "recommended": "2025.7", "max": null},
-    "numpy": {"min": "1.24.0", "recommended": "2.4.0", "max": null}
+    "open3d": {"min": "0.18.0", "recommended": "0.19.0", "max": null},
+    "numpy": {"min": "1.24.0", "recommended": "2.4.0", "max": null},
+    "scipy": {"min": "1.10.0", "recommended": "1.14.0", "max": null}
   },
   "external_tools": {
     "blender": {"min": "3.6.0", "recommended": "4.2.0", "max": null},
@@ -1620,7 +1643,9 @@ Required Packages:
   trimesh      4.5.0   OK (recommended: 4.5.0)
   pymeshfix    0.17.0  OK (recommended: 0.17.0)
   pymeshlab    2025.7  OK (recommended: 2025.7)
+  open3d       0.19.0  OK (recommended: 0.19.0)
   numpy        2.4.0   OK (recommended: 2.4.0)
+  scipy        1.14.0  OK (recommended: 1.14.0)
 
 External Tools:
   blender      4.2.0   OK (recommended: 4.2.0)
@@ -1681,6 +1706,7 @@ The following thresholds are dynamically learned:
 | `face_loss_limit_pct` | 40.0 | Maximum face count loss (%) before flagging significant geometry loss |
 | `decimation_trigger_faces` | 100,000 | Face count above which decimation is triggered |
 | `decimation_target_faces` | 100,000 | Target face count for decimation |
+| `body_count_extreme_fragmented` | 1,000 | Body count threshold for "extreme-fragmented" profile (needs reconstruction) |
 | `body_count_fragmented` | 10 | Body count threshold for "fragmented" profile detection |
 | `body_count_multi` | 1 | Body count threshold for "multi-body" profile detection |
 | `face_count_tiny` | 1,000 | Face count bucket boundary (tiny) |

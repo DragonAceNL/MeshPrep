@@ -19,10 +19,16 @@ networkx>=3.0  # Required by trimesh for some operations
 # Mesh repair (requires Python 3.11 or 3.12 for pre-built wheels)
 pymeshfix>=0.16.0
 
-# Spatial operations (for Hausdorff distance)
+# Surface reconstruction for extreme fragmentation
+# Open3D is MIT licensed (free and open source)
+# Required for: open3d_screened_poisson, open3d_ball_pivoting, open3d_alpha_shape
+# These are essential for fixing 1000+ body fragmented meshes
+open3d>=0.18.0
+
+# Spatial operations (for Hausdorff distance, morphological reconstruction)
 scipy>=1.10.0
 
-# Optional: better STL loading
+# Optional: better STL loading and CTM support
 meshio>=5.0.0
 
 # Testing and benchmarking

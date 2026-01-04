@@ -79,6 +79,7 @@ def check_watertight(mesh: trimesh.Trimesh) -> bool:
 |-----------|---------|-------|
 | Mesh processing | `trimesh` | Primary mesh library |
 | Mesh repair | `pymeshfix` | Hole filling, manifold fixes |
+| Surface reconstruction | `open3d` | Screened Poisson, ball pivoting (for extreme fragmentation) |
 | File I/O | `meshio` | Additional format support |
 | GUI | `PySide6` | Qt for Python |
 | Testing | `pytest` | Test framework |
@@ -218,6 +219,30 @@ When making changes that affect documented behavior:
 - Do not leave documentation outdated after making changes
 - Do not make assumptions about the situation but also don't over-gather context when you have sufficient information to proceed.
 - **Do not delete existing test results** — POC v3 batch tests take many hours to run. Never use `--fresh` flag or delete reports/fixed files when testing. The auto-resume feature will skip already-processed files.
+
+## When Adding or Removing Dependencies
+
+**ALWAYS update ALL of the following files when adding, removing, or updating a dependency:**
+
+1. **`poc/v2/requirements.txt`** — Add/update the package with version constraint
+2. **`NOTICE`** — Add third-party attribution (license, website, copyright)
+3. **`docs/functional_spec.md`** — Update:
+   - Scope/Tools section if it's a core tool
+   - Tool Compatibility Matrix (`config/compatibility.json` example)
+   - `checkenv.py` output example
+   - Filter Library Action Catalog if adding new actions
+4. **`.github/copilot-instructions.md`** — Update Key Technologies table
+5. **`poc/v3/learning_status.html`** — Package list in Environment section (if status page exists)
+
+### Example Checklist for Adding a New Dependency
+
+```markdown
+- [ ] requirements.txt: Added `newpackage>=1.0.0`
+- [ ] NOTICE: Added attribution with license (MIT/BSD/Apache/etc.)
+- [ ] functional_spec.md: Updated Scope, compatibility.json, checkenv output
+- [ ] copilot-instructions.md: Updated Key Technologies table
+- [ ] learning_status.html: Added to package list (if applicable)
+```
 
 ## Helpful Context
 

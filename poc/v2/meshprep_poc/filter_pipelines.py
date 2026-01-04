@@ -303,31 +303,49 @@ PROFILE_PIPELINES: Dict[str, List[FilterPipeline]] = {
     # NEW: Extreme fragmentation profile (>1000 bodies) - reconstruction only
     "extreme-fragmented": [
         FilterPipeline(
+            name="fragment-aware-reconstruct",
+            description="Intelligent fragment analysis and best reconstruction",
+            actions=[
+                {"action": "fragment_aware_reconstruct", "params": {}},
+                {"action": "fix_normals", "params": {}},
+            ],
+            priority=1,
+        ),
+        FilterPipeline(
+            name="open3d-screened-poisson",
+            description="Open3D Screened Poisson reconstruction (best quality)",
+            actions=[
+                {"action": "open3d_screened_poisson", "params": {"depth": 9}},
+                {"action": "fix_normals", "params": {}},
+            ],
+            priority=2,
+        ),
+        FilterPipeline(
+            name="morphological-voxel-extreme",
+            description="Morphological voxel reconstruction with gap filling",
+            actions=[
+                {"action": "morphological_voxel_reconstruct", "params": {"resolution": 150, "dilation_iterations": 3}},
+                {"action": "fix_normals", "params": {}},
+            ],
+            priority=3,
+        ),
+        FilterPipeline(
             name="voxel-reconstruct-extreme",
             description="Voxelize and reconstruct for 1000+ body meshes",
             actions=[
                 {"action": "voxelize_and_reconstruct", "params": {"pitch": "auto"}},
                 {"action": "fix_normals", "params": {}},
             ],
-            priority=1,
+            priority=4,
         ),
         FilterPipeline(
-            name="voxel-reconstruct-fine",
-            description="Finer voxel reconstruction",
+            name="shrinkwrap-reconstruct",
+            description="Shrinkwrap envelope reconstruction",
             actions=[
-                {"action": "voxelize_and_reconstruct", "params": {"pitch": 0.5}},
+                {"action": "shrinkwrap_reconstruct", "params": {"subdivision_level": 4, "iterations": 100}},
                 {"action": "fix_normals", "params": {}},
             ],
-            priority=2,
-        ),
-        FilterPipeline(
-            name="meshlab-poisson-extreme",
-            description="High-detail Poisson reconstruction",
-            actions=[
-                {"action": "meshlab_reconstruct_poisson", "params": {"depth": 10}},
-                {"action": "fix_normals", "params": {}},
-            ],
-            priority=3,
+            priority=5,
         ),
         FilterPipeline(
             name="meshlab-alpha-wrap",
@@ -336,7 +354,7 @@ PROFILE_PIPELINES: Dict[str, List[FilterPipeline]] = {
                 {"action": "meshlab_alpha_wrap", "params": {}},
                 {"action": "fix_normals", "params": {}},
             ],
-            priority=4,
+            priority=6,
         ),
         FilterPipeline(
             name="blender-remesh-extreme",
@@ -345,7 +363,7 @@ PROFILE_PIPELINES: Dict[str, List[FilterPipeline]] = {
                 {"action": "blender_remesh", "params": {"voxel_size": 0.005}},
                 {"action": "fix_normals", "params": {}},
             ],
-            priority=5,
+            priority=7,
         ),
         FilterPipeline(
             name="convex-hull-extreme",
@@ -354,7 +372,7 @@ PROFILE_PIPELINES: Dict[str, List[FilterPipeline]] = {
                 {"action": "convex_hull", "params": {}},
                 {"action": "fix_normals", "params": {}},
             ],
-            priority=6,
+            priority=8,
         ),
     ],
     
