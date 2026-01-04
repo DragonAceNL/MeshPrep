@@ -227,7 +227,7 @@
                 <a href="/dashboard">📊 Dashboard</a>
             </div>
             <div>
-                <span style="color: #888;">Last updated: 2026-01-04T00:00:09</span>
+                <span style="color: #888;">Last updated: 2026-01-04T01:32:57</span>
             </div>
         </div>
         
@@ -327,32 +327,149 @@
             <h2>📊 Learning Engine Summary</h2>
             <div class="stats-grid">
                 <div class="stat-card">
-                    <div class="stat-value">0</div>
+                    <div class="stat-value">11</div>
                     <div class="stat-label">Models Processed</div>
                 </div>
                 <div class="stat-card">
-                    <div class="stat-value">0</div>
+                    <div class="stat-value">8</div>
                     <div class="stat-label">Pipelines Tracked</div>
                 </div>
                 <div class="stat-card">
-                    <div class="stat-value">0</div>
+                    <div class="stat-value">8</div>
                     <div class="stat-label">Issue Patterns</div>
                 </div>
                 <div class="stat-card">
-                    <div class="stat-value">0</div>
+                    <div class="stat-value">1</div>
                     <div class="stat-label">Profiles Tracked</div>
                 </div>
             </div>
             <p class="data-path">Data: C:\Users\Dragon Ace\Source\repos\MeshPrep\learning_data</p>
         </div>
         
+            <div class="section">
+                <h2>🔧 Pipeline Performance</h2>
+                <p class="section-desc">Success rates for each repair pipeline based on learned data.</p>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Pipeline</th>
+                            <th>Success Rate</th>
+                            <th>Attempts</th>
+                            <th>Successes</th>
+                            <th>Failures</th>
+                            <th>Avg Duration</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            
+                        <tr>
+                            <td><code>make-manifold-simple</code></td>
+                            <td class="danger">0.0%</td>
+                            <td>11</td>
+                            <td>0</td>
+                            <td>11</td>
+                            <td>21442ms</td>
+                        </tr>
+                
+                        <tr>
+                            <td><code>conservative-per-component</code></td>
+                            <td class="danger">0.0%</td>
+                            <td>11</td>
+                            <td>0</td>
+                            <td>11</td>
+                            <td>48808ms</td>
+                        </tr>
+                
+                        <tr>
+                            <td><code>minimal-fragmented</code></td>
+                            <td class="danger">0.0%</td>
+                            <td>11</td>
+                            <td>0</td>
+                            <td>11</td>
+                            <td>24405ms</td>
+                        </tr>
+                
+                        <tr>
+                            <td><code>normals-only-fragmented</code></td>
+                            <td class="danger">0.0%</td>
+                            <td>11</td>
+                            <td>0</td>
+                            <td>11</td>
+                            <td>19073ms</td>
+                        </tr>
+                
+                        <tr>
+                            <td><code>generic-basic</code></td>
+                            <td class="danger">0.0%</td>
+                            <td>11</td>
+                            <td>0</td>
+                            <td>11</td>
+                            <td>20649ms</td>
+                        </tr>
+                
+                        <tr>
+                            <td><code>generic-fill-holes</code></td>
+                            <td class="danger">0.0%</td>
+                            <td>11</td>
+                            <td>0</td>
+                            <td>11</td>
+                            <td>24279ms</td>
+                        </tr>
+                
+                        <tr>
+                            <td><code>generic-conservative</code></td>
+                            <td class="danger">0.0%</td>
+                            <td>11</td>
+                            <td>0</td>
+                            <td>11</td>
+                            <td>48585ms</td>
+                        </tr>
+                
+                        <tr>
+                            <td><code>[NEW EVOLVED] evolved-fix_winding-fill_holes-ac57ff62</code></td>
+                            <td class="danger">0.0%</td>
+                            <td>1</td>
+                            <td>0</td>
+                            <td>1</td>
+                            <td>18974ms</td>
+                        </tr>
+                
+                    </tbody>
+                </table>
+            </div>
+            
+            <div class="section">
+                <h2>📁 Model Profile Statistics</h2>
+                <p class="section-desc">Success rates grouped by detected model profile (mesh characteristics).</p>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Profile</th>
+                            <th>Total Models</th>
+                            <th>Fix Rate</th>
+                            <th>Escalation Rate</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            
+                        <tr>
+                            <td><code>fragmented</code></td>
+                            <td>11</td>
+                            <td class="danger">0.0%</td>
+                            <td>100.0%</td>
+                        </tr>
+                
+                    </tbody>
+                </table>
+            </div>
+            
         
         
         <div class="section">
             <h2>🧬 Pipeline Evolution Summary</h2>
             <div class="stats-grid">
                 <div class="stat-card evolved">
-                    <div class="stat-value">0</div>
+                    <div class="stat-value">1</div>
                     <div class="stat-label">Evolved Pipelines</div>
                 </div>
                 <div class="stat-card evolved">
@@ -360,16 +477,37 @@
                     <div class="stat-label">Successful (≥50%)</div>
                 </div>
                 <div class="stat-card evolved">
-                    <div class="stat-value">0</div>
+                    <div class="stat-value">2</div>
                     <div class="stat-label">Actions Tracked</div>
                 </div>
                 <div class="stat-card evolved">
-                    <div class="stat-value">Gen 0</div>
+                    <div class="stat-value">Gen 1</div>
                     <div class="stat-label">Current Generation</div>
                 </div>
             </div>
         </div>
         
+            <div class="section">
+                <h2>🧪 Evolved Pipeline Combinations</h2>
+                <p class="section-desc">New pipeline combinations discovered through evolution.</p>
+                <div class="evolved-list">
+            
+                    <div class="evolved-card">
+                        <div class="evolved-header">
+                            <span class="evolved-name">evolved-fix_winding-fill_holes-ac57ff62</span>
+                            <span class="evolved-gen">Gen 1</span>
+                        </div>
+                        <div class="evolved-actions">fix_winding → fill_holes</div>
+                        <div class="evolved-stats">
+                            <span class="danger">0.0% success</span>
+                            <span>0 attempts</span>
+                            <span>0ms avg</span>
+                        </div>
+                    </div>
+                
+                </div>
+            </div>
+            
         
         
         <div class="section">
@@ -388,7 +526,7 @@
                     <div class="stat-label">Active Profiles</div>
                 </div>
                 <div class="stat-card">
-                    <div class="stat-value">0</div>
+                    <div class="stat-value">8</div>
                     <div class="stat-label">Clusters</div>
                 </div>
                 <div class="stat-card">
@@ -400,7 +538,13 @@
                     <div class="stat-label">Avg Success</div>
                 </div>
             </div>
-        </div>
+        
+            <div class="info-box" style="margin-top: 15px;">
+                <strong>8</strong> clusters with 
+                <strong>11</strong> models awaiting profile assignment.
+                Run profile discovery to create new profiles.
+            </div>
+            </div>
         
         <p class="refresh-note">This page auto-refreshes every 60 seconds. <a href="javascript:location.reload()">Refresh now</a></p>
     </div>
