@@ -607,6 +607,7 @@ Before deploying any repair strategy changes:
 │    • is_watertight? is_volume?                              │
 │    • Face loss < 50%? Bbox change < 30%?                    │
 │    • STRICT slicer validation (--info mode)                 │
+│    • QUALITY RATING (does it look like original?)           │
 │                                                             │
 │  STEP 4: Escalate if needed:                                │
 │    • Blender available? → blender-remesh                    │
@@ -618,6 +619,7 @@ Before deploying any repair strategy changes:
 │    ⚠️ Components: many → 1                                  │
 │    ⚠️ Volume change > 50%                                   │
 │    ⚠️ Face count INCREASE > 500% after Blender remesh       │
+│    ⚠️ QUALITY RATING < 3 (visual inspection fail)           │
 │                                                             │
 │  NEVER:                                                     │
 │    ❌ Use full-repair on multi-component without checking   │
@@ -634,6 +636,57 @@ Before deploying any repair strategy changes:
 │                                                             │
 └─────────────────────────────────────────────────────────────┘
 ```
+
+---
+
+## Visual Quality Feedback System
+
+A model can pass all technical validation (watertight, manifold, slicer-validated) but be **visually destroyed**. The Visual Quality Feedback System learns from user ratings to:
+
+1. **Predict quality scores** before completing repairs
+2. **Flag suspicious repairs** that may need review
+3. **Penalize pipelines** that produce visually-poor results
+4. **Learn profile-specific tolerances**
+
+### Quality Rating Scale
+
+| Score | Label | Description |
+|-------|-------|-------------|
+| **5** | Perfect | Indistinguishable from original |
+| **4** | Good | Minor smoothing, fully usable |
+| **3** | Acceptable | Noticeable changes but recognizable |
+| **2** | Poor | Significant detail loss |
+| **1** | Rejected | Unrecognizable or destroyed |
+
+### When to Flag for Review
+
+- Predicted quality < 3.0 with high confidence
+- Volume loss > profile's learned threshold
+- Pipeline has historically poor quality for this profile type
+- Escalation to Blender (aggressive repairs)
+
+### Pipeline Quality Penalties
+
+The learning engine applies quality-weighted scoring:
+
+| Avg Rating | Effect |
+|------------|--------|
+| ≥ 4.0 | +0.3 bonus (prefer this pipeline) |
+| 3.0-3.9 | Neutral |
+| 2.0-2.9 | -0.8 penalty (avoid for quality) |
+| < 2.0 | -1.5 severe penalty |
+
+### Key Insight: Blender Remesh Quality
+
+Blender voxel remesh is powerful but destroys details:
+
+| Profile | Typical Quality | Recommendation |
+|---------|-----------------|----------------|
+| Mechanical parts | 4.0-4.5 | ✅ Use freely |
+| Organic sculpts | 2.5-3.5 | ⚠️ Use cautiously |
+| Fine details | 2.0-3.0 | ❌ Avoid if possible |
+
+**Best practice:** Let the quality feedback system learn your preferences over time.
 
 ---
 

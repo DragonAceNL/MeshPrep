@@ -596,11 +596,13 @@ class LearningEngine:
         3. Characteristic matching (face_count, body_count buckets)
         4. Global efficiency ranking (fallback)
         5. Exploration factor (occasionally retry underperformers on new data)
+        6. Quality-weighted scoring (penalize pipelines with low quality ratings)
         
         This is NOT simple elimination - it considers:
         - A pipeline that failed on fragmented models might work on simple ones
         - New models with different characteristics deserve fresh chances
         - Undert-tested pipelines get exploration bonus
+        - Pipelines that produce visually poor results are penalized
         
         Args:
             issues: List of issues detected in the model
@@ -672,6 +674,7 @@ class LearningEngine:
             # Factor 3: Profile-based winners (weight: 2.5)
             # What pipeline most often wins for this mesh profile?
             # =================================================================
+            profile = None
             if diagnostics:
                 profile = self._detect_profile(diagnostics)
                 
@@ -720,6 +723,73 @@ class LearningEngine:
                 # Less attempts = higher exploration bonus
                 exploration_bonus = 0.5 * (1.0 - row["total_attempts"] / 20.0)
                 pipeline_scores[name] = pipeline_scores.get(name, 0) + exploration_bonus
+        
+        # =================================================================
+        # Factor 6: Quality-weighted scoring (weight: -1.5 penalty)
+        # Penalize pipelines that produce visually poor results
+        # This ensures we prefer pipelines that preserve model appearance
+        # =================================================================
+        try:
+            from .quality_feedback import get_quality_engine
+            quality_engine = get_quality_engine()
+            
+            # Get quality stats for all pipelines
+            all_quality_stats = quality_engine.get_all_pipeline_quality_stats()
+            
+            for pipeline_name, profile_stats in all_quality_stats.items():
+                # Get stats for the specific profile if available
+                if profile and profile in profile_stats:
+                    stats = profile_stats[profile]
+                else:
+                    # Use aggregate across all profiles
+                    total_ratings = sum(s.total_ratings for s in profile_stats.values())
+                    if total_ratings == 0:
+                        continue
+                    weighted_avg = sum(
+                        s.avg_rating * s.total_ratings 
+                        for s in profile_stats.values()
+                    ) / total_ratings
+                    acceptance_rate = sum(
+                        s.acceptance_rate * s.total_ratings 
+                        for s in profile_stats.values()
+                    ) / total_ratings
+                    stats = type('Stats', (), {
+                        'total_ratings': total_ratings,
+                        'avg_rating': weighted_avg,
+                        'acceptance_rate': acceptance_rate
+                    })()
+                
+                if stats.total_ratings >= 5:
+                    # Calculate quality adjustment
+                    # avg_rating of 4+ = no penalty, 3 = small penalty, 2 = big penalty
+                    quality_adjustment = 0.0
+                    
+                    if stats.avg_rating >= 4.0:
+                        # High quality: small bonus
+                        quality_adjustment = 0.3
+                    elif stats.avg_rating >= 3.0:
+                        # Acceptable quality: neutral
+                        quality_adjustment = 0.0
+                    elif stats.avg_rating >= 2.0:
+                        # Poor quality: moderate penalty
+                        quality_adjustment = -0.8
+                    else:
+                        # Very poor quality: severe penalty
+                        quality_adjustment = -1.5
+                    
+                    # Scale by confidence (more ratings = more trust)
+                    confidence = min(stats.total_ratings / 30.0, 1.0)
+                    
+                    if pipeline_name in pipeline_scores:
+                        pipeline_scores[pipeline_name] += quality_adjustment * confidence
+                    
+                    logger.debug(
+                        f"Quality adjustment for {pipeline_name}: "
+                        f"{quality_adjustment:.2f} (avg_rating={stats.avg_rating:.1f}, "
+                        f"samples={stats.total_ratings})"
+                    )
+        except Exception as e:
+            logger.debug(f"Could not apply quality weighting: {e}")
         
         # Sort by score (highest first)
         sorted_pipelines = sorted(

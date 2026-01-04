@@ -37,6 +37,14 @@ from .reproducibility import (
     get_package_version,
     print_environment_check,
 )
+from .quality_feedback import (
+    QualityRating,
+    QualityPrediction,
+    PipelineQualityStats,
+    QualityFeedbackEngine,
+    get_quality_engine,
+    reset_quality_engine,
+)
 
 __all__ = [
     # Mesh operations
@@ -75,4 +83,11 @@ __all__ = [
     "get_meshprep_version",
     "get_package_version",
     "print_environment_check",
+    # Quality Feedback
+    "QualityRating",
+    "QualityPrediction",
+    "PipelineQualityStats",
+    "QualityFeedbackEngine",
+    "get_quality_engine",
+    "reset_quality_engine",
 ]
