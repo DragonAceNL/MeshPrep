@@ -1,6 +1,6 @@
 # Copyright 2025 Allard Peper (Dragon Ace / DragonAceNL)
 # Licensed under the Apache License, Version 2.0 (see LICENSE).
-# This file is part of MeshPrep — https://github.com/DragonAceNL/MeshPrep
+# This file is part of MeshPrep ï¿½ https://github.com/DragonAceNL/MeshPrep
 
 """
 Single model processing for POC v3 batch processing.
@@ -13,6 +13,7 @@ and report generation.
 import logging
 import sys
 import time
+import gc
 from pathlib import Path
 from typing import Optional
 
@@ -55,6 +56,31 @@ if ADAPTIVE_THRESHOLDS_AVAILABLE:
     from meshprep_poc.adaptive_thresholds import get_adaptive_thresholds
 
 logger = logging.getLogger(__name__)
+
+# Counter for periodic garbage collection
+_gc_counter = 0
+_GC_INTERVAL = 5  # Run GC every N models
+
+
+def _cleanup_mesh_resources():
+    """Force garbage collection and clear trimesh cache to prevent memory leaks."""
+    global _gc_counter
+    _gc_counter += 1
+    
+    if _gc_counter >= _GC_INTERVAL:
+        _gc_counter = 0
+        
+        # Clear trimesh cache
+        try:
+            import trimesh
+            trimesh.util.Cache.clear = lambda self: self.__dict__.clear()
+        except:
+            pass
+        
+        # Force garbage collection
+        gc.collect()
+        logger.debug("Cleared mesh cache and ran garbage collection")
+
 
 # Global progress reference for callback
 _current_progress: Optional[Progress] = None
@@ -331,13 +357,16 @@ def process_single_model(
         _generate_report(stl_path, original, repaired, result, fixed_path if result.success else None)
         
         return result
-        
     except Exception as e:
         result.success = False
         result.error = f"{type(e).__name__}: {str(e)}"
         result.duration_ms = (time.time() - start_time) * 1000
         logger.error(f"  Error: {result.error}")
         return result
+    
+    finally:
+        # Always clean up resources to prevent memory leaks
+        _cleanup_mesh_resources()
 
 
 def _generate_report(stl_path: Path, original, repaired, result: TestResult, fixed_path: Optional[Path] = None):

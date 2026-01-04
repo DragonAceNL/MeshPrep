@@ -227,7 +227,7 @@
                 <a href="/dashboard">📊 Dashboard</a>
             </div>
             <div>
-                <span style="color: #888;">Last updated: 2026-01-04T15:26:44</span>
+                <span style="color: #888;">Last updated: 2026-01-04T18:03:15</span>
             </div>
         </div>
         
@@ -327,19 +327,19 @@
             <h2>📊 Learning Engine Summary</h2>
             <div class="stats-grid">
                 <div class="stat-card">
-                    <div class="stat-value">150</div>
+                    <div class="stat-value">672</div>
                     <div class="stat-label">Models Processed</div>
                 </div>
                 <div class="stat-card">
-                    <div class="stat-value">10</div>
+                    <div class="stat-value">17</div>
                     <div class="stat-label">Pipelines Tracked</div>
                 </div>
                 <div class="stat-card">
-                    <div class="stat-value">25</div>
+                    <div class="stat-value">80</div>
                     <div class="stat-label">Issue Patterns</div>
                 </div>
                 <div class="stat-card">
-                    <div class="stat-value">9</div>
+                    <div class="stat-value">12</div>
                     <div class="stat-label">Profiles Tracked</div>
                 </div>
             </div>
@@ -363,93 +363,156 @@
                     <tbody>
             
                         <tr>
-                            <td><code>voxel-reconstruct-fragmented</code></td>
-                            <td class="success">100.0%</td>
-                            <td>24</td>
-                            <td>24</td>
-                            <td>0</td>
-                            <td>3096ms</td>
-                        </tr>
-                
-                        <tr>
                             <td><code>fragment-aware-reconstruct</code></td>
                             <td class="success">100.0%</td>
-                            <td>1</td>
-                            <td>1</td>
+                            <td>2</td>
+                            <td>2</td>
                             <td>0</td>
-                            <td>13904ms</td>
+                            <td>19890ms</td>
                         </tr>
                 
                         <tr>
-                            <td><code>blender-manifold</code></td>
-                            <td class="success">75.0%</td>
-                            <td>4</td>
-                            <td>3</td>
-                            <td>1</td>
-                            <td>5997ms</td>
+                            <td><code>voxel-reconstruct-fragmented</code></td>
+                            <td class="success">93.3%</td>
+                            <td>30</td>
+                            <td>28</td>
+                            <td>2</td>
+                            <td>3010ms</td>
                         </tr>
                 
                         <tr>
                             <td><code>conservative-per-component</code></td>
-                            <td class="success">71.1%</td>
-                            <td>38</td>
-                            <td>27</td>
-                            <td>11</td>
-                            <td>801ms</td>
+                            <td class="success">77.4%</td>
+                            <td>84</td>
+                            <td>65</td>
+                            <td>19</td>
+                            <td>1686ms</td>
+                        </tr>
+                
+                        <tr>
+                            <td><code>generic-pymeshfix</code></td>
+                            <td class="success">75.0%</td>
+                            <td>4</td>
+                            <td>3</td>
+                            <td>1</td>
+                            <td>311036ms</td>
+                        </tr>
+                
+                        <tr>
+                            <td><code>blender-manifold</code></td>
+                            <td class="warning">60.0%</td>
+                            <td>10</td>
+                            <td>6</td>
+                            <td>4</td>
+                            <td>6907ms</td>
                         </tr>
                 
                         <tr>
                             <td><code>generic-fill-holes</code></td>
-                            <td class="warning">56.5%</td>
-                            <td>23</td>
+                            <td class="warning">48.1%</td>
+                            <td>27</td>
                             <td>13</td>
-                            <td>10</td>
-                            <td>1793ms</td>
-                        </tr>
-                
-                        <tr>
-                            <td><code>generic-basic</code></td>
-                            <td class="warning">46.4%</td>
-                            <td>28</td>
-                            <td>13</td>
-                            <td>15</td>
-                            <td>1371ms</td>
+                            <td>14</td>
+                            <td>1864ms</td>
                         </tr>
                 
                         <tr>
                             <td><code>make-manifold-simple</code></td>
-                            <td class="warning">44.7%</td>
+                            <td class="warning">41.0%</td>
+                            <td>61</td>
+                            <td>25</td>
+                            <td>36</td>
+                            <td>1362ms</td>
+                        </tr>
+                
+                        <tr>
+                            <td><code>pymeshfix-manifold</code></td>
+                            <td class="warning">40.0%</td>
+                            <td>10</td>
+                            <td>4</td>
+                            <td>6</td>
+                            <td>126390ms</td>
+                        </tr>
+                
+                        <tr>
+                            <td><code>meshlab-poisson-reconstruct</code></td>
+                            <td class="warning">40.0%</td>
+                            <td>5</td>
+                            <td>2</td>
+                            <td>3</td>
+                            <td>4390ms</td>
+                        </tr>
+                
+                        <tr>
+                            <td><code>generic-basic</code></td>
+                            <td class="danger">36.2%</td>
                             <td>47</td>
-                            <td>21</td>
-                            <td>26</td>
-                            <td>870ms</td>
+                            <td>17</td>
+                            <td>30</td>
+                            <td>1201ms</td>
+                        </tr>
+                
+                        <tr>
+                            <td><code>generic-conservative</code></td>
+                            <td class="danger">33.3%</td>
+                            <td>9</td>
+                            <td>3</td>
+                            <td>6</td>
+                            <td>265144ms</td>
+                        </tr>
+                
+                        <tr>
+                            <td><code>generic-blender</code></td>
+                            <td class="danger">25.0%</td>
+                            <td>4</td>
+                            <td>1</td>
+                            <td>3</td>
+                            <td>5543ms</td>
                         </tr>
                 
                         <tr>
                             <td><code>minimal-fragmented</code></td>
                             <td class="danger">0.0%</td>
-                            <td>14</td>
+                            <td>18</td>
                             <td>0</td>
-                            <td>14</td>
-                            <td>144ms</td>
+                            <td>18</td>
+                            <td>608ms</td>
                         </tr>
                 
                         <tr>
                             <td><code>normals-only-fragmented</code></td>
                             <td class="danger">0.0%</td>
-                            <td>14</td>
+                            <td>18</td>
                             <td>0</td>
-                            <td>14</td>
-                            <td>102ms</td>
+                            <td>18</td>
+                            <td>345ms</td>
                         </tr>
                 
                         <tr>
-                            <td><code>pymeshfix-manifold</code></td>
+                            <td><code>meshlab-ball-pivoting-reconstruct</code></td>
                             <td class="danger">0.0%</td>
-                            <td>4</td>
+                            <td>2</td>
                             <td>0</td>
-                            <td>4</td>
-                            <td>4712ms</td>
+                            <td>2</td>
+                            <td>2387ms</td>
+                        </tr>
+                
+                        <tr>
+                            <td><code>blender-remesh-aggressive</code></td>
+                            <td class="danger">0.0%</td>
+                            <td>2</td>
+                            <td>0</td>
+                            <td>2</td>
+                            <td>276318ms</td>
+                        </tr>
+                
+                        <tr>
+                            <td><code>[NEW EVOLVED] evolved-fix_normals-combo-7269d2fe</code></td>
+                            <td class="danger">0.0%</td>
+                            <td>1</td>
+                            <td>0</td>
+                            <td>1</td>
+                            <td>4989ms</td>
                         </tr>
                 
                     </tbody>
@@ -520,6 +583,13 @@
                         </tr>
                 
                         <tr>
+                            <td><code>facets_reversed (2),fragmented</code></td>
+                            <td><code>conservative-per-component</code></td>
+                            <td class="success">100.0%</td>
+                            <td>3</td>
+                        </tr>
+                
+                        <tr>
                             <td><code>facets_reversed (24)</code></td>
                             <td><code>generic-fill-holes</code></td>
                             <td class="success">100.0%</td>
@@ -554,6 +624,13 @@
                             <td>3</td>
                         </tr>
                 
+                        <tr>
+                            <td><code>fragmented,non-manifold,open_edges (7)</code></td>
+                            <td><code>conservative-per-component</code></td>
+                            <td class="success">100.0%</td>
+                            <td>3</td>
+                        </tr>
+                
                     </tbody>
                 </table>
             </div>
@@ -573,8 +650,29 @@
                     <tbody>
             
                         <tr>
+                            <td><code>discovered:discovered-single</code></td>
+                            <td>303</td>
+                            <td class="success">99.7%</td>
+                            <td>1.7%</td>
+                        </tr>
+                
+                        <tr>
                             <td><code>standard</code></td>
-                            <td>42</td>
+                            <td>92</td>
+                            <td class="success">100.0%</td>
+                            <td>1.1%</td>
+                        </tr>
+                
+                        <tr>
+                            <td><code>discovered:discovered-multi-lowpoly-4</code></td>
+                            <td>55</td>
+                            <td class="success">100.0%</td>
+                            <td>0.0%</td>
+                        </tr>
+                
+                        <tr>
+                            <td><code>discovered:discovered-fragmented-broken-lowpoly-facets_reversed-(290)</code></td>
+                            <td>39</td>
                             <td class="success">100.0%</td>
                             <td>0.0%</td>
                         </tr>
@@ -587,6 +685,27 @@
                         </tr>
                 
                         <tr>
+                            <td><code>discovered:discovered-fragmented-broken-lowpoly-backwards_edges-(66)-1</code></td>
+                            <td>36</td>
+                            <td class="success">97.2%</td>
+                            <td>11.1%</td>
+                        </tr>
+                
+                        <tr>
+                            <td><code>discovered:discovered-multi-facets_reversed-(10)-2</code></td>
+                            <td>30</td>
+                            <td class="success">100.0%</td>
+                            <td>0.0%</td>
+                        </tr>
+                
+                        <tr>
+                            <td><code>discovered:discovered-fragmented-broken-backwards_edges-(812)-3</code></td>
+                            <td>27</td>
+                            <td class="success">100.0%</td>
+                            <td>0.0%</td>
+                        </tr>
+                
+                        <tr>
                             <td><code>fragmented</code></td>
                             <td>25</td>
                             <td class="success">100.0%</td>
@@ -594,31 +713,10 @@
                         </tr>
                 
                         <tr>
-                            <td><code>discovered:discovered-multi-lowpoly-4</code></td>
+                            <td><code>discovered:discovered-multi-broken-lowpoly-backwards_edges-(4)-2</code></td>
                             <td>23</td>
                             <td class="success">100.0%</td>
-                            <td>0.0%</td>
-                        </tr>
-                
-                        <tr>
-                            <td><code>discovered:discovered-fragmented-broken-lowpoly-facets_reversed-(290)</code></td>
-                            <td>10</td>
-                            <td class="success">100.0%</td>
-                            <td>0.0%</td>
-                        </tr>
-                
-                        <tr>
-                            <td><code>discovered:discovered-fragmented-broken-lowpoly-backwards_edges-(66)-1</code></td>
-                            <td>4</td>
-                            <td class="success">100.0%</td>
-                            <td>25.0%</td>
-                        </tr>
-                
-                        <tr>
-                            <td><code>discovered:discovered-multi-broken-lowpoly-backwards_edges-(4)-2</code></td>
-                            <td>4</td>
-                            <td class="success">100.0%</td>
-                            <td>25.0%</td>
+                            <td>8.7%</td>
                         </tr>
                 
                         <tr>
@@ -629,10 +727,10 @@
                         </tr>
                 
                         <tr>
-                            <td><code>discovered:discovered-fragmented-broken-backwards_edges-(812)-3</code></td>
+                            <td><code>complex-broken</code></td>
                             <td>1</td>
                             <td class="success">100.0%</td>
-                            <td>0.0%</td>
+                            <td>100.0%</td>
                         </tr>
                 
                     </tbody>
@@ -645,7 +743,7 @@
             <h2>🧬 Pipeline Evolution Summary</h2>
             <div class="stats-grid">
                 <div class="stat-card evolved">
-                    <div class="stat-value">0</div>
+                    <div class="stat-value">1</div>
                     <div class="stat-label">Evolved Pipelines</div>
                 </div>
                 <div class="stat-card evolved">
@@ -653,16 +751,37 @@
                     <div class="stat-label">Successful (≥50%)</div>
                 </div>
                 <div class="stat-card evolved">
-                    <div class="stat-value">0</div>
+                    <div class="stat-value">4</div>
                     <div class="stat-label">Actions Tracked</div>
                 </div>
                 <div class="stat-card evolved">
-                    <div class="stat-value">Gen 0</div>
+                    <div class="stat-value">Gen 1</div>
                     <div class="stat-label">Current Generation</div>
                 </div>
             </div>
         </div>
         
+            <div class="section">
+                <h2>🧪 Evolved Pipeline Combinations</h2>
+                <p class="section-desc">New pipeline combinations discovered through evolution.</p>
+                <div class="evolved-list">
+            
+                    <div class="evolved-card">
+                        <div class="evolved-header">
+                            <span class="evolved-name">evolved-fix_normals-combo-7269d2fe</span>
+                            <span class="evolved-gen">Gen 1</span>
+                        </div>
+                        <div class="evolved-actions">fix_normals -> trimesh_basic -> pymeshfix_repair -> fill_holes</div>
+                        <div class="evolved-stats">
+                            <span class="danger">0.0% success</span>
+                            <span>0 attempts</span>
+                            <span>0ms avg</span>
+                        </div>
+                    </div>
+                
+                </div>
+            </div>
+            
         
         
         <div class="section">
@@ -677,15 +796,15 @@
             
             <div class="stats-grid">
                 <div class="stat-card">
-                    <div class="stat-value">5</div>
+                    <div class="stat-value">10</div>
                     <div class="stat-label">Active Profiles</div>
                 </div>
                 <div class="stat-card">
-                    <div class="stat-value">44</div>
+                    <div class="stat-value">160</div>
                     <div class="stat-label">Clusters</div>
                 </div>
                 <div class="stat-card">
-                    <div class="stat-value">75</div>
+                    <div class="stat-value">259</div>
                     <div class="stat-label">Models Assigned</div>
                 </div>
                 <div class="stat-card">
@@ -706,6 +825,13 @@
                 </thead>
                 <tbody>
             
+                    <tr>
+                        <td><code>discovered-single</code></td>
+                        <td>140</td>
+                        <td class="success">100.0%</td>
+                        <td>none</td>
+                    </tr>
+                
                     <tr>
                         <td><code>discovered-fragmented-broken-lowpoly-facets_reversed-(290)</code></td>
                         <td>20</td>
@@ -735,6 +861,34 @@
                     </tr>
                 
                     <tr>
+                        <td><code>discovered-single-lowpoly-facets_reversed-(2)-1</code></td>
+                        <td>11</td>
+                        <td class="success">100.0%</td>
+                        <td>generic-basic</td>
+                    </tr>
+                
+                    <tr>
+                        <td><code>discovered-multi-facets_reversed-(10)-2</code></td>
+                        <td>11</td>
+                        <td class="success">100.0%</td>
+                        <td>conservative-per-component</td>
+                    </tr>
+                
+                    <tr>
+                        <td><code>discovered-single-lowpoly-facets_reversed-(24)-3</code></td>
+                        <td>11</td>
+                        <td class="success">100.0%</td>
+                        <td>generic-fill-holes</td>
+                    </tr>
+                
+                    <tr>
+                        <td><code>discovered-single-lowpoly-facets_reversed-(79)-4</code></td>
+                        <td>11</td>
+                        <td class="success">100.0%</td>
+                        <td>generic-fill-holes</td>
+                    </tr>
+                
+                    <tr>
                         <td><code>discovered-multi-lowpoly-4</code></td>
                         <td>10</td>
                         <td class="success">100.0%</td>
@@ -745,8 +899,8 @@
             </table>
             
             <div class="info-box" style="margin-top: 15px;">
-                <strong>39</strong> clusters with 
-                <strong>166</strong> models awaiting profile assignment.
+                <strong>145</strong> clusters with 
+                <strong>758</strong> models awaiting profile assignment.
                 Run profile discovery to create new profiles.
             </div>
             </div>
