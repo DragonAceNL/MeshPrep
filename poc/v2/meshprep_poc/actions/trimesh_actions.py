@@ -930,14 +930,14 @@ def action_voxelize_and_reconstruct(mesh: trimesh.Trimesh, params: dict) -> trim
     Args:
         mesh: Input mesh
         params:
-            - pitch: Voxel size (auto if None)
+            - pitch: Voxel size (auto/None for auto-calculation, or numeric value)
             - fill: Fill internal voids (default: True)
     """
     pitch = params.get("pitch")
     fill = params.get("fill", True)
     
-    # Auto-calculate pitch based on mesh size
-    if pitch is None:
+    # Auto-calculate pitch based on mesh size if pitch is None or "auto"
+    if pitch is None or pitch == "auto" or not isinstance(pitch, (int, float)):
         bbox = mesh.bounds
         bbox_size = bbox[1] - bbox[0]
         pitch = max(bbox_size) / 100  # 1% of largest dimension
