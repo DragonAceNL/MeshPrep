@@ -32,6 +32,72 @@ except ImportError:
     PYMESHLAB_AVAILABLE = False
     logger.warning("pymeshlab not available - PyMeshLab actions will be disabled")
 
+# Try to import error logging for failure tracking
+try:
+    from ..error_logger import log_pymeshlab_error
+    from ..subprocess_executor import get_failure_tracker, MeshInfo, categorize_error
+    ERROR_LOGGING_AVAILABLE = True
+except ImportError:
+    ERROR_LOGGING_AVAILABLE = False
+    log_pymeshlab_error = None
+    get_failure_tracker = None
+    MeshInfo = None
+    categorize_error = None
+
+
+def _log_pymeshlab_failure(
+    action_name: str,
+    filter_name: str,
+    error_message: str,
+    mesh: trimesh.Trimesh,
+) -> None:
+    """Log a PyMeshLab action failure to both text log and SQLite database.
+    
+    Args:
+        action_name: Name of the action (e.g., 'meshlab_reconstruct_poisson')
+        filter_name: PyMeshLab filter name that failed
+        error_message: Error message
+        mesh: The mesh that was being processed (for characteristics)
+    """
+    if not ERROR_LOGGING_AVAILABLE:
+        return
+    
+    try:
+        # Log to text file
+        if log_pymeshlab_error:
+            log_pymeshlab_error(
+                action_name=action_name,
+                filter_name=filter_name,
+                error_message=error_message,
+                model_id="",  # Not available at this level
+                face_count=len(mesh.faces) if hasattr(mesh, 'faces') else 0,
+            )
+        
+        # Log to SQLite database for learning
+        if get_failure_tracker and MeshInfo:
+            try:
+                body_count = len(mesh.split(only_watertight=False))
+            except:
+                body_count = 1
+            
+            mesh_info = MeshInfo(
+                face_count=len(mesh.faces) if hasattr(mesh, 'faces') else 0,
+                vertex_count=len(mesh.vertices) if hasattr(mesh, 'vertices') else 0,
+                body_count=body_count,
+                model_id="",
+                model_fingerprint="",
+            )
+            
+            tracker = get_failure_tracker()
+            tracker.record_failure(
+                action_name=action_name,
+                mesh_info=mesh_info,
+                failure_type="error",
+                error_message=error_message,
+            )
+    except Exception as e:
+        logger.debug(f"Failed to log PyMeshLab error: {e}")
+
 
 def is_pymeshlab_available() -> bool:
     """Check if PyMeshLab is available."""
@@ -171,7 +237,14 @@ def action_meshlab_repair(mesh: trimesh.Trimesh, params: dict) -> trimesh.Trimes
         return pymeshlab_to_trimesh(ms)
         
     except Exception as e:
-        logger.error(f"meshlab_repair failed: {e}")
+        error_msg = str(e)
+        logger.error(f"meshlab_repair failed: {error_msg}")
+        _log_pymeshlab_failure(
+            action_name="meshlab_repair",
+            filter_name="various_repair_filters",
+            error_message=error_msg,
+            mesh=mesh,
+        )
         return mesh.copy()
 
 
@@ -1179,7 +1252,15 @@ def action_meshlab_reconstruct_ball_pivoting(mesh: trimesh.Trimesh, params: dict
         return pymeshlab_to_trimesh(ms)
         
     except Exception as e:
-        logger.error(f"meshlab_reconstruct_ball_pivoting failed: {e}")
+        error_msg = str(e)
+        logger.error(f"meshlab_reconstruct_ball_pivoting failed: {error_msg}")
+        # Log to SQLite and text log for learning
+        _log_pymeshlab_failure(
+            action_name="meshlab_reconstruct_ball_pivoting",
+            filter_name="generate_surface_reconstruction_ball_pivoting",
+            error_message=error_msg,
+            mesh=mesh,
+        )
         return mesh.copy()
 
 
@@ -1223,7 +1304,15 @@ def action_meshlab_reconstruct_poisson(mesh: trimesh.Trimesh, params: dict) -> t
         return pymeshlab_to_trimesh(ms)
         
     except Exception as e:
-        logger.error(f"meshlab_reconstruct_poisson failed: {e}")
+        error_msg = str(e)
+        logger.error(f"meshlab_reconstruct_poisson failed: {error_msg}")
+        # Log to SQLite and text log for learning
+        _log_pymeshlab_failure(
+            action_name="meshlab_reconstruct_poisson",
+            filter_name="generate_surface_reconstruction_screened_poisson",
+            error_message=error_msg,
+            mesh=mesh,
+        )
         return mesh.copy()
 
 
@@ -1261,7 +1350,14 @@ def action_meshlab_alpha_wrap(mesh: trimesh.Trimesh, params: dict) -> trimesh.Tr
         return pymeshlab_to_trimesh(ms)
         
     except Exception as e:
-        logger.error(f"meshlab_alpha_wrap failed: {e}")
+        error_msg = str(e)
+        logger.error(f"meshlab_alpha_wrap failed: {error_msg}")
+        _log_pymeshlab_failure(
+            action_name="meshlab_alpha_wrap",
+            filter_name="generate_alpha_wrap",
+            error_message=error_msg,
+            mesh=mesh,
+        )
         return mesh.copy()
 
 
