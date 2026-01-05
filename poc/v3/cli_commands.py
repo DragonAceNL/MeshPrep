@@ -531,3 +531,137 @@ def show_error_stats():
             print(f"      {skip_marker} {pattern['action']} on {pattern['size_bin']}: {pattern['crashes']} crashes, {pattern['successes']} successes")
     
     print("\n" + "=" * 60 + "\n")
+
+
+def show_version_info():
+    """Show version tracking information."""
+    from meshprep_poc.subprocess_executor import (
+        get_failure_tracker,
+        get_pymeshlab_version,
+        get_meshprep_version,
+    )
+    
+    print("\n" + "=" * 60)
+    print("MeshPrep Version Tracking")
+    print("=" * 60)
+    
+    tracker = get_failure_tracker()
+    info = tracker.get_version_info()
+    
+    print("\nCurrent version:")
+    print(f"  MeshPrep:  {info['current_version']['meshprep']}")
+    print(f"  PyMeshLab: {info['current_version']['pymeshlab']}")
+    print(f"  Python:    {info['current_version']['python']}")
+    print()
+    
+    if info['version_history']:
+        print("Version history:")
+        for vh in info['version_history'][:5]:
+            print(f"  MeshPrep {vh['meshprep']}, PyMeshLab {vh['pymeshlab']}, "
+                  f"Python {vh['python']} - first seen: {vh['first_seen']}")
+        print()
+    
+    if info['skips_by_version']:
+        print("Skip recommendations by version:")
+        for sv in info['skips_by_version']:
+            print(f"  MeshPrep {sv['meshprep']}, PyMeshLab {sv['pymeshlab']}: "
+                  f"{sv['skip_count']} skips")
+        print()
+    else:
+        print("No skip recommendations recorded yet.")
+        print()
+    
+    print("Note: Skip recommendations are VERSION-SPECIFIC.")
+    print("When you upgrade MeshPrep or PyMeshLab, old skip recommendations")
+    print("won't apply - giving the new version a fresh chance to fix bugs.")
+    print("\n" + "=" * 60 + "\n")
+
+
+def reset_skips(confirm: bool = False) -> int:
+    """Reset skip recommendations for current version.
+    
+    Args:
+        confirm: If True, skip the confirmation prompt
+        
+    Returns:
+        Number of skips reset
+    """
+    from meshprep_poc.subprocess_executor import get_failure_tracker
+    
+    print("\n" + "=" * 60)
+    print("Reset Skip Recommendations")
+    print("=" * 60)
+    
+    tracker = get_failure_tracker()
+    info = tracker.get_version_info()
+    
+    print(f"\nCurrent version: MeshPrep {info['current_version']['meshprep']}, "
+          f"PyMeshLab {info['current_version']['pymeshlab']}")
+    print()
+    
+    # Show current skips for this version
+    current_skips = [
+        sv for sv in info['skips_by_version']
+        if sv['meshprep'] == info['current_version']['meshprep'] 
+        and sv['pymeshlab'] == info['current_version']['pymeshlab']
+    ]
+    
+    if not current_skips or current_skips[0]['skip_count'] == 0:
+        print("No skip recommendations for current version. Nothing to reset.")
+        print("\n" + "=" * 60 + "\n")
+        return 0
+    
+    skip_count = current_skips[0]['skip_count']
+    print(f"Found {skip_count} skip recommendations for current version.")
+    print()
+    
+    if not confirm:
+        response = input("Reset all skip recommendations? This will retry previously failing actions. [y/N]: ")
+        if response.lower() != 'y':
+            print("Cancelled.")
+            print("\n" + "=" * 60 + "\n")
+            return 0
+    
+    # Reset
+    count = tracker.reset_skips_for_current_version()
+    print()
+    print(f"Reset {count} skip recommendations.")
+    print("Previously skipped actions will now be retried on new models.")
+    print("\n" + "=" * 60 + "\n")
+    return count
+
+
+def check_version_change() -> bool:
+    """Check if version has changed and report.
+    
+    Returns:
+        True if version changed
+    """
+    from meshprep_poc.subprocess_executor import (
+        get_failure_tracker,
+        get_pymeshlab_version,
+        get_meshprep_version,
+    )
+    
+    print("\n" + "=" * 60)
+    print("Version Change Check")
+    print("=" * 60)
+    
+    tracker = get_failure_tracker()
+    
+    print(f"\nCurrent version: MeshPrep {get_meshprep_version()}, "
+          f"PyMeshLab {get_pymeshlab_version()}")
+    print()
+    
+    changed = tracker.check_version_change()
+    
+    if changed:
+        print("\u2713 Version change detected!")
+        print("  Skip recommendations from older versions won't apply.")
+        print("  Actions that failed before will get a fresh chance.")
+    else:
+        print("No version change detected.")
+        print("Using existing skip recommendations for this version.")
+    
+    print("\n" + "=" * 60 + "\n")
+    return changed

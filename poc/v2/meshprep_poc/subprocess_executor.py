@@ -65,6 +65,7 @@ CRASH_PRONE_ACTIONS = {
 
 # PyMeshLab version for tracking
 _PYMESHLAB_VERSION: Optional[str] = None
+_MESHPREP_VERSION: Optional[str] = None
 
 
 def get_pymeshlab_version() -> str:
@@ -79,10 +80,32 @@ def get_pymeshlab_version() -> str:
     return _PYMESHLAB_VERSION
 
 
+def get_meshprep_version() -> str:
+    """Get the installed MeshPrep version."""
+    global _MESHPREP_VERSION
+    if _MESHPREP_VERSION is None:
+        try:
+            from . import __version__
+            _MESHPREP_VERSION = __version__
+        except:
+            _MESHPREP_VERSION = "unknown"
+    return _MESHPREP_VERSION
+
+
 CRASH_DB_SCHEMA = """
 CREATE TABLE IF NOT EXISTS schema_info (
     key TEXT PRIMARY KEY,
     value TEXT
+);
+
+-- Track software versions to detect upgrades
+CREATE TABLE IF NOT EXISTS version_history (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    pymeshlab_version TEXT,
+    meshprep_version TEXT,
+    python_version TEXT,
+    first_seen TEXT DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(pymeshlab_version, meshprep_version, python_version)
 );
 
 -- Track action failures (crashes, errors, timeouts)
@@ -98,6 +121,7 @@ CREATE TABLE IF NOT EXISTS action_failures (
     
     -- Library versions
     pymeshlab_version TEXT,
+    meshprep_version TEXT,
     python_version TEXT,
     
     -- Failure details
@@ -216,6 +240,7 @@ class CrashTracker:
     ) -> None:
         """Record an action crash."""
         pymeshlab_version = get_pymeshlab_version()
+        meshprep_version = get_meshprep_version()
         python_version = f"{sys.version_info.major}.{sys.version_info.minor}"
         
         # Log to dedicated error log file
@@ -329,6 +354,127 @@ class CrashTracker:
                         "skip": bool(row["should_skip"]),
                     }
                     for row in patterns
+                ],
+            }
+    
+    def check_version_change(self) -> bool:
+        """Check if software versions have changed since last run.
+        
+        If versions changed, skip recommendations from older versions
+        are reset to give the new version a fresh chance.
+        
+        Returns:
+            True if versions changed (and skips were reset)
+        """
+        pymeshlab_version = get_pymeshlab_version()
+        meshprep_version = get_meshprep_version()
+        python_version = f"{sys.version_info.major}.{sys.version_info.minor}"
+        
+        with self._get_connection() as conn:
+            # Check if this version combination exists
+            existing = conn.execute("""
+                SELECT id FROM version_history 
+                WHERE pymeshlab_version = ? AND meshprep_version = ? AND python_version = ?
+            """, (pymeshlab_version, meshprep_version, python_version)).fetchone()
+            
+            if existing:
+                # Same version, no change
+                return False
+            
+            # New version combination - record it
+            conn.execute("""
+                INSERT OR IGNORE INTO version_history (pymeshlab_version, meshprep_version, python_version)
+                VALUES (?, ?, ?)
+            """, (pymeshlab_version, meshprep_version, python_version))
+            
+            # Check if there are any skip recommendations from older versions
+            old_skips = conn.execute("""
+                SELECT COUNT(*) FROM failure_patterns
+                WHERE should_skip = 1 
+                AND (pymeshlab_version != ? OR meshprep_version != ?)
+            """, (pymeshlab_version, meshprep_version)).fetchone()[0]
+            
+            if old_skips > 0:
+                logger.info(
+                    f"Version change detected (MeshPrep {meshprep_version}, PyMeshLab {pymeshlab_version}). "
+                    f"Resetting {old_skips} skip recommendations from older versions."
+                )
+                # Reset skip recommendations for old versions
+                # (They remain in DB for reference but won't apply to new version)
+                # We don't delete - the new version creates new entries
+                return True
+            
+            return False
+    
+    def reset_skips_for_current_version(self) -> int:
+        """Reset all skip recommendations for the current version.
+        
+        This allows retrying actions that previously failed, useful when:
+        - A bug has been fixed in the current version
+        - User wants to give actions another chance
+        
+        Returns:
+            Number of skip recommendations reset
+        """
+        pymeshlab_version = get_pymeshlab_version()
+        meshprep_version = get_meshprep_version()
+        
+        with self._get_connection() as conn:
+            result = conn.execute("""
+                UPDATE failure_patterns
+                SET should_skip = 0, skip_reason = NULL
+                WHERE pymeshlab_version = ? AND meshprep_version = ? AND should_skip = 1
+            """, (pymeshlab_version, meshprep_version))
+            
+            count = result.rowcount
+            if count > 0:
+                logger.info(f"Reset {count} skip recommendations for MeshPrep {meshprep_version}")
+            return count
+    
+    def get_version_info(self) -> Dict[str, Any]:
+        """Get version tracking information."""
+        pymeshlab_version = get_pymeshlab_version()
+        meshprep_version = get_meshprep_version()
+        python_version = f"{sys.version_info.major}.{sys.version_info.minor}"
+        
+        with self._get_connection() as conn:
+            # Get all known versions
+            versions = conn.execute("""
+                SELECT pymeshlab_version, meshprep_version, python_version, first_seen
+                FROM version_history
+                ORDER BY first_seen DESC
+            """).fetchall()
+            
+            # Count skips by version
+            skips_by_version = conn.execute("""
+                SELECT pymeshlab_version, meshprep_version, COUNT(*) as skip_count
+                FROM failure_patterns
+                WHERE should_skip = 1
+                GROUP BY pymeshlab_version, meshprep_version
+            """).fetchall()
+            
+            return {
+                "current_version": {
+                    "pymeshlab": pymeshlab_version,
+                    "meshprep": meshprep_version,
+                    "python": python_version,
+                },
+                "version_history": [
+                    {
+                        "pymeshlab": row["pymeshlab_version"],
+                        "meshprep": row["meshprep_version"],
+                        "python": row["python_version"],
+                        "first_seen": row["first_seen"],
+                    }
+                    for row in versions
+                ],
+                "skips_by_version": [
+                    {
+                        "pymeshlab": row["pymeshlab_version"],
+                        "meshprep": row["meshprep_version"],
+                        "skip_count": row["skip_count"],
+                    }
+                    for row in skips_by_version
                 ],
             }
 
@@ -590,6 +736,10 @@ class ActionFailureTracker:
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         with sqlite3.connect(self.db_path) as conn:
             conn.executescript(CRASH_DB_SCHEMA)
+            
+            # Schema migrations for existing databases
+            self._migrate_db(conn)
+            
             # Add failure patterns table
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS failure_patterns (
@@ -597,6 +747,7 @@ class ActionFailureTracker:
                     error_category TEXT NOT NULL,
                     size_bin TEXT NOT NULL,
                     pymeshlab_version TEXT NOT NULL,
+                    meshprep_version TEXT NOT NULL DEFAULT 'unknown',
                     
                     failure_count INTEGER DEFAULT 0,
                     success_count INTEGER DEFAULT 0,
@@ -607,13 +758,51 @@ class ActionFailureTracker:
                     last_failure TEXT,
                     last_success TEXT,
                     
-                    PRIMARY KEY(action_name, error_category, size_bin, pymeshlab_version)
+                    -- Track when skip was set, to reset on version change
+                    skip_set_version TEXT,
+                    skip_set_timestamp TEXT,
+                    
+                    PRIMARY KEY(action_name, error_category, size_bin, pymeshlab_version, meshprep_version)
                 )
             """)
             conn.execute("""
                 CREATE INDEX IF NOT EXISTS idx_failure_patterns_action 
                 ON failure_patterns(action_name)
             """)
+            conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_failure_patterns_version
+                ON failure_patterns(pymeshlab_version, meshprep_version)
+            """)
+    
+    def _migrate_db(self, conn) -> None:
+        """Apply schema migrations for existing databases."""
+        # Check if meshprep_version column exists in failure_patterns
+        cursor = conn.execute("PRAGMA table_info(failure_patterns)")
+        columns = [row[1] for row in cursor.fetchall()]
+        
+        if "meshprep_version" not in columns and "action_name" in columns:
+            # Old schema - need to add meshprep_version column
+            logger.info("Migrating failure_patterns table: adding meshprep_version column")
+            try:
+                conn.execute("ALTER TABLE failure_patterns ADD COLUMN meshprep_version TEXT DEFAULT 'unknown'")
+                conn.execute("ALTER TABLE failure_patterns ADD COLUMN skip_set_version TEXT")
+                conn.execute("ALTER TABLE failure_patterns ADD COLUMN skip_set_timestamp TEXT")
+                logger.info("Migration complete")
+            except sqlite3.OperationalError:
+                # Columns may already exist
+                pass
+        
+        # Check if meshprep_version column exists in action_failures
+        cursor = conn.execute("PRAGMA table_info(action_failures)")
+        columns = [row[1] for row in cursor.fetchall()]
+        
+        if "meshprep_version" not in columns and "action_name" in columns:
+            logger.info("Migrating action_failures table: adding meshprep_version column")
+            try:
+                conn.execute("ALTER TABLE action_failures ADD COLUMN meshprep_version TEXT DEFAULT 'unknown'")
+                logger.info("Migration complete")
+            except sqlite3.OperationalError:
+                pass
     
     @contextmanager
     def _get_connection(self):
@@ -649,6 +838,7 @@ class ActionFailureTracker:
             attempt_number: Which attempt this was
         """
         pymeshlab_version = get_pymeshlab_version()
+        meshprep_version = get_meshprep_version()
         python_version = f"{sys.version_info.major}.{sys.version_info.minor}"
         error_category = categorize_error(error_message)
         
@@ -679,38 +869,38 @@ class ActionFailureTracker:
             conn.execute("""
                 INSERT INTO action_failures
                 (action_name, face_count, vertex_count, body_count, size_bin,
-                 pymeshlab_version, python_version, failure_type, error_message,
+                 pymeshlab_version, meshprep_version, python_version, failure_type, error_message,
                  error_category, model_id, model_fingerprint, timestamp)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 action_name, mesh_info.face_count, mesh_info.vertex_count,
                 mesh_info.body_count, mesh_info.size_bin,
-                pymeshlab_version, python_version, failure_type, error_message,
+                pymeshlab_version, meshprep_version, python_version, failure_type, error_message,
                 error_category, mesh_info.model_id, mesh_info.model_fingerprint,
                 datetime.now().isoformat()
             ))
             
-            # Update failure pattern
+            # Update failure pattern (version-specific)
             conn.execute("""
                 INSERT INTO failure_patterns 
-                (action_name, error_category, size_bin, pymeshlab_version, 
+                (action_name, error_category, size_bin, pymeshlab_version, meshprep_version,
                  failure_count, last_failure)
-                VALUES (?, ?, ?, ?, 1, ?)
-                ON CONFLICT(action_name, error_category, size_bin, pymeshlab_version) 
+                VALUES (?, ?, ?, ?, ?, 1, ?)
+                ON CONFLICT(action_name, error_category, size_bin, pymeshlab_version, meshprep_version) 
                 DO UPDATE SET
                     failure_count = failure_count + 1,
                     last_failure = excluded.last_failure
             """, (
                 action_name, error_category, mesh_info.size_bin, 
-                pymeshlab_version, datetime.now().isoformat()
+                pymeshlab_version, meshprep_version, datetime.now().isoformat()
             ))
             
             # Check if we should mark for skipping (>= 3 failures of same category)
             row = conn.execute("""
                 SELECT failure_count, success_count FROM failure_patterns
                 WHERE action_name = ? AND error_category = ? 
-                      AND size_bin = ? AND pymeshlab_version = ?
-            """, (action_name, error_category, mesh_info.size_bin, pymeshlab_version)).fetchone()
+                      AND size_bin = ? AND pymeshlab_version = ? AND meshprep_version = ?
+            """, (action_name, error_category, mesh_info.size_bin, pymeshlab_version, meshprep_version)).fetchone()
             
             if row and row["failure_count"] >= 3:
                 total = row["failure_count"] + row["success_count"]
@@ -720,32 +910,36 @@ class ActionFailureTracker:
                         skip_reason = f"{error_category} errors on {mesh_info.size_bin} meshes ({failure_rate:.0%} fail rate)"
                         conn.execute("""
                             UPDATE failure_patterns 
-                            SET should_skip = 1, skip_reason = ?
+                            SET should_skip = 1, skip_reason = ?,
+                                skip_set_version = ?, skip_set_timestamp = ?
                             WHERE action_name = ? AND error_category = ? 
-                                  AND size_bin = ? AND pymeshlab_version = ?
+                                  AND size_bin = ? AND pymeshlab_version = ? AND meshprep_version = ?
                         """, (
-                            skip_reason, action_name, error_category, 
-                            mesh_info.size_bin, pymeshlab_version
+                            skip_reason, meshprep_version, datetime.now().isoformat(),
+                            action_name, error_category, 
+                            mesh_info.size_bin, pymeshlab_version, meshprep_version
                         ))
                         logger.warning(
                             f"Marked {action_name} as should_skip for {error_category} "
-                            f"on {mesh_info.size_bin} meshes"
+                            f"on {mesh_info.size_bin} meshes (MeshPrep {meshprep_version})"
                         )
     
     def record_success(self, action_name: str, mesh_info: MeshInfo) -> None:
         """Record a successful action execution."""
         pymeshlab_version = get_pymeshlab_version()
+        meshprep_version = get_meshprep_version()
         
         with self._get_connection() as conn:
-            # Update all failure patterns for this action+size to record success
+            # Update all failure patterns for this action+size+version to record success
             conn.execute("""
                 UPDATE failure_patterns 
                 SET success_count = success_count + 1,
                     last_success = ?
-                WHERE action_name = ? AND size_bin = ? AND pymeshlab_version = ?
+                WHERE action_name = ? AND size_bin = ? 
+                      AND pymeshlab_version = ? AND meshprep_version = ?
             """, (
                 datetime.now().isoformat(), action_name, 
-                mesh_info.size_bin, pymeshlab_version
+                mesh_info.size_bin, pymeshlab_version, meshprep_version
             ))
     
     def should_skip_for_error_category(
@@ -756,6 +950,10 @@ class ActionFailureTracker:
     ) -> Tuple[bool, str]:
         """Check if action should be skipped based on failure history.
         
+        Skip recommendations are VERSION-SPECIFIC. When MeshPrep or PyMeshLab
+        is updated, old skip recommendations don't apply - the new version
+        gets a fresh chance since bugs may have been fixed.
+        
         Args:
             action_name: Action to check
             mesh_info: Mesh characteristics
@@ -765,30 +963,36 @@ class ActionFailureTracker:
             Tuple of (should_skip, reason)
         """
         pymeshlab_version = get_pymeshlab_version()
+        meshprep_version = get_meshprep_version()
         
         with self._get_connection() as conn:
             if expected_error_category:
-                # Check specific category
+                # Check specific category for CURRENT version only
                 row = conn.execute("""
                     SELECT should_skip, skip_reason FROM failure_patterns
                     WHERE action_name = ? AND error_category = ?
-                          AND size_bin = ? AND pymeshlab_version = ?
+                          AND size_bin = ? 
+                          AND pymeshlab_version = ? 
+                          AND meshprep_version = ?
                           AND should_skip = 1
                 """, (
                     action_name, expected_error_category, 
-                    mesh_info.size_bin, pymeshlab_version
+                    mesh_info.size_bin, pymeshlab_version, meshprep_version
                 )).fetchone()
             else:
-                # Check any category
+                # Check any category for CURRENT version only
                 row = conn.execute("""
                     SELECT should_skip, skip_reason FROM failure_patterns
                     WHERE action_name = ? AND size_bin = ? 
-                          AND pymeshlab_version = ? AND should_skip = 1
+                          AND pymeshlab_version = ? 
+                          AND meshprep_version = ?
+                          AND should_skip = 1
                     LIMIT 1
-                """, (action_name, mesh_info.size_bin, pymeshlab_version)).fetchone()
+                """, (action_name, mesh_info.size_bin, pymeshlab_version, meshprep_version)).fetchone()
             
             if row and row["should_skip"]:
-                return True, row["skip_reason"] or "High failure rate"
+                reason = row["skip_reason"] or "High failure rate"
+                return True, f"{reason} (MeshPrep {meshprep_version})"
         
         return False, ""
     
@@ -835,6 +1039,158 @@ class ActionFailureTracker:
                         "reason": row["skip_reason"],
                     }
                     for row in patterns
+                ],
+            }
+    
+    def check_version_change(self) -> bool:
+        """Check if software versions have changed since last run.
+        
+        If versions changed, skip recommendations from older versions
+        are reset to give the new version a fresh chance.
+        
+        Returns:
+            True if versions changed (and skips were reset)
+        """
+        pymeshlab_version = get_pymeshlab_version()
+        meshprep_version = get_meshprep_version()
+        python_version = f"{sys.version_info.major}.{sys.version_info.minor}"
+        
+        with self._get_connection() as conn:
+            # Check if version_history table exists
+            cursor = conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='version_history'"
+            )
+            if not cursor.fetchone():
+                # Create table if it doesn't exist
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS version_history (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        pymeshlab_version TEXT,
+                        meshprep_version TEXT,
+                        python_version TEXT,
+                        first_seen TEXT DEFAULT CURRENT_TIMESTAMP,
+                        UNIQUE(pymeshlab_version, meshprep_version, python_version)
+                    )
+                """)
+            
+            # Check if this version combination exists
+            existing = conn.execute("""
+                SELECT id FROM version_history 
+                WHERE pymeshlab_version = ? AND meshprep_version = ? AND python_version = ?
+            """, (pymeshlab_version, meshprep_version, python_version)).fetchone()
+            
+            if existing:
+                # Same version, no change
+                return False
+            
+            # New version combination - record it
+            conn.execute("""
+                INSERT OR IGNORE INTO version_history (pymeshlab_version, meshprep_version, python_version)
+                VALUES (?, ?, ?)
+            """, (pymeshlab_version, meshprep_version, python_version))
+            
+            # Check if there are any skip recommendations from older versions
+            old_skips = conn.execute("""
+                SELECT COUNT(*) FROM failure_patterns
+                WHERE should_skip = 1 
+                AND (COALESCE(pymeshlab_version, '') != ? OR COALESCE(meshprep_version, 'unknown') != ?)
+            """, (pymeshlab_version, meshprep_version)).fetchone()[0]
+            
+            if old_skips > 0:
+                logger.info(
+                    f"Version change detected (MeshPrep {meshprep_version}, PyMeshLab {pymeshlab_version}). "
+                    f"{old_skips} skip recommendations from older versions won't apply to new version."
+                )
+                return True
+            
+            return False
+    
+    def reset_skips_for_current_version(self) -> int:
+        """Reset all skip recommendations for the current version.
+        
+        This allows retrying actions that previously failed, useful when:
+        - A bug has been fixed in the current version
+        - User wants to give actions another chance
+        
+        Returns:
+            Number of skip recommendations reset
+        """
+        pymeshlab_version = get_pymeshlab_version()
+        meshprep_version = get_meshprep_version()
+        
+        with self._get_connection() as conn:
+            result = conn.execute("""
+                UPDATE failure_patterns
+                SET should_skip = 0, skip_reason = NULL
+                WHERE pymeshlab_version = ? AND meshprep_version = ? AND should_skip = 1
+            """, (pymeshlab_version, meshprep_version))
+            
+            count = result.rowcount
+            if count > 0:
+                logger.info(f"Reset {count} skip recommendations for MeshPrep {meshprep_version}")
+            return count
+    
+    def get_version_info(self) -> Dict[str, Any]:
+        """Get version tracking information."""
+        pymeshlab_version = get_pymeshlab_version()
+        meshprep_version = get_meshprep_version()
+        python_version = f"{sys.version_info.major}.{sys.version_info.minor}"
+        
+        with self._get_connection() as conn:
+            # Check if version_history table exists
+            cursor = conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='version_history'"
+            )
+            if not cursor.fetchone():
+                return {
+                    "current_version": {
+                        "pymeshlab": pymeshlab_version,
+                        "meshprep": meshprep_version,
+                        "python": python_version,
+                    },
+                    "version_history": [],
+                    "skips_by_version": [],
+                }
+            
+            # Get all known versions
+            versions = conn.execute("""
+                SELECT pymeshlab_version, meshprep_version, python_version, first_seen
+                FROM version_history
+                ORDER BY first_seen DESC
+            """).fetchall()
+            
+            # Count skips by version
+            skips_by_version = conn.execute("""
+                SELECT COALESCE(pymeshlab_version, 'unknown') as pv, 
+                       COALESCE(meshprep_version, 'unknown') as mv, 
+                       COUNT(*) as skip_count
+                FROM failure_patterns
+                WHERE should_skip = 1
+                GROUP BY pv, mv
+            """).fetchall()
+            
+            return {
+                "current_version": {
+                    "pymeshlab": pymeshlab_version,
+                    "meshprep": meshprep_version,
+                    "python": python_version,
+                },
+                "version_history": [
+                    {
+                        "pymeshlab": row["pymeshlab_version"],
+                        "meshprep": row["meshprep_version"],
+                        "python": row["python_version"],
+                        "first_seen": row["first_seen"],
+                    }
+                    for row in versions
+                ],
+                "skips_by_version": [
+                    {
+                        "pymeshlab": row[0],
+                        "meshprep": row[1],
+                        "skip_count": row[2],
+                    }
+                    for row in skips_by_version
                 ],
             }
 

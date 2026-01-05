@@ -195,6 +195,35 @@ Recommendation: SKIP this action for huge meshes
 
 **Skip threshold:** 70%+ failure rate with 3+ attempts
 
+### Version-Aware Skip Recommendations
+
+**Critical:** Skip recommendations are **version-specific**. When MeshPrep or PyMeshLab is updated, old skip recommendations **do not apply** - the new version gets a fresh chance since bugs may have been fixed.
+
+```
+Version 0.2.0: meshlab_reconstruct_poisson marked as skip (94% fail)
+          ↓
+Upgrade to 0.2.1 (bug fix in normal handling)
+          ↓
+Version 0.2.1: Fresh start - meshlab_reconstruct_poisson will be tried again
+          ↓
+If it works now: System learns it works in 0.2.1
+If it still fails: System will re-mark as skip for 0.2.1
+```
+
+**What gets tracked per version:**
+
+| Field | Description |
+|-------|-------------|
+| `pymeshlab_version` | Version of PyMeshLab library |
+| `meshprep_version` | Version of MeshPrep (from `__version__`) |
+| `skip_set_version` | Which version set the skip recommendation |
+| `skip_set_timestamp` | When the skip was set |
+
+**CLI to reset skips for current version:**
+```bash
+python run_full_test.py --reset-skips
+```
+
 ### Pipeline Reordering
 
 The learning engine uses error data to reorder pipelines:

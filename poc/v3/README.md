@@ -99,6 +99,9 @@ That's it! The test will run automatically.
 | `run_full_test.py --ctm-priority` | Process CTM meshes FIRST before other files |
 | `run_full_test.py --learning-stats` | Show learning engine statistics |
 | `run_full_test.py --error-stats` | Show error/crash statistics |
+| `run_full_test.py --version-info` | Show version tracking information |
+| `run_full_test.py --reset-skips` | Reset skip recommendations for current version |
+| `run_full_test.py --check-version` | Check if software version has changed |
 | `run_full_test.py --reprocess MODEL_ID` | Reprocess a specific model by ID |
 
 ### Quality Feedback Commands

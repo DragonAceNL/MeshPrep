@@ -171,13 +171,35 @@ def main():
         help="Reprocess a specific model by ID (e.g., 100i, 100027). Deletes existing report and reprocesses."
     )
     
+    # Version tracking options
+    parser.add_argument(
+        "--version-info",
+        action="store_true",
+        help="Show version tracking information"
+    )
+    parser.add_argument(
+        "--reset-skips",
+        action="store_true",
+        help="Reset skip recommendations for current version (allows retrying failed actions)"
+    )
+    parser.add_argument(
+        "--reset-skips-confirm",
+        action="store_true",
+        help="Reset skip recommendations without confirmation prompt"
+    )
+    parser.add_argument(
+        "--check-version",
+        action="store_true",
+        help="Check if software version has changed"
+    )
+    
     args = parser.parse_args()
     
     # Import CLI commands (deferred to avoid circular imports)
     from cli_commands import (
         show_status, show_learning_stats, show_quality_stats,
         show_threshold_stats, rate_model_by_fingerprint, reprocess_single_model,
-        show_error_stats,
+        show_error_stats, show_version_info, reset_skips, check_version_change,
     )
     from batch_runner import run_batch_test
     
@@ -198,6 +220,18 @@ def main():
     
     if args.error_stats:
         show_error_stats()
+        return
+    
+    if args.version_info:
+        show_version_info()
+        return
+    
+    if args.reset_skips or args.reset_skips_confirm:
+        reset_skips(confirm=args.reset_skips_confirm)
+        return
+    
+    if args.check_version:
+        check_version_change()
         return
     
     if args.discover_profiles:
