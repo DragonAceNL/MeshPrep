@@ -347,11 +347,34 @@ def run_blender_script(
             if not output_path.exists():
                 raise RuntimeError("Blender did not produce output file")
             
+            # Check file size before loading - reject extremely large meshes
+            file_size_mb = output_path.stat().st_size / (1024 * 1024)
+            max_file_size_mb = 500  # 500 MB limit
+            if file_size_mb > max_file_size_mb:
+                raise RuntimeError(
+                    f"Blender output too large: {file_size_mb:.1f}MB exceeds {max_file_size_mb}MB limit. "
+                    f"Consider using a larger voxel_size."
+                )
+            
+            # Warn about large files that might be slow to load
+            if file_size_mb > 100:
+                logger.warning(
+                    f"Large Blender output: {file_size_mb:.1f}MB - loading may take a while"
+                )
+            
             # Load result
             output_mesh = trimesh.load(str(output_path), force='mesh')
             
             if isinstance(output_mesh, trimesh.Scene):
                 output_mesh = trimesh.util.concatenate(list(output_mesh.geometry.values()))
+            
+            # Check vertex count - reject extremely large meshes that would be impractical
+            max_vertices = 5_000_000  # 5 million vertex limit
+            if len(output_mesh.vertices) > max_vertices:
+                raise RuntimeError(
+                    f"Blender output has {len(output_mesh.vertices):,} vertices, "
+                    f"exceeds {max_vertices:,} limit. Consider using a larger voxel_size."
+                )
             
             minutes = int(elapsed // 60)
             seconds = int(elapsed % 60)

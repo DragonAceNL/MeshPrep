@@ -61,6 +61,11 @@ CRASH_PRONE_ACTIONS = {
     "meshlab_repair",
     "poisson_reconstruction",  # Open3D version
     "ball_pivoting",
+    # PyMeshFix actions can hang on certain meshes
+    "pymeshfix_repair",
+    "pymeshfix_repair_conservative",
+    "pymeshfix_clean",
+    "make_manifold",
 }
 
 # PyMeshLab version for tracking

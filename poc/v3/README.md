@@ -338,6 +338,12 @@ POC v3 additionally handles:
 - Make sure your terminal supports UTF-8.
 - The live dashboard includes `<meta charset="UTF-8">` for proper display.
 
+### Blender remesh output too large
+- Blender's voxel remesh with small voxel sizes can produce massive meshes (22+ million vertices)
+- The system now rejects outputs > 500MB file size or > 5 million vertices
+- If you see "Blender output too large" errors, the model's voxel remesh would produce an impractically large result
+- These models typically need a different repair strategy or larger voxel size
+
 ### Out of disk space
 - Fixed models can be large (especially Blender output that couldn't be decimated).
 - Check `Thingi10K\raw_meshes\fixed\` for large files.

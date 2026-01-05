@@ -177,7 +177,29 @@ CREATE TABLE crash_patterns (
 
 ## Learning from Errors
 
-### Skip Recommendations
+### Crash-Prone Actions
+
+Certain actions are known to potentially crash or hang. These are run in isolated subprocesses with timeout protection:
+
+| Action | Risk | Timeout |
+|--------|------|--------|
+| `meshlab_reconstruct_poisson` | Access violation | 120s |
+| `meshlab_reconstruct_ball_pivoting` | Access violation | 120s |
+| `meshlab_alpha_wrap` | Access violation | 120s |
+| `meshlab_boolean_union` | Access violation | 120s |
+| `meshlab_repair` | Access violation | 120s |
+| `poisson_reconstruction` (Open3D) | Memory/hang | 120s |
+| `ball_pivoting` | Memory/hang | 120s |
+| `pymeshfix_repair` | Hang on certain meshes | 120s |
+| `pymeshfix_repair_conservative` | Hang on certain meshes | 120s |
+| `pymeshfix_clean` | Hang on certain meshes | 120s |
+| `make_manifold` | Hang on certain meshes | 120s |
+
+If a crash-prone action exceeds its timeout, it is forcibly killed and recorded as a hang for future learning.
+
+---
+
+## Skip Recommendations
 
 After sufficient data, the system learns which action+mesh combinations to skip:
 
