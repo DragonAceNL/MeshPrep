@@ -152,6 +152,16 @@ class MeshLabHandler(http.server.SimpleHTTPRequestHandler):
             self.handle_refresh_learning_status()
             return
         
+        # API endpoint for error logs
+        if parsed.path == "/api/errors":
+            self.handle_get_errors(parsed.query)
+            return
+        
+        # Error logs HTML page
+        if parsed.path == "/errors" or parsed.path == "/errors/":
+            self.handle_errors_page(parsed.query)
+            return
+        
         # API endpoint to get rating for a model
         if parsed.path == "/api/get-rating":
             self.handle_get_rating(parsed.query)
@@ -277,6 +287,620 @@ class MeshLabHandler(http.server.SimpleHTTPRequestHandler):
         except Exception as e:
             print(f"[Rating] Error getting rating: {e}")
             self.send_json_error(500, f"Failed to get rating: {e}")
+    
+    def handle_get_errors(self, query_string: str):
+        """Get error log data as JSON with pagination."""
+        params = urllib.parse.parse_qs(query_string)
+        page = int(params.get("page", [1])[0])
+        per_page = int(params.get("per_page", [50])[0])
+        date_filter = params.get("date", [None])[0]
+        category_filter = params.get("category", [None])[0]
+        action_filter = params.get("action", [None])[0]
+        
+        try:
+            # Add POC v2 to path for imports
+            sys.path.insert(0, str(POC_V3_PATH.parent / "v2"))
+            from meshprep_poc.error_logger import (
+                get_all_error_logs,
+                parse_error_log,
+                get_error_summary,
+            )
+            from meshprep_poc.subprocess_executor import get_failure_tracker
+            
+            # Get all log files
+            log_files = get_all_error_logs()
+            
+            # Collect all entries from all log files (or just the selected date)
+            all_entries = []
+            for log_file in log_files:
+                if date_filter and date_filter not in log_file.name:
+                    continue
+                entries = parse_error_log(log_file)
+                for entry in entries:
+                    entry["_log_file"] = log_file.name
+                    entry["_date"] = log_file.name.replace("errors_", "").replace(".log", "")
+                all_entries.extend(entries)
+            
+            # Apply filters
+            if category_filter:
+                all_entries = [e for e in all_entries if e.get("category") == category_filter]
+            if action_filter:
+                all_entries = [e for e in all_entries if e.get("action") == action_filter]
+            
+            # Sort by timestamp (newest first)
+            all_entries.sort(key=lambda x: (x.get("_date", ""), x.get("_timestamp", "")), reverse=True)
+            
+            # Pagination
+            total = len(all_entries)
+            total_pages = (total + per_page - 1) // per_page if per_page > 0 else 1
+            start = (page - 1) * per_page
+            end = start + per_page
+            page_entries = all_entries[start:end]
+            
+            # Get summary stats
+            categories = {}
+            actions = {}
+            for entry in all_entries:
+                cat = entry.get("category", "unknown")
+                act = entry.get("action", "unknown")
+                categories[cat] = categories.get(cat, 0) + 1
+                actions[act] = actions.get(act, 0) + 1
+            
+            # Get SQLite failure patterns
+            tracker = get_failure_tracker()
+            failure_stats = tracker.get_failure_stats()
+            
+            response = {
+                "success": True,
+                "page": page,
+                "per_page": per_page,
+                "total": total,
+                "total_pages": total_pages,
+                "entries": page_entries,
+                "summary": {
+                    "by_category": dict(sorted(categories.items(), key=lambda x: -x[1])),
+                    "by_action": dict(sorted(actions.items(), key=lambda x: -x[1])),
+                },
+                "log_files": [f.name for f in log_files],
+                "failure_patterns": failure_stats.get("patterns", [])[:10],
+            }
+            
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            self.wfile.write(json.dumps(response).encode())
+            
+        except Exception as e:
+            print(f"[Errors] Error getting errors: {e}")
+            import traceback
+            traceback.print_exc()
+            self.send_json_error(500, f"Failed to get errors: {e}")
+    
+    def handle_errors_page(self, query_string: str):
+        """Serve the errors HTML page."""
+        params = urllib.parse.parse_qs(query_string)
+        page = int(params.get("page", [1])[0])
+        
+        html = self._generate_errors_html(page)
+        
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.end_headers()
+        self.wfile.write(html.encode('utf-8'))
+    
+    def _generate_errors_html(self, current_page: int = 1) -> str:
+        """Generate the errors page HTML with pagination."""
+        return '''<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MeshPrep Error Logs</title>
+    <style>
+        :root {
+            --bg-color: #1a1a2e;
+            --card-bg: #16213e;
+            --text-color: #eee;
+            --text-muted: #888;
+            --accent: #e94560;
+            --success: #4ade80;
+            --warning: #fbbf24;
+            --error: #ef4444;
+        }
+        
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, sans-serif;
+            background: var(--bg-color);
+            color: var(--text-color);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        
+        h1 {
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .nav-links {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+        
+        .nav-links a {
+            color: var(--accent);
+            text-decoration: none;
+            padding: 8px 16px;
+            background: var(--card-bg);
+            border-radius: 6px;
+            transition: all 0.2s;
+        }
+        
+        .nav-links a:hover {
+            background: var(--accent);
+            color: white;
+        }
+        
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        
+        .stat-card {
+            background: var(--card-bg);
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+        }
+        
+        .stat-card .value {
+            font-size: 2rem;
+            font-weight: bold;
+            color: var(--accent);
+        }
+        
+        .stat-card .label {
+            color: var(--text-muted);
+            font-size: 0.9rem;
+        }
+        
+        .filters {
+            background: var(--card-bg);
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+        
+        .filters label {
+            color: var(--text-muted);
+        }
+        
+        .filters select, .filters input {
+            background: var(--bg-color);
+            color: var(--text-color);
+            border: 1px solid #333;
+            padding: 8px 12px;
+            border-radius: 4px;
+            font-size: 0.9rem;
+        }
+        
+        .filters button {
+            background: var(--accent);
+            color: white;
+            border: none;
+            padding: 8px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.9rem;
+        }
+        
+        .filters button:hover {
+            opacity: 0.9;
+        }
+        
+        .error-table {
+            width: 100%;
+            border-collapse: collapse;
+            background: var(--card-bg);
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        
+        .error-table th, .error-table td {
+            padding: 12px 15px;
+            text-align: left;
+            border-bottom: 1px solid #333;
+        }
+        
+        .error-table th {
+            background: rgba(233, 69, 96, 0.2);
+            font-weight: 600;
+            position: sticky;
+            top: 0;
+        }
+        
+        .error-table tr:hover {
+            background: rgba(255, 255, 255, 0.05);
+        }
+        
+        .error-table .error-msg {
+            max-width: 400px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            font-family: monospace;
+            font-size: 0.85rem;
+            color: var(--text-muted);
+        }
+        
+        .error-table .error-msg:hover {
+            white-space: normal;
+            word-break: break-word;
+        }
+        
+        .badge {
+            display: inline-block;
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-size: 0.8rem;
+            font-weight: 500;
+        }
+        
+        .badge-error { background: rgba(239, 68, 68, 0.3); color: #f87171; }
+        .badge-crash { background: rgba(239, 68, 68, 0.5); color: #fca5a5; }
+        .badge-warning { background: rgba(251, 191, 36, 0.3); color: #fcd34d; }
+        
+        .badge-category { background: rgba(99, 102, 241, 0.3); color: #a5b4fc; }
+        .badge-action { background: rgba(6, 182, 212, 0.3); color: #67e8f9; }
+        
+        .pagination {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 10px;
+            margin-top: 20px;
+            flex-wrap: wrap;
+        }
+        
+        .pagination button {
+            background: var(--card-bg);
+            color: var(--text-color);
+            border: 1px solid #333;
+            padding: 8px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        
+        .pagination button:hover:not(:disabled) {
+            background: var(--accent);
+            border-color: var(--accent);
+        }
+        
+        .pagination button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        .pagination .page-info {
+            color: var(--text-muted);
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: var(--text-muted);
+        }
+        
+        .summary-section {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+        
+        .summary-card {
+            background: var(--card-bg);
+            padding: 15px;
+            border-radius: 8px;
+        }
+        
+        .summary-card h3 {
+            margin-bottom: 10px;
+            color: var(--accent);
+            font-size: 1rem;
+        }
+        
+        .summary-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 5px 0;
+            border-bottom: 1px solid #333;
+        }
+        
+        .summary-item:last-child {
+            border-bottom: none;
+        }
+        
+        .timestamp {
+            font-family: monospace;
+            font-size: 0.85rem;
+            color: var(--text-muted);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>MeshPrep Error Logs</h1>
+        
+        <div class="nav-links">
+            <a href="/live">Dashboard</a>
+            <a href="/reports/">Reports</a>
+            <a href="/learning">Learning Status</a>
+            <a href="/errors/" class="active">Error Logs</a>
+        </div>
+        
+        <div class="stats-grid" id="stats">
+            <div class="stat-card">
+                <div class="value" id="total-errors">-</div>
+                <div class="label">Total Errors</div>
+            </div>
+            <div class="stat-card">
+                <div class="value" id="total-categories">-</div>
+                <div class="label">Error Categories</div>
+            </div>
+            <div class="stat-card">
+                <div class="value" id="total-actions">-</div>
+                <div class="label">Actions with Errors</div>
+            </div>
+            <div class="stat-card">
+                <div class="value" id="total-log-files">-</div>
+                <div class="label">Log Files</div>
+            </div>
+        </div>
+        
+        <div class="filters">
+            <label>Date:
+                <select id="filter-date">
+                    <option value="">All Dates</option>
+                </select>
+            </label>
+            <label>Category:
+                <select id="filter-category">
+                    <option value="">All Categories</option>
+                </select>
+            </label>
+            <label>Action:
+                <select id="filter-action">
+                    <option value="">All Actions</option>
+                </select>
+            </label>
+            <label>Per Page:
+                <select id="per-page">
+                    <option value="25">25</option>
+                    <option value="50" selected>50</option>
+                    <option value="100">100</option>
+                    <option value="200">200</option>
+                </select>
+            </label>
+            <button onclick="applyFilters()">Apply</button>
+            <button onclick="clearFilters()">Clear</button>
+        </div>
+        
+        <div class="summary-section" id="summary-section">
+            <div class="summary-card">
+                <h3>Top Error Categories</h3>
+                <div id="summary-categories">Loading...</div>
+            </div>
+            <div class="summary-card">
+                <h3>Top Failing Actions</h3>
+                <div id="summary-actions">Loading...</div>
+            </div>
+        </div>
+        
+        <div id="table-container">
+            <div class="loading">Loading error logs...</div>
+        </div>
+        
+        <div class="pagination" id="pagination"></div>
+    </div>
+    
+    <script>
+        let currentPage = 1;
+        let currentData = null;
+        
+        async function loadErrors(page = 1) {
+            const dateFilter = document.getElementById('filter-date').value;
+            const categoryFilter = document.getElementById('filter-category').value;
+            const actionFilter = document.getElementById('filter-action').value;
+            const perPage = document.getElementById('per-page').value;
+            
+            let url = `/api/errors?page=${page}&per_page=${perPage}`;
+            if (dateFilter) url += `&date=${encodeURIComponent(dateFilter)}`;
+            if (categoryFilter) url += `&category=${encodeURIComponent(categoryFilter)}`;
+            if (actionFilter) url += `&action=${encodeURIComponent(actionFilter)}`;
+            
+            try {
+                const response = await fetch(url);
+                const data = await response.json();
+                
+                if (data.success) {
+                    currentData = data;
+                    currentPage = data.page;
+                    renderStats(data);
+                    renderTable(data);
+                    renderPagination(data);
+                    updateFilters(data);
+                    renderSummary(data);
+                } else {
+                    document.getElementById('table-container').innerHTML = 
+                        `<div class="loading">Error: ${data.error}</div>`;
+                }
+            } catch (err) {
+                document.getElementById('table-container').innerHTML = 
+                    `<div class="loading">Error loading data: ${err.message}</div>`;
+            }
+        }
+        
+        function renderStats(data) {
+            document.getElementById('total-errors').textContent = data.total.toLocaleString();
+            document.getElementById('total-categories').textContent = 
+                Object.keys(data.summary.by_category).length;
+            document.getElementById('total-actions').textContent = 
+                Object.keys(data.summary.by_action).length;
+            document.getElementById('total-log-files').textContent = data.log_files.length;
+        }
+        
+        function renderSummary(data) {
+            // Categories
+            const catHtml = Object.entries(data.summary.by_category)
+                .slice(0, 8)
+                .map(([cat, count]) => 
+                    `<div class="summary-item"><span>${cat}</span><span>${count}</span></div>`
+                ).join('');
+            document.getElementById('summary-categories').innerHTML = catHtml || 'No data';
+            
+            // Actions
+            const actHtml = Object.entries(data.summary.by_action)
+                .slice(0, 8)
+                .map(([act, count]) => 
+                    `<div class="summary-item"><span>${act}</span><span>${count}</span></div>`
+                ).join('');
+            document.getElementById('summary-actions').innerHTML = actHtml || 'No data';
+        }
+        
+        function renderTable(data) {
+            if (data.entries.length === 0) {
+                document.getElementById('table-container').innerHTML = 
+                    '<div class="loading">No errors found matching the filters.</div>';
+                return;
+            }
+            
+            let html = `
+                <table class="error-table">
+                    <thead>
+                        <tr>
+                            <th>Time</th>
+                            <th>Date</th>
+                            <th>Type</th>
+                            <th>Category</th>
+                            <th>Action</th>
+                            <th>Model</th>
+                            <th>Faces</th>
+                            <th>Error Message</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            `;
+            
+            for (const entry of data.entries) {
+                const typeClass = entry.type === 'CRASH' ? 'badge-crash' : 
+                                  entry.type === 'error' ? 'badge-error' : 'badge-warning';
+                
+                html += `
+                    <tr>
+                        <td class="timestamp">${entry._timestamp || '-'}</td>
+                        <td>${entry._date || '-'}</td>
+                        <td><span class="badge ${typeClass}">${entry.type || '-'}</span></td>
+                        <td><span class="badge badge-category">${entry.category || '-'}</span></td>
+                        <td><span class="badge badge-action">${entry.action || '-'}</span></td>
+                        <td>${entry.model_id || '-'}</td>
+                        <td>${entry.faces?.toLocaleString() || '-'}</td>
+                        <td class="error-msg" title="${escapeHtml(entry.error || '')}">${escapeHtml(entry.error || '-')}</td>
+                    </tr>
+                `;
+            }
+            
+            html += '</tbody></table>';
+            document.getElementById('table-container').innerHTML = html;
+        }
+        
+        function renderPagination(data) {
+            const { page, total_pages, total, per_page } = data;
+            const start = (page - 1) * per_page + 1;
+            const end = Math.min(page * per_page, total);
+            
+            let html = `
+                <button onclick="loadErrors(1)" ${page === 1 ? 'disabled' : ''}>First</button>
+                <button onclick="loadErrors(${page - 1})" ${page === 1 ? 'disabled' : ''}>Previous</button>
+                <span class="page-info">Page ${page} of ${total_pages} (${start}-${end} of ${total})</span>
+                <button onclick="loadErrors(${page + 1})" ${page === total_pages ? 'disabled' : ''}>Next</button>
+                <button onclick="loadErrors(${total_pages})" ${page === total_pages ? 'disabled' : ''}>Last</button>
+            `;
+            
+            document.getElementById('pagination').innerHTML = html;
+        }
+        
+        function updateFilters(data) {
+            // Update date filter
+            const dateSelect = document.getElementById('filter-date');
+            const currentDate = dateSelect.value;
+            dateSelect.innerHTML = '<option value="">All Dates</option>';
+            for (const file of data.log_files) {
+                const date = file.replace('errors_', '').replace('.log', '');
+                dateSelect.innerHTML += `<option value="${date}" ${date === currentDate ? 'selected' : ''}>${date}</option>`;
+            }
+            
+            // Update category filter
+            const catSelect = document.getElementById('filter-category');
+            const currentCat = catSelect.value;
+            catSelect.innerHTML = '<option value="">All Categories</option>';
+            for (const cat of Object.keys(data.summary.by_category)) {
+                catSelect.innerHTML += `<option value="${cat}" ${cat === currentCat ? 'selected' : ''}>${cat}</option>`;
+            }
+            
+            // Update action filter
+            const actSelect = document.getElementById('filter-action');
+            const currentAct = actSelect.value;
+            actSelect.innerHTML = '<option value="">All Actions</option>';
+            for (const act of Object.keys(data.summary.by_action)) {
+                actSelect.innerHTML += `<option value="${act}" ${act === currentAct ? 'selected' : ''}>${act}</option>`;
+            }
+        }
+        
+        function applyFilters() {
+            loadErrors(1);
+        }
+        
+        function clearFilters() {
+            document.getElementById('filter-date').value = '';
+            document.getElementById('filter-category').value = '';
+            document.getElementById('filter-action').value = '';
+            loadErrors(1);
+        }
+        
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+        
+        // Initial load
+        loadErrors(1);
+    </script>
+</body>
+</html>
+'''
     
     def handle_rate_model(self):
         """Handle POST request to rate a model."""
@@ -513,6 +1137,7 @@ def main():
     print(f"  Live Dashboard:   http://localhost:{args.port}/live")
     print(f"  Reports Index:    http://localhost:{args.port}/reports/")
     print(f"  Learning Status:  http://localhost:{args.port}/learning")
+    print(f"  Error Logs:       http://localhost:{args.port}/errors/")
     print()
     print("Additional paths:")
     print(f"  Raw Meshes:       http://localhost:{args.port}/raw_meshes/")
@@ -520,6 +1145,7 @@ def main():
     print()
     print("API Endpoints:")
     print(f"  GET  /api/progress                       - Get progress data (JSON)")
+    print(f"  GET  /api/errors?page=1&per_page=50      - Get error logs (JSON)")
     print(f"  GET  /api/get-rating?fingerprint=MP:xxx  - Get rating for model")
     print(f"  POST /api/rate-model                     - Submit rating for model")
     print("=" * 60)
