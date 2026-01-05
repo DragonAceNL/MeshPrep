@@ -126,8 +126,42 @@ MeshPrep includes self-learning capabilities that improve over time:
 | **Profile Discovery** | Cluster similar meshes, discover new profiles |
 | **Adaptive Thresholds** | Learn optimal parameter values from outcomes |
 | **Quality Feedback** | Learn from user ratings (1-5 scale) |
+| **Error Learning** | Track failures to avoid repeated mistakes |
 
 Data stored in `learning_data/` at repo root. See [Learning Systems](learning_systems.md) for details.
+
+---
+
+## Error Handling & Stability
+
+**Stability is MeshPrep's #1 priority.** The system is designed to:
+
+- **Never crash** - Gracefully handle all errors
+- **Always produce output** - Return original mesh if repair fails  
+- **Learn from failures** - Track errors to improve over time
+- **Provide visibility** - Log everything for debugging
+
+### Error Flow
+
+```
+Action Fails
+    │
+    ├──► Log to console/file
+    │
+    ├──► Log to SQLite (for learning)
+    │
+    └──► Return original mesh (never crash)
+```
+
+### Error Data Locations
+
+| Data | Location |
+|------|----------|
+| Daily error logs | `learning_data/error_logs/errors_YYYY-MM-DD.log` |
+| Failure patterns | `learning_data/action_crashes.db` |
+| Crash tracking | `learning_data/action_crashes.db` |
+
+See [Error Handling](error_handling.md) for complete details.
 
 ---
 
@@ -155,4 +189,5 @@ Data stored in `learning_data/` at repo root. See [Learning Systems](learning_sy
 - [Repair Strategy Guide](repair_strategy_guide.md) - Tool behavior and best practices
 - [Repair Pipeline](repair_pipeline.md) - Pipeline stages
 - [Learning Systems](learning_systems.md) - Self-learning components
+- [Error Handling](error_handling.md) - Error handling and stability
 - [Thingi10K Testing](thingi10k_testing.md) - Benchmark testing

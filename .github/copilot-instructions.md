@@ -57,6 +57,7 @@ Each topic has ONE authoritative document. All other documents must **reference*
 | **Repair tool behavior** | `docs/repair_strategy_guide.md` |
 | **Pipeline stages** | `docs/repair_pipeline.md` |
 | **Learning systems** | `docs/learning_systems.md` |
+| **Error handling & stability** | `docs/error_handling.md` |
 | **Benchmark testing** | `docs/thingi10k_testing.md` |
 | **Code style & headers** | `docs/CODE_STYLE.md` |
 | **Third-party licenses** | `NOTICE` |
@@ -203,4 +204,5 @@ The `docs/repair_strategy_guide.md` captures critical lessons learned. **Update 
 | Validation thresholds | `docs/validation.md` |
 | Which tool to use when | `docs/repair_strategy_guide.md` |
 | Learning system details | `docs/learning_systems.md` |
+| Error handling & stability | `docs/error_handling.md` |
 | GUI components | `docs/gui_spec.md` |

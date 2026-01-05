@@ -34,15 +34,11 @@ except ImportError:
 
 # Try to import error logging for failure tracking
 try:
-    from ..error_logger import log_pymeshlab_error
-    from ..subprocess_executor import get_failure_tracker, MeshInfo, categorize_error
-    ERROR_LOGGING_AVAILABLE = True
+    from .error_logging import log_action_failure, is_error_logging_available
+    ERROR_LOGGING_AVAILABLE = is_error_logging_available()
 except ImportError:
     ERROR_LOGGING_AVAILABLE = False
-    log_pymeshlab_error = None
-    get_failure_tracker = None
-    MeshInfo = None
-    categorize_error = None
+    log_action_failure = None
 
 
 def _log_pymeshlab_failure(
@@ -51,52 +47,15 @@ def _log_pymeshlab_failure(
     error_message: str,
     mesh: trimesh.Trimesh,
 ) -> None:
-    """Log a PyMeshLab action failure to both text log and SQLite database.
-    
-    Args:
-        action_name: Name of the action (e.g., 'meshlab_reconstruct_poisson')
-        filter_name: PyMeshLab filter name that failed
-        error_message: Error message
-        mesh: The mesh that was being processed (for characteristics)
-    """
-    if not ERROR_LOGGING_AVAILABLE:
-        return
-    
-    try:
-        # Log to text file
-        if log_pymeshlab_error:
-            log_pymeshlab_error(
-                action_name=action_name,
-                filter_name=filter_name,
-                error_message=error_message,
-                model_id="",  # Not available at this level
-                face_count=len(mesh.faces) if hasattr(mesh, 'faces') else 0,
-            )
-        
-        # Log to SQLite database for learning
-        if get_failure_tracker and MeshInfo:
-            try:
-                body_count = len(mesh.split(only_watertight=False))
-            except:
-                body_count = 1
-            
-            mesh_info = MeshInfo(
-                face_count=len(mesh.faces) if hasattr(mesh, 'faces') else 0,
-                vertex_count=len(mesh.vertices) if hasattr(mesh, 'vertices') else 0,
-                body_count=body_count,
-                model_id="",
-                model_fingerprint="",
-            )
-            
-            tracker = get_failure_tracker()
-            tracker.record_failure(
-                action_name=action_name,
-                mesh_info=mesh_info,
-                failure_type="error",
-                error_message=error_message,
-            )
-    except Exception as e:
-        logger.debug(f"Failed to log PyMeshLab error: {e}")
+    """Log a PyMeshLab action failure to both text log and SQLite database."""
+    if ERROR_LOGGING_AVAILABLE and log_action_failure:
+        log_action_failure(
+            action_name=action_name,
+            error_message=error_message,
+            mesh=mesh,
+            action_type="pymeshlab",
+            filter_name=filter_name,
+        )
 
 
 def is_pymeshlab_available() -> bool:

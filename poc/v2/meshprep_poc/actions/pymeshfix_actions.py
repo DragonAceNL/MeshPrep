@@ -25,6 +25,25 @@ except ImportError:
     PYMESHFIX_AVAILABLE = False
     logger.warning("pymeshfix not available - some repair actions will be limited")
 
+# Try to import error logging
+try:
+    from .error_logging import log_action_failure
+    ERROR_LOGGING_AVAILABLE = True
+except ImportError:
+    ERROR_LOGGING_AVAILABLE = False
+    log_action_failure = None
+
+
+def _log_pymeshfix_failure(action_name: str, error_message: str, mesh: trimesh.Trimesh) -> None:
+    """Log a pymeshfix action failure."""
+    if ERROR_LOGGING_AVAILABLE and log_action_failure:
+        log_action_failure(
+            action_name=action_name,
+            error_message=error_message,
+            mesh=mesh,
+            action_type="pymeshfix",
+        )
+
 
 def trimesh_to_pymeshfix(mesh: trimesh.Trimesh):
     """Convert trimesh to pymeshfix MeshFix object."""
@@ -123,6 +142,7 @@ def action_pymeshfix_repair(mesh: trimesh.Trimesh, params: dict) -> trimesh.Trim
         
     except Exception as e:
         logger.error(f"pymeshfix repair failed: {e}")
+        _log_pymeshfix_failure("pymeshfix_repair", str(e), mesh)
         # Return original mesh on failure
         return mesh.copy()
 
@@ -227,6 +247,7 @@ def action_pymeshfix_repair_conservative(mesh: trimesh.Trimesh, params: dict) ->
         
     except Exception as e:
         logger.error(f"pymeshfix_repair_conservative failed: {e}")
+        _log_pymeshfix_failure("pymeshfix_repair_conservative", str(e), mesh)
         return mesh.copy()
 
 
@@ -263,6 +284,7 @@ def action_pymeshfix_clean(mesh: trimesh.Trimesh, params: dict) -> trimesh.Trime
         
     except Exception as e:
         logger.error(f"pymeshfix clean failed: {e}")
+        _log_pymeshfix_failure("pymeshfix_clean", str(e), mesh)
         return mesh.copy()
 
 
@@ -293,4 +315,5 @@ def action_make_manifold(mesh: trimesh.Trimesh, params: dict) -> trimesh.Trimesh
         
     except Exception as e:
         logger.error(f"make_manifold failed: {e}")
+        _log_pymeshfix_failure("make_manifold", str(e), mesh)
         return mesh.copy()

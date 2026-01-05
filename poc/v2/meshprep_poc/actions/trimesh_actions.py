@@ -8,11 +8,34 @@ Trimesh-based actions for mesh repair.
 These are the core repair operations using trimesh's built-in functions.
 """
 
+import logging
+
 import numpy as np
 import trimesh
 from trimesh import repair
 
 from .registry import register_action
+
+# Try to import error logging
+try:
+    from .error_logging import log_action_failure
+    ERROR_LOGGING_AVAILABLE = True
+except ImportError:
+    ERROR_LOGGING_AVAILABLE = False
+    log_action_failure = None
+
+logger = logging.getLogger(__name__)
+
+
+def _log_trimesh_failure(action_name: str, error_message: str, mesh: trimesh.Trimesh) -> None:
+    """Log a trimesh action failure."""
+    if ERROR_LOGGING_AVAILABLE and log_action_failure:
+        log_action_failure(
+            action_name=action_name,
+            error_message=error_message,
+            mesh=mesh,
+            action_type="trimesh",
+        )
 
 
 @register_action(
@@ -518,8 +541,8 @@ def action_decimate(mesh: trimesh.Trimesh, params: dict) -> trimesh.Trimesh:
         return simplified
     except Exception as e:
         # Fall back to original if decimation fails
-        import logging
-        logging.getLogger(__name__).warning(f"Decimation failed: {e}")
+        logger.warning(f"Decimation failed: {e}")
+        _log_trimesh_failure("decimate", str(e), mesh)
         return mesh.copy()
 
 
@@ -570,8 +593,8 @@ def action_smooth(mesh: trimesh.Trimesh, params: dict) -> trimesh.Trimesh:
                 lamb=lamb
             )
     except Exception as e:
-        import logging
-        logging.getLogger(__name__).warning(f"Smoothing failed: {e}")
+        logger.warning(f"Smoothing failed: {e}")
+        _log_trimesh_failure("smooth_laplacian", str(e), mesh)
     
     return mesh
 

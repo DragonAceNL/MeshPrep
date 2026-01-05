@@ -39,6 +39,25 @@ try:
 except ImportError:
     SCIPY_AVAILABLE = False
 
+# Try to import error logging
+try:
+    from .error_logging import log_action_failure
+    ERROR_LOGGING_AVAILABLE = True
+except ImportError:
+    ERROR_LOGGING_AVAILABLE = False
+    log_action_failure = None
+
+
+def _log_reconstruction_failure(action_name: str, error_message: str, mesh: trimesh.Trimesh) -> None:
+    """Log a reconstruction action failure."""
+    if ERROR_LOGGING_AVAILABLE and log_action_failure:
+        log_action_failure(
+            action_name=action_name,
+            error_message=error_message,
+            mesh=mesh,
+            action_type="reconstruction",
+        )
+
 
 def _trimesh_to_open3d_pointcloud(mesh: trimesh.Trimesh) -> "o3d.geometry.PointCloud":
     """Convert trimesh vertices to Open3D point cloud with estimated normals."""
@@ -150,6 +169,7 @@ def action_open3d_screened_poisson(mesh: trimesh.Trimesh, params: dict) -> trime
         
     except Exception as e:
         logger.error(f"Screened Poisson reconstruction failed: {e}")
+        _log_reconstruction_failure("reconstruct_poisson", str(e), mesh)
         return mesh.copy()
 
 
@@ -206,6 +226,7 @@ def action_open3d_ball_pivoting(mesh: trimesh.Trimesh, params: dict) -> trimesh.
         
     except Exception as e:
         logger.error(f"Ball pivoting reconstruction failed: {e}")
+        _log_reconstruction_failure("reconstruct_ball_pivot", str(e), mesh)
         return mesh.copy()
 
 
@@ -259,6 +280,7 @@ def action_open3d_alpha_shape(mesh: trimesh.Trimesh, params: dict) -> trimesh.Tr
         
     except Exception as e:
         logger.error(f"Alpha shape reconstruction failed: {e}")
+        _log_reconstruction_failure("reconstruct_alpha_shape", str(e), mesh)
         return mesh.copy()
 
 
@@ -358,6 +380,7 @@ def action_morphological_voxel_reconstruct(mesh: trimesh.Trimesh, params: dict) 
         
     except Exception as e:
         logger.error(f"Morphological voxel reconstruction failed: {e}")
+        _log_reconstruction_failure("reconstruct_voxel_morph", str(e), mesh)
         return mesh.copy()
 
 
@@ -439,6 +462,7 @@ def action_shrinkwrap_reconstruct(mesh: trimesh.Trimesh, params: dict) -> trimes
         
     except Exception as e:
         logger.error(f"Shrinkwrap reconstruction failed: {e}")
+        _log_reconstruction_failure("reconstruct_shrinkwrap", str(e), mesh)
         return mesh.copy()
 
 
@@ -523,4 +547,5 @@ def action_fragment_aware_reconstruct(mesh: trimesh.Trimesh, params: dict) -> tr
         
     except Exception as e:
         logger.error(f"Fragment-aware reconstruction failed: {e}")
+        _log_reconstruction_failure("reconstruct_fragments", str(e), mesh)
         return mesh.copy()
