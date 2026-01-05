@@ -38,6 +38,22 @@ from .filter_pipelines import (
 )
 from .validation import validate_geometry
 
+# Import subprocess executor for crash-prone actions
+try:
+    from .subprocess_executor import (
+        execute_action_safe,
+        is_crash_prone_action,
+        get_crash_tracker,
+        MeshInfo as SubprocessMeshInfo,
+    )
+    SUBPROCESS_EXECUTOR_AVAILABLE = True
+except ImportError:
+    SUBPROCESS_EXECUTOR_AVAILABLE = False
+    execute_action_safe = None
+    is_crash_prone_action = lambda x: False
+    get_crash_tracker = None
+    SubprocessMeshInfo = None
+
 # Import pipeline evolution (optional - won't fail if not available)
 try:
     from .pipeline_evolution import get_evolution_engine, EvolvedPipeline
@@ -87,6 +103,61 @@ def _extract_mesh_state(mesh: trimesh.Trimesh) -> dict:
         "volume": float(mesh.volume) if mesh.is_watertight else 0,
         "body_count": body_count,
     }
+
+
+def _execute_action_with_crash_protection(
+    action_name: str,
+    mesh: trimesh.Trimesh,
+    params: dict,
+    model_id: str = "",
+    model_fingerprint: str = "",
+) -> tuple:
+    """Execute an action with crash protection for crash-prone actions.
+    
+    For actions known to potentially crash (like PyMeshLab), runs them in
+    a subprocess. If the subprocess crashes, the main process survives and
+    the crash is recorded for future learning.
+    
+    Args:
+        action_name: Name of the action to execute
+        mesh: Input mesh
+        params: Action parameters
+        model_id: Model ID for crash tracking
+        model_fingerprint: Model fingerprint for crash tracking
+        
+    Returns:
+        Tuple of (success, result_mesh, error_message)
+    """
+    # Check if this action should run in subprocess
+    if SUBPROCESS_EXECUTOR_AVAILABLE and is_crash_prone_action(action_name):
+        # Create mesh info for crash tracking
+        try:
+            body_count = len(mesh.split(only_watertight=False))
+        except:
+            body_count = 1
+        
+        mesh_info = SubprocessMeshInfo(
+            face_count=len(mesh.faces),
+            vertex_count=len(mesh.vertices),
+            body_count=body_count,
+            model_id=model_id,
+            model_fingerprint=model_fingerprint,
+        )
+        
+        logger.debug(f"Running {action_name} in subprocess (crash protection)")
+        success, result_mesh, error = execute_action_safe(
+            action_name, mesh, params,
+            timeout_s=120,
+            mesh_info=mesh_info,
+        )
+        return success, result_mesh, error
+    
+    # Run normally for non-crash-prone actions
+    try:
+        result_mesh = ActionRegistry.execute(action_name, mesh, params)
+        return True, result_mesh, ""
+    except Exception as e:
+        return False, None, str(e)
 
 
 def _log_action_execution(
@@ -650,9 +721,22 @@ def run_slicer_repair_loop(
                 action_success = True
                 
                 try:
-                    working_mesh = ActionRegistry.execute(action_name, working_mesh, action_params)
+                    # Use crash-protected execution for crash-prone actions
+                    success, result_mesh, error = _execute_action_with_crash_protection(
+                        action_name, working_mesh, action_params,
+                        model_id=model_id,
+                        model_fingerprint="",  # Not available in repair loop
+                    )
+                    
+                    if success and result_mesh is not None:
+                        working_mesh = result_mesh
+                    else:
+                        action_error = error or "Action failed without error message"
+                        action_success = False
+                        raise RuntimeError(action_error)
                 except Exception as e:
-                    action_error = str(e)
+                    if action_error is None:
+                        action_error = str(e)
                     action_success = False
                     raise
                 finally:
@@ -791,7 +875,14 @@ def run_slicer_repair_loop(
                     for action_def in evolved.actions:
                         action_name = action_def["action"]
                         action_params = action_def.get("params", {})
-                        working_mesh = ActionRegistry.execute(action_name, working_mesh, action_params)
+                        success, result_mesh, error = _execute_action_with_crash_protection(
+                            action_name, working_mesh, action_params,
+                            model_id=f"evolved_{evolved.name}",
+                        )
+                        if success and result_mesh is not None:
+                            working_mesh = result_mesh
+                        else:
+                            raise RuntimeError(error or "Action failed")
                     
                     repaired_mesh = working_mesh
                     geom_valid = validate_geometry(repaired_mesh)
@@ -884,12 +975,18 @@ def run_slicer_repair_loop(
                         for action_def in new_evolved.actions:
                             action_name = action_def["action"]
                             action_params = action_def.get("params", {})
-                            working_mesh = ActionRegistry.execute(action_name, working_mesh, action_params)
-                            
-                            # Record individual action results for learning
-                            evolution_engine.record_action_result(
-                                action_def, success=True, duration_ms=0, issues=issues
+                            success, result_mesh, error = _execute_action_with_crash_protection(
+                                action_name, working_mesh, action_params,
+                                model_id=f"new_evolved_{new_evolved.name}",
                             )
+                            if success and result_mesh is not None:
+                                working_mesh = result_mesh
+                                # Record individual action results for learning
+                                evolution_engine.record_action_result(
+                                    action_def, success=True, duration_ms=0, issues=issues
+                                )
+                            else:
+                                raise RuntimeError(error or "Action failed")
                         
                         repaired_mesh = working_mesh
                         geom_valid = validate_geometry(repaired_mesh)

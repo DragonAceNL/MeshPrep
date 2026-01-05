@@ -1164,8 +1164,14 @@ def action_meshlab_reconstruct_ball_pivoting(mesh: trimesh.Trimesh, params: dict
         # Ball pivoting needs normals
         ms.compute_normal_per_vertex()
         
+        # Use PercentageValue for ball radius (Percentage class was renamed)
+        if ball_radius > 0:
+            radius_param = pymeshlab.PercentageValue(ball_radius)
+        else:
+            radius_param = pymeshlab.PercentageValue(0)  # 0 = auto
+        
         ms.generate_surface_reconstruction_ball_pivoting(
-            ballradius=pymeshlab.PercentageValue(ball_radius) if ball_radius > 0 else pymeshlab.Percentage(0),
+            ballradius=radius_param,
             clustering=clustering,
             creasethr=angle
         )
