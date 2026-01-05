@@ -436,3 +436,98 @@ def reprocess_single_model(model_id: str):
     print(f"Fingerprint: {result.model_fingerprint}")
     if result.error:
         print(f"Error: {result.error}")
+
+
+def show_error_stats():
+    """Show error/crash statistics from the error log."""
+    try:
+        from meshprep_poc.error_logger import (
+            get_error_summary,
+            get_error_log_path,
+            get_all_error_logs,
+        )
+        from meshprep_poc.subprocess_executor import (
+            get_failure_tracker,
+            get_crash_tracker,
+        )
+    except ImportError as e:
+        print(f"[ERROR] Error logging not available: {e}")
+        return
+    
+    print("\n" + "=" * 60)
+    print("MeshPrep Error/Crash Statistics")
+    print("=" * 60)
+    
+    # Get error log summary for today
+    log_path = get_error_log_path()
+    if log_path.exists():
+        print(f"\n[LOG] Today's Error Log: {log_path.name}")
+        summary = get_error_summary(log_path)
+        print(f"   Total errors: {summary['total']}")
+        
+        if summary['by_category']:
+            print("\n   By Category:")
+            for cat, count in summary['by_category'].items():
+                print(f"      {cat}: {count}")
+        
+        if summary['by_action']:
+            print("\n   By Action:")
+            for action, count in list(summary['by_action'].items())[:10]:
+                print(f"      {action}: {count}")
+        
+        if summary['by_type']:
+            print("\n   By Type:")
+            for ftype, count in summary['by_type'].items():
+                print(f"      {ftype}: {count}")
+    else:
+        print("\n[LOG] No error log for today")
+    
+    # Show all available log files
+    all_logs = get_all_error_logs()
+    if len(all_logs) > 1:
+        print(f"\n[FILES] Available Logs ({len(all_logs)} total):")
+        for log in all_logs[:5]:
+            print(f"   {log.name}")
+        if len(all_logs) > 5:
+            print(f"   ... and {len(all_logs) - 5} more")
+    
+    # Get failure tracker stats (from SQLite DB)
+    print("\n" + "-" * 60)
+    print("Failure Pattern Learning (SQLite DB)")
+    print("-" * 60)
+    
+    tracker = get_failure_tracker()
+    failure_stats = tracker.get_failure_stats()
+    
+    print(f"\n[STATS] Total failures tracked: {failure_stats['total_failures']}")
+    
+    if failure_stats['by_category']:
+        print("\n   Failures by Category:")
+        for item in failure_stats['by_category'][:5]:
+            print(f"      {item['category']}: {item['count']}")
+    
+    if failure_stats['patterns']:
+        print("\n   Learned Patterns (skip recommendations):")
+        for pattern in failure_stats['patterns'][:10]:
+            skip_marker = "[SKIP]" if pattern['skip'] else "[WARN]"
+            rate = pattern['failures'] / (pattern['failures'] + pattern['successes']) * 100 if pattern['failures'] + pattern['successes'] > 0 else 0
+            print(f"      {skip_marker} {pattern['action']} + {pattern['category']} on {pattern['size_bin']}: {rate:.0f}% fail")
+            if pattern['reason']:
+                print(f"         Reason: {pattern['reason']}")
+    
+    # Get crash tracker stats
+    crash_tracker = get_crash_tracker()
+    crash_stats = crash_tracker.get_crash_stats()
+    
+    print("\n" + "-" * 60)
+    print("Crash Tracking (Process Crashes)")
+    print("-" * 60)
+    print(f"\n[CRASH] Total crashes: {crash_stats['total_crashes']}")
+    
+    if crash_stats['patterns']:
+        print("\n   Crash Patterns:")
+        for pattern in crash_stats['patterns'][:10]:
+            skip_marker = "[SKIP]" if pattern['skip'] else "[WARN]"
+            print(f"      {skip_marker} {pattern['action']} on {pattern['size_bin']}: {pattern['crashes']} crashes, {pattern['successes']} successes")
+    
+    print("\n" + "=" * 60 + "\n")

@@ -24,6 +24,7 @@ Usage:
     python run_full_test.py --status           # Show current progress
     python run_full_test.py --fresh            # Start fresh (ignore existing reports)
     python run_full_test.py --learning-stats   # Show learning engine statistics
+    python run_full_test.py --error-stats      # Show error/crash statistics
     python run_full_test.py --threshold-stats  # Show adaptive thresholds status
     python run_full_test.py --optimize-thresholds  # Manually optimize thresholds
     python run_full_test.py --reset-thresholds # Reset thresholds to defaults
@@ -102,6 +103,11 @@ def main():
         help="Generate HTML learning status page"
     )
     parser.add_argument(
+        "--error-stats",
+        action="store_true",
+        help="Show error/crash statistics from the error log"
+    )
+    parser.add_argument(
         "--discover-profiles",
         action="store_true",
         help="Run profile discovery to create new profiles from clustered data"
@@ -170,7 +176,8 @@ def main():
     # Import CLI commands (deferred to avoid circular imports)
     from cli_commands import (
         show_status, show_learning_stats, show_quality_stats,
-        show_threshold_stats, rate_model_by_fingerprint, reprocess_single_model
+        show_threshold_stats, rate_model_by_fingerprint, reprocess_single_model,
+        show_error_stats,
     )
     from batch_runner import run_batch_test
     
@@ -187,6 +194,10 @@ def main():
         page_path = generate_learning_status_page()
         print(f"\nStatus page generated: {page_path}")
         print(f"Open in browser or serve with: python reports_server.py")
+        return
+    
+    if args.error_stats:
+        show_error_stats()
         return
     
     if args.discover_profiles:

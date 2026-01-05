@@ -44,7 +44,9 @@ try:
         execute_action_safe,
         is_crash_prone_action,
         get_crash_tracker,
+        get_failure_tracker,
         MeshInfo as SubprocessMeshInfo,
+        categorize_error,
     )
     SUBPROCESS_EXECUTOR_AVAILABLE = True
 except ImportError:
@@ -52,7 +54,9 @@ except ImportError:
     execute_action_safe = None
     is_crash_prone_action = lambda x: False
     get_crash_tracker = None
+    get_failure_tracker = None
     SubprocessMeshInfo = None
+    categorize_error = lambda x: "unknown"
 
 # Import pipeline evolution (optional - won't fail if not available)
 try:
@@ -118,6 +122,8 @@ def _execute_action_with_crash_protection(
     a subprocess. If the subprocess crashes, the main process survives and
     the crash is recorded for future learning.
     
+    Also records action failures (Python exceptions) for learning.
+    
     Args:
         action_name: Name of the action to execute
         mesh: Input mesh
@@ -128,14 +134,14 @@ def _execute_action_with_crash_protection(
     Returns:
         Tuple of (success, result_mesh, error_message)
     """
-    # Check if this action should run in subprocess
-    if SUBPROCESS_EXECUTOR_AVAILABLE and is_crash_prone_action(action_name):
-        # Create mesh info for crash tracking
-        try:
-            body_count = len(mesh.split(only_watertight=False))
-        except:
-            body_count = 1
-        
+    # Create mesh info for tracking
+    try:
+        body_count = len(mesh.split(only_watertight=False))
+    except:
+        body_count = 1
+    
+    mesh_info = None
+    if SUBPROCESS_EXECUTOR_AVAILABLE:
         mesh_info = SubprocessMeshInfo(
             face_count=len(mesh.faces),
             vertex_count=len(mesh.vertices),
@@ -143,21 +149,50 @@ def _execute_action_with_crash_protection(
             model_id=model_id,
             model_fingerprint=model_fingerprint,
         )
-        
+    
+    # Check if this action should run in subprocess
+    if SUBPROCESS_EXECUTOR_AVAILABLE and is_crash_prone_action(action_name):
         logger.debug(f"Running {action_name} in subprocess (crash protection)")
         success, result_mesh, error = execute_action_safe(
             action_name, mesh, params,
             timeout_s=120,
             mesh_info=mesh_info,
         )
+        
+        # Record failure if action failed (not crashed - crashes are recorded by execute_action_safe)
+        if not success and error and mesh_info and get_failure_tracker:
+            tracker = get_failure_tracker()
+            tracker.record_failure(
+                action_name, mesh_info,
+                failure_type="error",
+                error_message=error,
+            )
+        
         return success, result_mesh, error
     
     # Run normally for non-crash-prone actions
     try:
         result_mesh = ActionRegistry.execute(action_name, mesh, params)
+        
+        # Record success
+        if mesh_info and get_failure_tracker:
+            tracker = get_failure_tracker()
+            tracker.record_success(action_name, mesh_info)
+        
         return True, result_mesh, ""
     except Exception as e:
-        return False, None, str(e)
+        error_msg = str(e)
+        
+        # Record failure for learning
+        if mesh_info and get_failure_tracker:
+            tracker = get_failure_tracker()
+            tracker.record_failure(
+                action_name, mesh_info,
+                failure_type="error",
+                error_message=error_msg,
+            )
+        
+        return False, None, error_msg
 
 
 def _log_action_execution(

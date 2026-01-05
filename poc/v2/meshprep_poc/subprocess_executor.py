@@ -3,14 +3,21 @@
 # This file is part of MeshPrep — https://github.com/DragonAceNL/MeshPrep
 
 """
-Subprocess wrapper for crash-prone actions like PyMeshLab.
+Subprocess wrapper and failure tracking for crash-prone actions.
 
 Some native libraries (PyMeshLab, Open3D) can crash with access violations
 that cannot be caught by Python exception handling. This wrapper runs such
 actions in isolated subprocesses so crashes don't kill the main process.
 
-The system learns which action+mesh combinations cause crashes and can
-skip them in the future.
+Additionally, the system tracks action failures (caught exceptions) and
+learns which actions fail on which mesh characteristics. This helps avoid
+wasting time on actions that consistently fail for certain types of meshes.
+
+Failure categories tracked:
+- crash: Process crash (access violation, segfault)
+- timeout: Action exceeded time limit
+- error: Python exception (e.g., PyMeshLab filter requirements not met)
+- geometry_loss: Output failed geometry validation
 """
 
 import json
@@ -29,6 +36,16 @@ from pathlib import Path
 from typing import Optional, Tuple, Dict, Any
 
 import numpy as np
+
+# Import error logger
+try:
+    from .error_logger import log_action_error, log_crash, log_pymeshlab_error
+    ERROR_LOGGER_AVAILABLE = True
+except ImportError:
+    ERROR_LOGGER_AVAILABLE = False
+    log_action_error = None
+    log_crash = None
+    log_pymeshlab_error = None
 
 logger = logging.getLogger(__name__)
 
@@ -68,12 +85,12 @@ CREATE TABLE IF NOT EXISTS schema_info (
     value TEXT
 );
 
--- Track actions that crash
-CREATE TABLE IF NOT EXISTS action_crashes (
+-- Track action failures (crashes, errors, timeouts)
+CREATE TABLE IF NOT EXISTS action_failures (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     action_name TEXT NOT NULL,
     
-    -- Mesh characteristics when crash occurred
+    -- Mesh characteristics when failure occurred
     face_count INTEGER,
     vertex_count INTEGER,
     body_count INTEGER,
@@ -83,17 +100,34 @@ CREATE TABLE IF NOT EXISTS action_crashes (
     pymeshlab_version TEXT,
     python_version TEXT,
     
-    -- Crash details
-    crash_type TEXT,  -- 'access_violation', 'segfault', 'timeout', 'unknown'
+    -- Failure details
+    failure_type TEXT,  -- 'crash', 'error', 'timeout', 'geometry_loss'
     error_message TEXT,
+    error_category TEXT,  -- Extracted category like 'normals_required', 'memory', etc.
     
     -- Model info
     model_id TEXT,
     model_fingerprint TEXT,
     
     -- Timestamp
+    timestamp TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Legacy table name for backward compatibility
+CREATE TABLE IF NOT EXISTS action_crashes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    action_name TEXT NOT NULL,
+    face_count INTEGER,
+    vertex_count INTEGER,
+    body_count INTEGER,
+    size_bin TEXT,
+    pymeshlab_version TEXT,
+    python_version TEXT,
+    crash_type TEXT,
+    error_message TEXT,
+    model_id TEXT,
+    model_fingerprint TEXT,
     timestamp TEXT DEFAULT CURRENT_TIMESTAMP,
-    
     UNIQUE(action_name, model_id)
 );
 
@@ -183,6 +217,16 @@ class CrashTracker:
         """Record an action crash."""
         pymeshlab_version = get_pymeshlab_version()
         python_version = f"{sys.version_info.major}.{sys.version_info.minor}"
+        
+        # Log to dedicated error log file
+        if ERROR_LOGGER_AVAILABLE and log_crash:
+            log_crash(
+                action_name=action_name,
+                error_message=error_message,
+                model_id=mesh_info.model_id,
+                face_count=mesh_info.face_count,
+                exit_code=None,  # Not available here
+            )
         
         with self._get_connection() as conn:
             # Record individual crash
@@ -462,3 +506,346 @@ def is_crash_prone_action(action_name: str) -> bool:
         if prone.lower() in action_lower or action_lower in prone.lower():
             return True
     return False
+
+
+# Error message patterns for categorization
+ERROR_CATEGORIES = {
+    "normals_required": [
+        "requires correct per vertex normals",
+        "proper, not-null normal",
+        "normal",
+    ],
+    "memory": [
+        "memory",
+        "out of memory",
+        "allocation failed",
+        "cannot allocate",
+    ],
+    "empty_mesh": [
+        "empty mesh",
+        "no faces",
+        "no vertices",
+        "zero faces",
+    ],
+    "invalid_input": [
+        "invalid input",
+        "invalid mesh",
+        "corrupt",
+        "malformed",
+    ],
+    "filter_failed": [
+        "failed to apply filter",
+        "filter failed",
+        "filter error",
+    ],
+    "topology": [
+        "non-manifold",
+        "self-intersect",
+        "degenerate",
+        "topology",
+    ],
+}
+
+
+def categorize_error(error_message: str) -> str:
+    """Categorize an error message for learning.
+    
+    Args:
+        error_message: The error message to categorize
+        
+    Returns:
+        Category string like 'normals_required', 'memory', etc.
+    """
+    if not error_message:
+        return "unknown"
+    
+    error_lower = error_message.lower()
+    
+    for category, patterns in ERROR_CATEGORIES.items():
+        for pattern in patterns:
+            if pattern.lower() in error_lower:
+                return category
+    
+    return "unknown"
+
+
+class ActionFailureTracker:
+    """Tracks action failures (errors, not just crashes) for learning.
+    
+    This extends beyond crashes to track all action failures, including:
+    - Python exceptions (e.g., PyMeshLab filter requirements not met)
+    - Geometry validation failures
+    - Timeout errors
+    
+    The tracker learns which actions consistently fail on certain mesh
+    characteristics and can recommend skipping them.
+    """
+    
+    def __init__(self, db_path: Optional[Path] = None):
+        self.db_path = db_path or CRASH_DB_PATH
+        self._ensure_db()
+    
+    def _ensure_db(self):
+        """Ensure database exists with failure tracking tables."""
+        self.db_path.parent.mkdir(parents=True, exist_ok=True)
+        with sqlite3.connect(self.db_path) as conn:
+            conn.executescript(CRASH_DB_SCHEMA)
+            # Add failure patterns table
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS failure_patterns (
+                    action_name TEXT NOT NULL,
+                    error_category TEXT NOT NULL,
+                    size_bin TEXT NOT NULL,
+                    pymeshlab_version TEXT NOT NULL,
+                    
+                    failure_count INTEGER DEFAULT 0,
+                    success_count INTEGER DEFAULT 0,
+                    
+                    should_skip INTEGER DEFAULT 0,
+                    skip_reason TEXT,
+                    
+                    last_failure TEXT,
+                    last_success TEXT,
+                    
+                    PRIMARY KEY(action_name, error_category, size_bin, pymeshlab_version)
+                )
+            """)
+            conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_failure_patterns_action 
+                ON failure_patterns(action_name)
+            """)
+    
+    @contextmanager
+    def _get_connection(self):
+        """Get database connection."""
+        conn = sqlite3.connect(self.db_path, timeout=30.0)
+        conn.row_factory = sqlite3.Row
+        try:
+            yield conn
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
+    
+    def record_failure(
+        self,
+        action_name: str,
+        mesh_info: MeshInfo,
+        failure_type: str,
+        error_message: str,
+        pipeline_name: str = "",
+        attempt_number: int = 0,
+    ) -> None:
+        """Record an action failure.
+        
+        Args:
+            action_name: Name of the action that failed
+            mesh_info: Mesh characteristics when failure occurred
+            failure_type: Type of failure ('error', 'crash', 'timeout', 'geometry_loss')
+            error_message: The error message
+            pipeline_name: Name of the pipeline being executed
+            attempt_number: Which attempt this was
+        """
+        pymeshlab_version = get_pymeshlab_version()
+        python_version = f"{sys.version_info.major}.{sys.version_info.minor}"
+        error_category = categorize_error(error_message)
+        
+        logger.debug(
+            f"Recording failure: {action_name} on {mesh_info.size_bin} mesh - "
+            f"{failure_type}: {error_category}"
+        )
+        
+        # Log to dedicated error log file
+        if ERROR_LOGGER_AVAILABLE and log_action_error:
+            log_action_error(
+                action_name=action_name,
+                error_message=error_message,
+                error_category=error_category,
+                failure_type=failure_type,
+                model_id=mesh_info.model_id,
+                model_fingerprint=mesh_info.model_fingerprint,
+                face_count=mesh_info.face_count,
+                vertex_count=mesh_info.vertex_count,
+                body_count=mesh_info.body_count,
+                size_bin=mesh_info.size_bin,
+                pipeline_name=pipeline_name,
+                attempt_number=attempt_number,
+            )
+        
+        with self._get_connection() as conn:
+            # Record individual failure
+            conn.execute("""
+                INSERT INTO action_failures
+                (action_name, face_count, vertex_count, body_count, size_bin,
+                 pymeshlab_version, python_version, failure_type, error_message,
+                 error_category, model_id, model_fingerprint, timestamp)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                action_name, mesh_info.face_count, mesh_info.vertex_count,
+                mesh_info.body_count, mesh_info.size_bin,
+                pymeshlab_version, python_version, failure_type, error_message,
+                error_category, mesh_info.model_id, mesh_info.model_fingerprint,
+                datetime.now().isoformat()
+            ))
+            
+            # Update failure pattern
+            conn.execute("""
+                INSERT INTO failure_patterns 
+                (action_name, error_category, size_bin, pymeshlab_version, 
+                 failure_count, last_failure)
+                VALUES (?, ?, ?, ?, 1, ?)
+                ON CONFLICT(action_name, error_category, size_bin, pymeshlab_version) 
+                DO UPDATE SET
+                    failure_count = failure_count + 1,
+                    last_failure = excluded.last_failure
+            """, (
+                action_name, error_category, mesh_info.size_bin, 
+                pymeshlab_version, datetime.now().isoformat()
+            ))
+            
+            # Check if we should mark for skipping (>= 3 failures of same category)
+            row = conn.execute("""
+                SELECT failure_count, success_count FROM failure_patterns
+                WHERE action_name = ? AND error_category = ? 
+                      AND size_bin = ? AND pymeshlab_version = ?
+            """, (action_name, error_category, mesh_info.size_bin, pymeshlab_version)).fetchone()
+            
+            if row and row["failure_count"] >= 3:
+                total = row["failure_count"] + row["success_count"]
+                if total > 0:
+                    failure_rate = row["failure_count"] / total
+                    if failure_rate > 0.7:  # 70%+ failure rate
+                        skip_reason = f"{error_category} errors on {mesh_info.size_bin} meshes ({failure_rate:.0%} fail rate)"
+                        conn.execute("""
+                            UPDATE failure_patterns 
+                            SET should_skip = 1, skip_reason = ?
+                            WHERE action_name = ? AND error_category = ? 
+                                  AND size_bin = ? AND pymeshlab_version = ?
+                        """, (
+                            skip_reason, action_name, error_category, 
+                            mesh_info.size_bin, pymeshlab_version
+                        ))
+                        logger.warning(
+                            f"Marked {action_name} as should_skip for {error_category} "
+                            f"on {mesh_info.size_bin} meshes"
+                        )
+    
+    def record_success(self, action_name: str, mesh_info: MeshInfo) -> None:
+        """Record a successful action execution."""
+        pymeshlab_version = get_pymeshlab_version()
+        
+        with self._get_connection() as conn:
+            # Update all failure patterns for this action+size to record success
+            conn.execute("""
+                UPDATE failure_patterns 
+                SET success_count = success_count + 1,
+                    last_success = ?
+                WHERE action_name = ? AND size_bin = ? AND pymeshlab_version = ?
+            """, (
+                datetime.now().isoformat(), action_name, 
+                mesh_info.size_bin, pymeshlab_version
+            ))
+    
+    def should_skip_for_error_category(
+        self, 
+        action_name: str, 
+        mesh_info: MeshInfo,
+        expected_error_category: Optional[str] = None,
+    ) -> Tuple[bool, str]:
+        """Check if action should be skipped based on failure history.
+        
+        Args:
+            action_name: Action to check
+            mesh_info: Mesh characteristics
+            expected_error_category: If known, check for specific error category
+            
+        Returns:
+            Tuple of (should_skip, reason)
+        """
+        pymeshlab_version = get_pymeshlab_version()
+        
+        with self._get_connection() as conn:
+            if expected_error_category:
+                # Check specific category
+                row = conn.execute("""
+                    SELECT should_skip, skip_reason FROM failure_patterns
+                    WHERE action_name = ? AND error_category = ?
+                          AND size_bin = ? AND pymeshlab_version = ?
+                          AND should_skip = 1
+                """, (
+                    action_name, expected_error_category, 
+                    mesh_info.size_bin, pymeshlab_version
+                )).fetchone()
+            else:
+                # Check any category
+                row = conn.execute("""
+                    SELECT should_skip, skip_reason FROM failure_patterns
+                    WHERE action_name = ? AND size_bin = ? 
+                          AND pymeshlab_version = ? AND should_skip = 1
+                    LIMIT 1
+                """, (action_name, mesh_info.size_bin, pymeshlab_version)).fetchone()
+            
+            if row and row["should_skip"]:
+                return True, row["skip_reason"] or "High failure rate"
+        
+        return False, ""
+    
+    def get_failure_stats(self) -> Dict[str, Any]:
+        """Get failure statistics."""
+        with self._get_connection() as conn:
+            # Total failures
+            total = conn.execute(
+                "SELECT COUNT(*) FROM action_failures"
+            ).fetchone()[0]
+            
+            # Failures by category
+            by_category = conn.execute("""
+                SELECT error_category, COUNT(*) as count
+                FROM action_failures
+                GROUP BY error_category
+                ORDER BY count DESC
+            """).fetchall()
+            
+            # Failure patterns
+            patterns = conn.execute("""
+                SELECT action_name, error_category, size_bin, 
+                       failure_count, success_count, should_skip, skip_reason
+                FROM failure_patterns
+                WHERE failure_count > 0
+                ORDER BY failure_count DESC
+                LIMIT 50
+            """).fetchall()
+            
+            return {
+                "total_failures": total,
+                "by_category": [
+                    {"category": row[0], "count": row[1]}
+                    for row in by_category
+                ],
+                "patterns": [
+                    {
+                        "action": row["action_name"],
+                        "category": row["error_category"],
+                        "size_bin": row["size_bin"],
+                        "failures": row["failure_count"],
+                        "successes": row["success_count"],
+                        "skip": bool(row["should_skip"]),
+                        "reason": row["skip_reason"],
+                    }
+                    for row in patterns
+                ],
+            }
+
+
+# Global failure tracker instance
+_failure_tracker: Optional[ActionFailureTracker] = None
+
+
+def get_failure_tracker() -> ActionFailureTracker:
+    """Get or create the global failure tracker."""
+    global _failure_tracker
+    if _failure_tracker is None:
+        _failure_tracker = ActionFailureTracker()
+    return _failure_tracker
