@@ -287,7 +287,7 @@ def action_open3d_alpha_shape(mesh: trimesh.Trimesh, params: dict) -> trimesh.Tr
 @register_action(
     name="morphological_voxel_reconstruct",
     description="Voxel reconstruction with morphological gap filling",
-    parameters={"resolution": 100, "dilation_iterations": 2, "erosion_iterations": 1},
+    parameters={"resolution": 100, "dilation_iterations": 2, "erosion_iterations": 1, "target_pitch": None},
     risk_level="high"
 )
 def action_morphological_voxel_reconstruct(mesh: trimesh.Trimesh, params: dict) -> trimesh.Trimesh:
@@ -305,9 +305,11 @@ def action_morphological_voxel_reconstruct(mesh: trimesh.Trimesh, params: dict) 
     Args:
         mesh: Input mesh
         params:
-            - resolution: Voxel grid resolution (default 100)
+            - resolution: Voxel grid resolution (default 100, auto-adjusted for large meshes)
             - dilation_iterations: Dilation to fill gaps (default 2)
             - erosion_iterations: Erosion to restore shape (default 1)
+            - target_pitch: Target voxel size in mesh units (default None = auto)
+                           For mm-scale meshes, use 2-5 for good detail
     
     Returns:
         Reconstructed mesh
@@ -320,12 +322,16 @@ def action_morphological_voxel_reconstruct(mesh: trimesh.Trimesh, params: dict) 
             bbox_size = bbox[1] - bbox[0]
             pitch = max(bbox_size) / params.get("resolution", 100)
             voxels = mesh.voxelized(pitch=pitch)
-            return voxels.marching_cubes
+            result = voxels.marching_cubes
+            # IMPORTANT: Apply the voxel transform to get world coordinates
+            result.apply_transform(voxels.transform)
+            return result
         except Exception as e:
             logger.error(f"Basic voxelization failed: {e}")
             return mesh.copy()
     
     resolution = params.get("resolution", 100)
+    target_pitch = params.get("target_pitch", None)
     dilation_iter = params.get("dilation_iterations", 2)
     erosion_iter = params.get("erosion_iterations", 1)
     
@@ -333,12 +339,43 @@ def action_morphological_voxel_reconstruct(mesh: trimesh.Trimesh, params: dict) 
         # Calculate voxel pitch
         bbox = mesh.bounds
         bbox_size = bbox[1] - bbox[0]
-        pitch = max(bbox_size) / resolution
+        max_extent = max(bbox_size)
         
-        logger.info(f"Voxelizing with resolution {resolution} (pitch={pitch:.4f})")
+        # ADAPTIVE RESOLUTION: For large meshes, use target pitch instead of fixed resolution
+        # This ensures consistent detail level regardless of mesh scale
+        if target_pitch is not None:
+            # User specified target pitch
+            pitch = target_pitch
+            actual_resolution = int(max_extent / pitch)
+            logger.info(f"Using target pitch {pitch:.2f} -> resolution {actual_resolution}")
+        else:
+            # Auto-calculate: aim for pitch around 3-5 units for good detail
+            # But cap memory usage at ~500MB (resolution ~800)
+            auto_target_pitch = max(3.0, max_extent / 800)  # At least 3 units, cap at 800 resolution
+            
+            # If the default resolution would give larger pitch, use the default
+            default_pitch = max_extent / resolution
+            
+            if default_pitch > auto_target_pitch:
+                # Default is too coarse, use auto
+                pitch = auto_target_pitch
+                actual_resolution = int(max_extent / pitch)
+                logger.info(f"Auto-adjusted: pitch {pitch:.2f} (resolution {actual_resolution}) for better detail")
+            else:
+                # Default is fine
+                pitch = default_pitch
+                actual_resolution = resolution
         
-        # Voxelize
+        # Memory check - warn if very high resolution
+        estimated_memory_mb = (actual_resolution ** 3) / (1024 * 1024)
+        if estimated_memory_mb > 500:
+            logger.warning(f"High memory usage expected: ~{estimated_memory_mb:.0f}MB for resolution {actual_resolution}")
+        
+        logger.info(f"Voxelizing with resolution {actual_resolution} (pitch={pitch:.4f})")
+        
+        # Voxelize - PRESERVE the original transform!
         voxels = mesh.voxelized(pitch=pitch)
+        original_transform = voxels.transform.copy()  # Save the world-space transform
         voxel_matrix = voxels.matrix.copy()
         
         logger.info(f"Initial voxels: {voxel_matrix.sum()} occupied")
@@ -366,15 +403,21 @@ def action_morphological_voxel_reconstruct(mesh: trimesh.Trimesh, params: dict) 
         voxel_matrix = ndimage.binary_fill_holes(voxel_matrix)
         logger.info(f"After fill holes: {voxel_matrix.sum()} occupied")
         
-        # Create new voxel grid and extract mesh
+        # Create new voxel grid with the ORIGINAL transform
         new_voxels = trimesh.voxel.VoxelGrid(
             trimesh.voxel.encoding.DenseEncoding(voxel_matrix),
-            transform=voxels.transform
+            transform=original_transform  # Use the original transform
         )
         
+        # Extract mesh via marching cubes
         result = new_voxels.marching_cubes
         
+        # IMPORTANT: marching_cubes returns mesh in voxel grid coordinates!
+        # Apply the transform to convert to world coordinates
+        result.apply_transform(original_transform)
+        
         logger.info(f"Reconstruction complete: {len(result.vertices)} vertices, {len(result.faces)} faces")
+        logger.info(f"Result bounds: min={result.bounds[0]}, max={result.bounds[1]}")
         
         return result
         

@@ -23,7 +23,7 @@ from meshprep_poc.quality_feedback import get_quality_engine, QualityRating
 
 from config import (
     REPORTS_PATH, FILTERS_PATH, FIXED_OUTPUT_PATH,
-    THINGI10K_PATH, SUPPORTED_FORMATS,
+    THINGI10K_PATH, CTM_MESHES_PATH, SUPPORTED_FORMATS,
 )
 from progress_tracker import load_progress
 from mesh_utils import ADAPTIVE_THRESHOLDS_AVAILABLE
@@ -391,13 +391,15 @@ def reprocess_single_model(model_id: str):
     """
     # Import here to avoid circular import
     from model_processor import process_single_model
+    from index_generator import generate_reports_index
+    from progress_db import get_progress_db, ModelResult
     
     print(f"Reprocessing model: {model_id}")
     
     # Find model file in CTM or raw_meshes
     model_path = None
     for ext in SUPPORTED_FORMATS:
-        for search_path in [THINGI10K_PATH]:
+        for search_path in [CTM_MESHES_PATH, THINGI10K_PATH]:
             candidate = search_path / f"{model_id}{ext}"
             if candidate.exists():
                 model_path = candidate
@@ -427,16 +429,38 @@ def reprocess_single_model(model_id: str):
     result = process_single_model(model_path)
     print("-" * 40)
     
+    # Save result to database
+    db = get_progress_db()
+    model_result = ModelResult(
+        file_id=result.file_id,
+        file_path=result.file_path,
+        success=result.success,
+        filter_used=result.filter_used,
+        duration_ms=result.duration_ms,
+        original_faces=result.original_faces,
+        result_faces=result.result_faces,
+        precheck_skipped=result.precheck_skipped,
+        escalation_used=result.escalation_used,
+        error=result.error,
+    )
+    db.save_result(model_result)
+    print(f"Saved result to database")
+    
     # Summary
     status = "SUCCESS" if result.success else "FAILED"
-    escalation = "BLENDER" if result.escalation_used else " "
     print(f"Result: {status}")
     print(f"Filter: {result.filter_used}")
     print(f"Duration: {result.duration_ms/1000:.1f}s")
     print(f"Fingerprint: {result.model_fingerprint}")
     if result.error:
         print(f"Error: {result.error}")
-
+    
+    # Regenerate index to include this model
+    print("-" * 40)
+    print("Regenerating reports index...")
+    generate_reports_index()
+    print(f"Index updated: {REPORTS_PATH / 'index.html'}")
+    
 
 def show_error_stats():
     """Show error/crash statistics from the error log."""

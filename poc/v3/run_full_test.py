@@ -29,6 +29,7 @@ Usage:
     python run_full_test.py --optimize-thresholds  # Manually optimize thresholds
     python run_full_test.py --reset-thresholds # Reset thresholds to defaults
     python run_full_test.py --no-auto-optimize # Disable automatic optimization
+    python run_full_test.py --regenerate-index # Regenerate reports index.html
     
     # Quality feedback commands:
     python run_full_test.py --quality-stats    # Show quality feedback statistics
@@ -137,6 +138,11 @@ def main():
         "--no-auto-optimize",
         action="store_true",
         help="Disable automatic threshold optimization during batch processing"
+    )
+    parser.add_argument(
+        "--regenerate-index",
+        action="store_true",
+        help="Regenerate the reports index.html from database"
     )
     
     # Quality feedback options
@@ -266,6 +272,14 @@ def main():
     
     if args.reprocess:
         reprocess_single_model(args.reprocess)
+        return
+    
+    if args.regenerate_index:
+        from index_generator import generate_reports_index
+        from config import REPORTS_PATH
+        print(f"Regenerating reports index...")
+        generate_reports_index()
+        print(f"Done! Index saved to: {REPORTS_PATH / 'index.html'}")
         return
     
     # If --fresh is passed, reprocess all files

@@ -301,7 +301,120 @@ PROFILE_PIPELINES: Dict[str, List[FilterPipeline]] = {
     ],
     
     # NEW: Extreme fragmentation profile (>1000 bodies) - reconstruction only
+    # See docs/extreme_fragmentation_guide.md for detailed parameter guidance
     "extreme-fragmented": [
+        # === HIGH QUALITY OPTIONS (Recommended) ===
+        FilterPipeline(
+            name="cgal-alpha-wrap-smooth-hq",
+            description="CGAL Alpha Wrap + heavy smoothing - best visual quality (recommended)",
+            actions=[
+                # High quality alpha wrap + 10x smoothing for minimal stair-stepping
+                {"action": "cgal_alpha_wrap_smooth", "params": {
+                    "relative_alpha": 2000.0,
+                    "relative_offset": 4000.0,
+                    "smooth_iterations": 10
+                }},
+                {"action": "fix_normals", "params": {}},
+            ],
+            priority=1,
+        ),
+        FilterPipeline(
+            name="cgal-alpha-wrap-remesh-smooth",
+            description="CGAL Alpha Wrap + remesh + smooth - balanced quality and file size",
+            actions=[
+                # Good quality with smaller file size (3M → 200K faces)
+                {"action": "cgal_alpha_wrap_remesh_smooth", "params": {
+                    "relative_alpha": 2000.0,
+                    "relative_offset": 4000.0,
+                    "target_edge_percent": 0.5,
+                    "smooth_iterations": 3
+                }},
+                {"action": "fix_normals", "params": {}},
+            ],
+            priority=2,
+        ),
+        
+        # === MEDIUM QUALITY OPTIONS (Faster) ===
+        FilterPipeline(
+            name="cgal-alpha-wrap-good",
+            description="CGAL Alpha Wrap - good quality, moderate speed (~10 min)",
+            actions=[
+                {"action": "cgal_alpha_wrap", "params": {"relative_alpha": 1000.0, "relative_offset": 2000.0}},
+                {"action": "hc_laplacian_smooth", "params": {"iterations": 5}},
+                {"action": "fix_normals", "params": {}},
+            ],
+            priority=3,
+        ),
+        
+        # === DRAFT QUALITY OPTIONS (Fast) ===
+        FilterPipeline(
+            name="cgal-alpha-wrap-draft",
+            description="CGAL Alpha Wrap - draft quality, fast (~5 min)",
+            actions=[
+                {"action": "cgal_alpha_wrap", "params": {"relative_alpha": 500.0, "relative_offset": 1200.0}},
+                {"action": "fix_normals", "params": {}},
+            ],
+            priority=4,
+        ),
+        FilterPipeline(
+            name="cgal-alpha-wrap-preview",
+            description="CGAL Alpha Wrap - quick preview (~1 min)",
+            actions=[
+                {"action": "cgal_alpha_wrap", "params": {"relative_alpha": 100.0, "relative_offset": 600.0}},
+                {"action": "fix_normals", "params": {}},
+            ],
+            priority=5,
+        ),
+        
+        # === ULTRA QUALITY OPTIONS (Slow - hours to days) ===
+        FilterPipeline(
+            name="cgal-alpha-wrap-ultra",
+            description="CGAL Alpha Wrap - ultra quality (1-4 hours)",
+            actions=[
+                # Very high detail - expect 1-4 hours
+                {"action": "cgal_alpha_wrap", "params": {"relative_alpha": 4000.0, "relative_offset": 8000.0}},
+                {"action": "hc_laplacian_smooth", "params": {"iterations": 5}},
+                {"action": "fix_normals", "params": {}},
+            ],
+            priority=6,
+        ),
+        FilterPipeline(
+            name="cgal-alpha-wrap-extreme",
+            description="CGAL Alpha Wrap - extreme quality (overnight, 4-24 hours)",
+            actions=[
+                # Maximum practical detail - let it run overnight
+                {"action": "cgal_alpha_wrap", "params": {"relative_alpha": 8000.0, "relative_offset": 16000.0}},
+                {"action": "hc_laplacian_smooth", "params": {"iterations": 5}},
+                {"action": "isotropic_remesh", "params": {"target_edge_percent": 0.5}},
+                {"action": "fix_normals", "params": {}},
+            ],
+            priority=7,
+        ),
+        FilterPipeline(
+            name="cgal-alpha-wrap-maximum",
+            description="CGAL Alpha Wrap - absolute maximum quality (days, no time limit)",
+            actions=[
+                # Absolute finest detail - may take days, for when quality is the only priority
+                {"action": "cgal_alpha_wrap", "params": {"relative_alpha": 10000.0, "relative_offset": 20000.0}},
+                {"action": "hc_laplacian_smooth", "params": {"iterations": 10}},
+                {"action": "isotropic_remesh", "params": {"target_edge_percent": 0.3}},
+                {"action": "fix_normals", "params": {}},
+            ],
+            priority=8,
+        ),
+        
+        # === RAW OPTIONS (No smoothing) ===
+        FilterPipeline(
+            name="cgal-alpha-wrap-raw",
+            description="CGAL Alpha Wrap only - no smoothing (for comparison)",
+            actions=[
+                {"action": "cgal_alpha_wrap", "params": {"relative_alpha": 2000.0, "relative_offset": 4000.0}},
+                {"action": "fix_normals", "params": {}},
+            ],
+            priority=9,
+        ),
+        
+        # === ALTERNATIVE METHODS ===
         FilterPipeline(
             name="fragment-aware-reconstruct",
             description="Intelligent fragment analysis and best reconstruction",
@@ -309,7 +422,7 @@ PROFILE_PIPELINES: Dict[str, List[FilterPipeline]] = {
                 {"action": "fragment_aware_reconstruct", "params": {}},
                 {"action": "fix_normals", "params": {}},
             ],
-            priority=1,
+            priority=10,
         ),
         FilterPipeline(
             name="open3d-screened-poisson",
@@ -318,7 +431,7 @@ PROFILE_PIPELINES: Dict[str, List[FilterPipeline]] = {
                 {"action": "open3d_screened_poisson", "params": {"depth": 9}},
                 {"action": "fix_normals", "params": {}},
             ],
-            priority=2,
+            priority=3,
         ),
         FilterPipeline(
             name="morphological-voxel-extreme",
@@ -327,7 +440,7 @@ PROFILE_PIPELINES: Dict[str, List[FilterPipeline]] = {
                 {"action": "morphological_voxel_reconstruct", "params": {"resolution": 150, "dilation_iterations": 3}},
                 {"action": "fix_normals", "params": {}},
             ],
-            priority=3,
+            priority=4,
         ),
         FilterPipeline(
             name="voxel-reconstruct-extreme",
@@ -336,7 +449,7 @@ PROFILE_PIPELINES: Dict[str, List[FilterPipeline]] = {
                 {"action": "voxelize_and_reconstruct", "params": {"pitch": "auto"}},
                 {"action": "fix_normals", "params": {}},
             ],
-            priority=4,
+            priority=5,
         ),
         FilterPipeline(
             name="shrinkwrap-reconstruct",
@@ -345,7 +458,7 @@ PROFILE_PIPELINES: Dict[str, List[FilterPipeline]] = {
                 {"action": "shrinkwrap_reconstruct", "params": {"subdivision_level": 4, "iterations": 100}},
                 {"action": "fix_normals", "params": {}},
             ],
-            priority=5,
+            priority=6,
         ),
         FilterPipeline(
             name="meshlab-alpha-wrap",
@@ -354,7 +467,7 @@ PROFILE_PIPELINES: Dict[str, List[FilterPipeline]] = {
                 {"action": "meshlab_alpha_wrap", "params": {}},
                 {"action": "fix_normals", "params": {}},
             ],
-            priority=6,
+            priority=7,
         ),
         FilterPipeline(
             name="blender-remesh-extreme",
@@ -363,7 +476,7 @@ PROFILE_PIPELINES: Dict[str, List[FilterPipeline]] = {
                 {"action": "blender_remesh", "params": {"voxel_size": 0.005}},
                 {"action": "fix_normals", "params": {}},
             ],
-            priority=7,
+            priority=8,
         ),
         FilterPipeline(
             name="convex-hull-extreme",
@@ -372,7 +485,7 @@ PROFILE_PIPELINES: Dict[str, List[FilterPipeline]] = {
                 {"action": "convex_hull", "params": {}},
                 {"action": "fix_normals", "params": {}},
             ],
-            priority=8,
+            priority=9,
         ),
     ],
     
@@ -890,7 +1003,8 @@ def get_pipelines_for_issues(
     3. Adds combined profile pipelines if applicable
     4. Deduplicates and sorts by priority
     5. Filters out dangerous pipelines for fragmented models
-    6. **NEW**: Reorders based on learning engine recommendations
+    6. **EXCLUDES or DEPRIORITIZES pipelines with poor user quality ratings**
+    7. Reorders based on learning engine recommendations
     
     Args:
         issues: List of issue categories (e.g., ["holes", "normals"])
@@ -903,6 +1017,53 @@ def get_pipelines_for_issues(
     pipelines = []
     seen_names = set()
     
+    # =========================================================================
+    # Get quality-based exclusions and penalties from user ratings
+    # =========================================================================
+    excluded_pipelines = set()  # Pipelines to skip entirely (very poor ratings)
+    penalized_pipelines = {}    # Pipelines to deprioritize {name: penalty_score}
+    
+    try:
+        from .quality_feedback import get_quality_engine
+        quality_engine = get_quality_engine()
+        all_quality_stats = quality_engine.get_all_pipeline_quality_stats()
+        
+        for pipeline_name, profile_stats in all_quality_stats.items():
+            total_ratings = sum(s.total_ratings for s in profile_stats.values())
+            if total_ratings == 0:
+                continue
+            
+            # Calculate weighted average rating across all profiles
+            weighted_avg = sum(
+                s.avg_rating * s.total_ratings 
+                for s in profile_stats.values()
+            ) / total_ratings
+            
+            # Calculate acceptance rate
+            acceptance_rate = sum(
+                s.acceptance_rate * s.total_ratings 
+                for s in profile_stats.values()
+            ) / total_ratings
+            
+            # EXCLUDE pipelines with very poor ratings (avg < 1.5 or acceptance < 20%)
+            if weighted_avg < 1.5 or acceptance_rate < 0.2:
+                excluded_pipelines.add(pipeline_name)
+                logger.warning(
+                    f"EXCLUDING pipeline '{pipeline_name}' due to very poor ratings "
+                    f"(avg={weighted_avg:.1f}/5, acceptance={acceptance_rate:.0%})"
+                )
+            # PENALIZE pipelines with poor ratings (avg < 3.0)
+            elif weighted_avg < 3.0:
+                # Penalty increases as rating decreases: rating 2.9 -> penalty 0.1, rating 2.0 -> penalty 1.0
+                penalty = (3.0 - weighted_avg) * 1000  # Large penalty to push to end
+                penalized_pipelines[pipeline_name] = penalty
+                logger.info(
+                    f"PENALIZING pipeline '{pipeline_name}' (avg={weighted_avg:.1f}/5) - "
+                    f"will try other options first"
+                )
+    except Exception as e:
+        logger.debug(f"Could not check quality exclusions: {e}")
+    
     # Check for combined profiles first (higher priority)
     combined_profiles = detect_combined_profiles(issues)
     for profile in combined_profiles:
@@ -911,6 +1072,9 @@ def get_pipelines_for_issues(
             if pipeline.name not in seen_names:
                 if is_fragmented and pipeline.avoid_for_fragmented:
                     logger.debug(f"Skipping pipeline '{pipeline.name}' - not safe for fragmented")
+                    continue
+                if pipeline.name in excluded_pipelines:
+                    logger.debug(f"Skipping pipeline '{pipeline.name}' - excluded due to poor ratings")
                     continue
                 pipelines.append(pipeline)
                 seen_names.add(pipeline.name)
@@ -924,6 +1088,9 @@ def get_pipelines_for_issues(
                 if is_fragmented and pipeline.avoid_for_fragmented:
                     logger.debug(f"Skipping pipeline '{pipeline.name}' - not safe for fragmented")
                     continue
+                if pipeline.name in excluded_pipelines:
+                    logger.debug(f"Skipping pipeline '{pipeline.name}' - excluded due to poor ratings")
+                    continue
                 pipelines.append(pipeline)
                 seen_names.add(pipeline.name)
     
@@ -932,11 +1099,16 @@ def get_pipelines_for_issues(
         if pipeline.name not in seen_names:
             if is_fragmented and pipeline.avoid_for_fragmented:
                 continue
+            if pipeline.name in excluded_pipelines:
+                continue
             pipelines.append(pipeline)
             seen_names.add(pipeline.name)
     
     # =========================================================================
-    # NEW: Reorder pipelines based on learning engine recommendations
+    # Reorder pipelines based on:
+    # 1. Quality penalties (poorly rated pipelines go to the end)
+    # 2. Learning engine recommendations
+    # 3. Original priority
     # =========================================================================
     if use_learning and pipelines:
         try:
@@ -944,33 +1116,38 @@ def get_pipelines_for_issues(
             engine = get_learning_engine()
             stats = engine.get_stats_summary()
             
-            # Only use learning if we have enough data (at least 50 models)
-            if stats.get("total_models_processed", 0) >= 50:
-                # Get recommended order from learning engine
-                recommended_order = engine.get_recommended_pipeline_order(issues)
+            # Get recommended order from learning engine (includes quality weighting)
+            recommended_order = engine.get_recommended_pipeline_order(issues)
+            order_lookup = {name: idx for idx, name in enumerate(recommended_order)} if recommended_order else {}
+            
+            def sort_key(p):
+                # Start with original priority
+                base_score = p.priority
                 
-                if recommended_order:
-                    # Create lookup for recommended positions
-                    order_lookup = {name: idx for idx, name in enumerate(recommended_order)}
-                    
-                    # Reorder pipelines: learned order first, then by original priority
-                    def sort_key(p):
-                        if p.name in order_lookup:
-                            # Learned pipelines get negative priority (come first)
-                            return (-1000 + order_lookup[p.name], p.priority)
-                        else:
-                            # Unknown pipelines keep original priority
-                            return (0, p.priority)
-                    
-                    pipelines.sort(key=sort_key)
-                    logger.debug(f"Reordered pipelines using learning engine (top: {pipelines[0].name if pipelines else 'none'})")
+                # Apply quality penalty (pushes poorly-rated pipelines down)
+                quality_penalty = penalized_pipelines.get(p.name, 0)
+                
+                # Apply learning engine recommendation
+                if p.name in order_lookup:
+                    # Learned pipelines get bonus (lower score = tried first)
+                    learning_bonus = -500 + order_lookup[p.name]
+                else:
+                    learning_bonus = 0
+                
+                return (quality_penalty + learning_bonus, base_score)
+            
+            pipelines.sort(key=sort_key)
+            
+            if pipelines:
+                logger.info(f"Pipeline order after learning+quality: {[p.name for p in pipelines[:3]]}...")
+                
         except Exception as e:
-            # Learning engine not available or error - fall back to default order
             logger.debug(f"Learning engine unavailable for pipeline ordering: {e}")
-            pipelines.sort(key=lambda p: p.priority)
+            # Still apply quality penalties even without learning engine
+            pipelines.sort(key=lambda p: (penalized_pipelines.get(p.name, 0), p.priority))
     else:
-        # Sort by priority (default)
-        pipelines.sort(key=lambda p: p.priority)
+        # Sort by priority with quality penalties
+        pipelines.sort(key=lambda p: (penalized_pipelines.get(p.name, 0), p.priority))
     
     return pipelines
 

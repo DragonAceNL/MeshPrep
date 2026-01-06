@@ -759,7 +759,9 @@ class LearningEngine:
                         'acceptance_rate': acceptance_rate
                     })()
                 
-                if stats.total_ratings >= 5:
+                # Lower threshold to 1 rating for immediate effect during testing
+                # In production, consider raising back to 5 for stability
+                if stats.total_ratings >= 1:
                     # Calculate quality adjustment
                     # avg_rating of 4+ = no penalty, 3 = small penalty, 2 = big penalty
                     quality_adjustment = 0.0

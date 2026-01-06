@@ -62,6 +62,7 @@ Each topic has ONE authoritative document. All other documents must **reference*
 | **Code style & headers** | `docs/CODE_STYLE.md` |
 | **Third-party licenses** | `NOTICE` |
 | **Contribution process** | `CONTRIBUTING.md` |
+| **Extreme fragmentation repair** | `docs/extreme_fragmentation_guide.md` |
 
 ### ✅ Correct Pattern
 

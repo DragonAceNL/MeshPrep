@@ -89,7 +89,11 @@ class MeshLabHandler(http.server.SimpleHTTPRequestHandler):
         # Route based on path prefix
         if path == '/reports' or path == '/reports/':
             # Serve index.html from reports directory
-            return str(THINGI10K_REPORTS / "index.html")
+            index_path = THINGI10K_REPORTS / "index.html"
+            if not index_path.exists():
+                # Generate empty index if reports dir exists but index doesn't
+                self._generate_empty_reports_index()
+            return str(index_path)
         elif path.startswith('/reports/'):
             # Serve from Thingi10K/reports/ directory
             rel_path = path[len('/reports/'):]
@@ -388,6 +392,29 @@ class MeshLabHandler(http.server.SimpleHTTPRequestHandler):
         self.send_header("Content-Type", "text/html; charset=utf-8")
         self.end_headers()
         self.wfile.write(html.encode('utf-8'))
+    
+    def _generate_empty_reports_index(self):
+        """Generate an empty index.html file in the reports directory."""
+        try:
+            index_path = THINGI10K_REPORTS / "index.html"
+            with open(index_path, 'w', encoding='utf-8') as f:
+                f.write("<!DOCTYPE html>\n<html lang='en'>\n<head>\n")
+                f.write("    <meta charset='UTF-8'>\n")
+                f.write("    <meta name='viewport' content='width=device-width, initial-scale=1.0'>\n")
+                f.write("    <title>MeshPrep Reports</title>\n")
+                f.write("    <style>\n")
+                f.write("        body { font-family: Arial, sans-serif; margin: 0; padding: 0; }\n")
+                f.write("        h1 { background-color: #4CAF50; color: white; padding: 10px 0; text-align: center; }\n")
+                f.write("        p { padding: 0 15px; }\n")
+                f.write("    </style>\n")
+                f.write("</head>\n<body>\n")
+                f.write("    <h1>MeshPrep Reports</h1>\n")
+                f.write("    <p>No reports found. Please run the MeshPrep test to generate reports.</p>\n")
+                f.write("</body>\n</html>\n")
+            
+            print(f"[Reports] Created empty index.html: {index_path}")
+        except Exception as e:
+            print(f"[Reports] Failed to create index.html: {e}")
     
     def _generate_errors_html(self, current_page: int = 1) -> str:
         """Generate the errors page HTML with pagination."""
@@ -947,14 +974,49 @@ class MeshLabHandler(http.server.SimpleHTTPRequestHandler):
                     try:
                         with open(filter_path, encoding='utf-8') as f:
                             filter_data = json.load(f)
-                        pipeline_used = filter_data.get("filter_name", "unknown")
+                        
+                        # Get the ACTUAL winning pipeline name from repair_attempts
+                        # This is critical for learning - we need to know which specific
+                        # pipeline produced the result, not just "slicer-repair-loop"
+                        repair_attempts = filter_data.get("repair_attempts", {})
+                        attempts = repair_attempts.get("attempts", [])
+                        
+                        # Find the successful pipeline
+                        winning_pipeline = None
+                        for attempt in attempts:
+                            if attempt.get("success", False):
+                                winning_pipeline = attempt.get("pipeline_name")
+                                break
+                        
+                        if winning_pipeline:
+                            pipeline_used = winning_pipeline
+                            print(f"[Rating] Actual winning pipeline: {pipeline_used}")
+                        else:
+                            # Fallback to filter_name if no successful attempt found
+                            pipeline_used = filter_data.get("filter_name", "unknown")
+                        
                         escalated = filter_data.get("escalated_to_blender", False)
                         model_filename = filter_data.get("original_filename", file_id)
                         
-                        # Get diagnostics for change percentages
+                        # Detect profile from diagnostics
                         diag = filter_data.get("diagnostics", {})
                         before = diag.get("before", {}) or {}
                         after = diag.get("after", {}) or {}
+                        
+                        # Determine profile based on body count and issues
+                        body_count = before.get("body_count", 1)
+                        issues = repair_attempts.get("issues_found", [])
+                        
+                        if "extreme-fragmented" in issues or body_count > 1000:
+                            profile = "extreme-fragmented"
+                        elif "fragmented" in issues or body_count > 10:
+                            profile = "fragmented"
+                        elif body_count > 1:
+                            profile = "multi-body"
+                        else:
+                            profile = "standard"
+                        
+                        print(f"[Rating] Detected profile: {profile}")
                         
                         if before.get("volume") and after.get("volume"):
                             vol_before = before["volume"]
@@ -989,12 +1051,15 @@ class MeshLabHandler(http.server.SimpleHTTPRequestHandler):
             quality_engine.record_rating(quality_rating)
             
             print(f"[Rating] Successfully recorded rating for {fingerprint}")
+            print(f"[Rating]   Pipeline: {pipeline_used}, Profile: {profile}, Rating: {rating}/5")
             
             response = {
                 "success": True,
                 "message": "Rating recorded successfully",
                 "fingerprint": fingerprint,
                 "rating": rating,
+                "pipeline": pipeline_used,
+                "profile": profile,
             }
             
             self.send_response(200)
