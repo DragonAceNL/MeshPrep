@@ -9,22 +9,24 @@ This module addresses a critical gap in mesh repair validation: a model can be
 technically perfect (watertight, manifold, slicer-validated) but visually
 unrecognizable compared to the original.
 
-The system learns from user feedback to:
-- Predict quality scores for new repairs based on similar past repairs
-- Flag suspicious repairs that may need review before use
-- Penalize pipelines that produce technically-valid but visually-poor results
-- Learn profile-specific tolerances (organic models need more detail preservation)
+The system learns from both:
+- **User feedback** (manual ratings via --rate command)
+- **Automatic scoring** (geometric fidelity metrics during batch processing)
 
-Rating Scale:
+To ensure consistent quality, user ratings and automatic scores are mapped to
+a common 1-5 scale:
+
 - 5: Perfect - Indistinguishable from original
 - 4: Good - Minor smoothing/simplification, fully usable
 - 3: Acceptable - Noticeable changes but recognizable and printable
 - 2: Poor - Significant detail loss, may be usable for some purposes
 - 1: Rejected - Unrecognizable, destroyed, or fundamentally wrong
 
-Binary Rating:
-- Accept (1) = Rating >= 3
-- Reject (0) = Rating < 3
+Repairs are also flagged for manual review if they exhibit large geometric changes
+or if the predicted quality is borderline.
+
+Profiling specific tolerances are learned to adapt the quality expectations based
+on the model's intended use (e.g., organic vs. hard surface models).
 """
 
 import json
@@ -36,6 +38,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Any, Tuple
 import statistics
+import trimesh
 
 logger = logging.getLogger(__name__)
 
@@ -972,6 +975,234 @@ def reset_quality_engine() -> None:
     """Reset the singleton instance (mainly for testing)."""
     global _quality_engine
     _quality_engine = None
+
+
+# =============================================================================
+# Automatic Quality Scoring Integration
+# =============================================================================
+
+def record_auto_quality_rating(
+    model_fingerprint: str,
+    model_filename: str,
+    pipeline_used: str,
+    profile: str,
+    original_mesh: "trimesh.Trimesh",
+    repaired_mesh: "trimesh.Trimesh",
+    repair_duration_ms: float = 0.0,
+    escalated: bool = False,
+) -> tuple[int, dict]:
+    """
+    Automatically compute and record a quality rating based on geometric metrics.
+    
+    This function enables fully automated training of the quality feedback system
+    during batch processing (e.g., Thingi10K). It:
+    1. Computes fidelity metrics (volume change, Hausdorff distance, etc.)
+    2. Converts metrics to a 1-5 quality score
+    3. Records the rating for learning
+    
+    Use this for:
+    - Automated training on large datasets
+    - Batch processing without manual review
+    - Generating baseline quality data
+    
+    Args:
+        model_fingerprint: Model fingerprint (e.g., "MP:abc123")
+        model_filename: Original filename
+        pipeline_used: Name of repair pipeline used
+        profile: Mesh profile (e.g., "standard", "fragmented")
+        original_mesh: Original mesh before repair
+        repaired_mesh: Repaired mesh
+        repair_duration_ms: Repair duration in milliseconds
+        escalated: Whether Blender escalation was used
+        
+    Returns:
+        Tuple of (score, details) where score is 1-5 and details contains
+        the breakdown of how the score was computed
+    """
+    from .validation import (
+        validate_fidelity,
+        validate_geometry,
+        compute_auto_quality_score,
+        compute_auto_quality_with_geometric,
+    )
+    
+    # Compute fidelity and geometric validation
+    fidelity = validate_fidelity(original_mesh, repaired_mesh)
+    geometric = validate_geometry(repaired_mesh)
+    
+    # Compute auto quality score with geometric context
+    score, details = compute_auto_quality_with_geometric(
+        original_mesh, repaired_mesh, geometric, fidelity
+    )
+    
+    # Create and record the rating
+    rating = QualityRating(
+        model_fingerprint=model_fingerprint,
+        model_filename=model_filename,
+        rating_type="gradational",
+        rating_value=score,
+        user_comment=f"Auto-scored: {details['interpretation']}",
+        rated_by="auto",
+        pipeline_used=pipeline_used,
+        profile=profile,
+        repair_duration_ms=repair_duration_ms,
+        escalated=escalated,
+        volume_change_pct=fidelity.volume_change_pct,
+        face_count_change_pct=0.0,  # Computed separately if needed
+        hausdorff_distance=fidelity.hausdorff_distance,
+        detail_preservation=None,  # Could add later
+        silhouette_similarity=None,  # Could add later
+    )
+    
+    # Compute face count change
+    if hasattr(original_mesh, 'faces') and hasattr(repaired_mesh, 'faces'):
+        orig_faces = len(original_mesh.faces)
+        rep_faces = len(repaired_mesh.faces)
+        if orig_faces > 0:
+            rating.face_count_change_pct = ((rep_faces - orig_faces) / orig_faces) * 100
+    
+    # Record the rating
+    try:
+        engine = get_quality_engine()
+        engine.record_rating(rating)
+        logger.info(
+            f"Auto-rated {model_filename}: {score}/5 "
+            f"(vol:{fidelity.volume_change_pct:+.1f}%, "
+            f"hausdorff:{fidelity.hausdorff_relative*100:.2f}%)"
+        )
+    except Exception as e:
+        logger.warning(f"Failed to record auto-rating: {e}")
+    
+    # Add rating info to details
+    details["rating_recorded"] = True
+    details["rating_type"] = "auto"
+    
+    return score, details
+
+
+def compute_quality_score_from_metrics(
+    volume_change_pct: float,
+    hausdorff_relative: float,
+    bbox_change_pct: float = 0.0,
+    area_change_pct: float = 0.0,
+    is_printable: bool = True,
+) -> tuple[int, dict]:
+    """
+    Compute quality score directly from pre-computed metrics.
+    
+    Use this when you already have the metrics and don't want to
+    recompute them from meshes.
+    
+    Args:
+        volume_change_pct: Volume change percentage (can be negative)
+        hausdorff_relative: Hausdorff distance as fraction of bbox diagonal
+        bbox_change_pct: Bounding box change percentage
+        area_change_pct: Surface area change percentage
+        is_printable: Whether the mesh achieved printability
+        
+    Returns:
+        Tuple of (score, details)
+    """
+    score = 5.0
+    penalties = {}
+    
+    # Volume change penalties
+    vol_change = abs(volume_change_pct)
+    if vol_change > 50:
+        penalties["volume"] = -3.0
+        score -= 3.0
+    elif vol_change > 30:
+        penalties["volume"] = -2.0
+        score -= 2.0
+    elif vol_change > 15:
+        penalties["volume"] = -1.0
+        score -= 1.0
+    elif vol_change > 5:
+        penalties["volume"] = -0.5
+        score -= 0.5
+    elif vol_change > 2:
+        penalties["volume"] = -0.25
+        score -= 0.25
+    else:
+        penalties["volume"] = 0.0
+    
+    # Hausdorff distance penalties
+    hausdorff_pct = hausdorff_relative * 100
+    if hausdorff_pct > 10:
+        penalties["hausdorff"] = -2.0
+        score -= 2.0
+    elif hausdorff_pct > 5:
+        penalties["hausdorff"] = -1.5
+        score -= 1.5
+    elif hausdorff_pct > 2:
+        penalties["hausdorff"] = -1.0
+        score -= 1.0
+    elif hausdorff_pct > 1:
+        penalties["hausdorff"] = -0.5
+        score -= 0.5
+    elif hausdorff_pct > 0.5:
+        penalties["hausdorff"] = -0.25
+        score -= 0.25
+    else:
+        penalties["hausdorff"] = 0.0
+    
+    # Bounding box change
+    if bbox_change_pct > 10:
+        penalties["bbox"] = -1.5
+        score -= 1.5
+    elif bbox_change_pct > 5:
+        penalties["bbox"] = -1.0
+        score -= 1.0
+    elif bbox_change_pct > 2:
+        penalties["bbox"] = -0.5
+        score -= 0.5
+    else:
+        penalties["bbox"] = 0.0
+    
+    # Surface area change
+    area_change = abs(area_change_pct)
+    if area_change > 50:
+        penalties["area"] = -1.0
+        score -= 1.0
+    elif area_change > 30:
+        penalties["area"] = -0.5
+        score -= 0.5
+    else:
+        penalties["area"] = 0.0
+    
+    # Printability adjustment
+    if is_printable:
+        penalties["printable_bonus"] = 0.5
+        score += 0.5
+    else:
+        penalties["not_printable_penalty"] = -0.5
+        score -= 0.5
+    
+    final_score = max(1, min(5, round(score)))
+    
+    interpretations = {
+        5: "Perfect - indistinguishable from original",
+        4: "Good - minor smoothing, fully usable for printing",
+        3: "Acceptable - noticeable changes but recognizable",
+        2: "Poor - significant detail loss, may need review",
+        1: "Rejected - unrecognizable or fundamentally changed",
+    }
+    
+    details = {
+        "raw_score": score,
+        "final_score": final_score,
+        "penalties": penalties,
+        "metrics": {
+            "volume_change_pct": volume_change_pct,
+            "hausdorff_relative_pct": hausdorff_pct,
+            "bbox_change_pct": bbox_change_pct,
+            "area_change_pct": area_change_pct,
+        },
+        "geometric_valid": is_printable,
+        "interpretation": interpretations.get(final_score, "Unknown"),
+    }
+    
+    return final_score, details
 
 
 # =============================================================================

@@ -8,6 +8,7 @@ Validation module for mesh repair operations.
 Implements two-stage validation:
 1. Geometric validation: Is the mesh printable?
 2. Fidelity validation: Is the appearance preserved?
+3. Auto-quality scoring: Automatic 1-5 quality rating from metrics
 """
 
 from dataclasses import dataclass
@@ -405,3 +406,231 @@ def print_validation_result(result: ValidationResult) -> None:
         print(f"  Changes: {', '.join(result.fidelity.changes)}")
     
     print("=" * 50)
+
+
+def compute_auto_quality_score(
+    original: trimesh.Trimesh,
+    repaired: trimesh.Trimesh,
+    fidelity: FidelityValidation = None,
+) -> tuple[int, dict]:
+    """
+    Compute automatic quality score (1-5) from geometric fidelity metrics.
+    
+    This function provides an objective quality assessment based on how well
+    the repaired mesh preserves the original geometry. It can be used for:
+    - Automatic training of the learning system on large datasets
+    - Quick quality checks without manual review
+    - Flagging repairs that need human verification
+    
+    The scoring is based on:
+    - Volume change (most important - indicates shape preservation)
+    - Hausdorff distance (surface deviation from original)
+    - Bounding box change (overall size preservation)
+    - Surface area change (detail preservation indicator)
+    
+    Args:
+        original: Original mesh before repair
+        repaired: Repaired mesh
+        fidelity: Pre-computed FidelityValidation (computed if None)
+        
+    Returns:
+        Tuple of (score, details) where:
+        - score: Quality score 1-5
+            5 = Perfect (indistinguishable from original)
+            4 = Good (minor smoothing, fully usable)
+            3 = Acceptable (noticeable changes but recognizable)
+            2 = Poor (significant detail loss)
+            1 = Rejected (unrecognizable or destroyed)
+        - details: Dict with breakdown of score components
+    """
+    if fidelity is None:
+        fidelity = validate_fidelity(original, repaired)
+    
+    score = 5.0  # Start with perfect score
+    penalties = {}
+    
+    # ==========================================================================
+    # Volume change penalties (most important - indicates shape preservation)
+    # ==========================================================================
+    vol_change = abs(fidelity.volume_change_pct)
+    if vol_change > 50:
+        penalties["volume"] = -3.0
+        score -= 3.0
+    elif vol_change > 30:
+        penalties["volume"] = -2.0
+        score -= 2.0
+    elif vol_change > 15:
+        penalties["volume"] = -1.0
+        score -= 1.0
+    elif vol_change > 5:
+        penalties["volume"] = -0.5
+        score -= 0.5
+    elif vol_change > 2:
+        penalties["volume"] = -0.25
+        score -= 0.25
+    else:
+        penalties["volume"] = 0.0
+    
+    # ==========================================================================
+    # Hausdorff distance penalties (surface deviation from original)
+    # hausdorff_relative is fraction of bbox diagonal
+    # ==========================================================================
+    hausdorff_pct = fidelity.hausdorff_relative * 100  # Convert to percentage
+    if hausdorff_pct > 10:
+        penalties["hausdorff"] = -2.0
+        score -= 2.0
+    elif hausdorff_pct > 5:
+        penalties["hausdorff"] = -1.5
+        score -= 1.5
+    elif hausdorff_pct > 2:
+        penalties["hausdorff"] = -1.0
+        score -= 1.0
+    elif hausdorff_pct > 1:
+        penalties["hausdorff"] = -0.5
+        score -= 0.5
+    elif hausdorff_pct > 0.5:
+        penalties["hausdorff"] = -0.25
+        score -= 0.25
+    else:
+        penalties["hausdorff"] = 0.0
+    
+    # ==========================================================================
+    # Bounding box change (should be minimal for shape preservation)
+    # ==========================================================================
+    bbox_change = fidelity.bbox_change_pct
+    if bbox_change > 10:
+        penalties["bbox"] = -1.5
+        score -= 1.5
+    elif bbox_change > 5:
+        penalties["bbox"] = -1.0
+        score -= 1.0
+    elif bbox_change > 2:
+        penalties["bbox"] = -0.5
+        score -= 0.5
+    elif bbox_change > 0.5:
+        penalties["bbox"] = -0.25
+        score -= 0.25
+    else:
+        penalties["bbox"] = 0.0
+    
+    # ==========================================================================
+    # Surface area change (secondary indicator of detail changes)
+    # ==========================================================================
+    area_change = abs(fidelity.area_change_pct)
+    if area_change > 50:
+        penalties["area"] = -1.0
+        score -= 1.0
+    elif area_change > 30:
+        penalties["area"] = -0.5
+        score -= 0.5
+    elif area_change > 15:
+        penalties["area"] = -0.25
+        score -= 0.25
+    else:
+        penalties["area"] = 0.0
+    
+    # Clamp score to valid range
+    final_score = max(1, min(5, round(score)))
+    
+    details = {
+        "raw_score": score,
+        "final_score": final_score,
+        "penalties": penalties,
+        "metrics": {
+            "volume_change_pct": fidelity.volume_change_pct,
+            "hausdorff_relative_pct": hausdorff_pct,
+            "bbox_change_pct": fidelity.bbox_change_pct,
+            "area_change_pct": fidelity.area_change_pct,
+            "mean_surface_distance": fidelity.mean_surface_distance,
+        },
+        "thresholds": {
+            "volume_excellent": 2,
+            "volume_good": 5,
+            "volume_acceptable": 15,
+            "hausdorff_excellent": 0.5,
+            "hausdorff_good": 1,
+            "hausdorff_acceptable": 2,
+        },
+        "interpretation": _interpret_quality_score(final_score),
+    }
+    
+    return final_score, details
+
+
+def _interpret_quality_score(score: int) -> str:
+    """Get human-readable interpretation of quality score."""
+    interpretations = {
+        5: "Perfect - indistinguishable from original",
+        4: "Good - minor smoothing, fully usable for printing",
+        3: "Acceptable - noticeable changes but recognizable",
+        2: "Poor - significant detail loss, may need review",
+        1: "Rejected - unrecognizable or fundamentally changed",
+    }
+    return interpretations.get(score, "Unknown")
+
+
+def compute_auto_quality_with_geometric(
+    original: trimesh.Trimesh,
+    repaired: trimesh.Trimesh,
+    geometric: GeometricValidation = None,
+    fidelity: FidelityValidation = None,
+) -> tuple[int, dict]:
+    """
+    Compute auto-quality score with geometric validation adjustments.
+    
+    This version also considers whether the repair achieved geometric
+    validity (watertight, manifold) when scoring.
+    
+    A repair that makes a mesh printable but with some visual changes
+    may still be acceptable, while a repair that doesn't achieve
+    printability is less useful regardless of visual preservation.
+    
+    Args:
+        original: Original mesh before repair
+        repaired: Repaired mesh
+        geometric: Pre-computed GeometricValidation (computed if None)
+        fidelity: Pre-computed FidelityValidation (computed if None)
+        
+    Returns:
+        Tuple of (score, details) with geometric context
+    """
+    if geometric is None:
+        geometric = validate_geometry(repaired)
+    
+    if fidelity is None:
+        fidelity = validate_fidelity(original, repaired)
+    
+    # Get base score from fidelity
+    base_score, details = compute_auto_quality_score(original, repaired, fidelity)
+    
+    # Adjust based on geometric validity
+    adjustments = {}
+    adjusted_score = float(base_score)
+    
+    # Bonus for achieving printability
+    if geometric.is_printable:
+        adjustments["printable_bonus"] = 0.5
+        adjusted_score += 0.5
+    else:
+        # Penalty for not achieving printability
+        adjustments["not_printable_penalty"] = -0.5
+        adjusted_score -= 0.5
+    
+    # Penalty for introducing issues
+    if not geometric.is_watertight:
+        adjustments["not_watertight_penalty"] = -0.25
+        adjusted_score -= 0.25
+    
+    if not geometric.is_manifold:
+        adjustments["not_manifold_penalty"] = -0.25
+        adjusted_score -= 0.25
+    
+    final_adjusted_score = max(1, min(5, round(adjusted_score)))
+    
+    details["geometric_adjustments"] = adjustments
+    details["geometric_valid"] = geometric.is_printable
+    details["adjusted_score"] = adjusted_score
+    details["final_score"] = final_adjusted_score
+    details["interpretation"] = _interpret_quality_score(final_adjusted_score)
+    
+    return final_adjusted_score, details

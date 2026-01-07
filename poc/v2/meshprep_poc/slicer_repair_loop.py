@@ -436,9 +436,13 @@ class SlicerRepairResult:
     reconstruction_method: Optional[str] = None  # Pipeline/action that succeeded
     geometry_loss_pct: float = 0.0  # Actual face loss percentage
     
+    # Auto-quality scoring (computed from geometric fidelity metrics)
+    auto_quality_score: Optional[int] = None  # 1-5 quality score
+    auto_quality_details: Optional[dict] = None  # Breakdown of how score was computed
+    
     def to_dict(self) -> dict:
         """Convert to dictionary for JSON export."""
-        return {
+        result_dict = {
             "success": self.success,
             "total_attempts": self.total_attempts,
             "total_duration_ms": self.total_duration_ms,
@@ -468,6 +472,17 @@ class SlicerRepairResult:
             ],
             "error": self.error,
         }
+        
+        # Add auto-quality scoring if available
+        if self.auto_quality_score is not None:
+            result_dict["auto_quality"] = {
+                "score": self.auto_quality_score,
+                "interpretation": self.auto_quality_details.get("interpretation", "") if self.auto_quality_details else "",
+                "metrics": self.auto_quality_details.get("metrics", {}) if self.auto_quality_details else {},
+                "penalties": self.auto_quality_details.get("penalties", {}) if self.auto_quality_details else {},
+            }
+        
+        return result_dict
 
 
 def categorize_slicer_issues(slicer_result: SlicerResult, mesh: trimesh.Trimesh = None) -> List[str]:
@@ -564,6 +579,9 @@ def run_slicer_repair_loop(
     timeout: int = 120,
     skip_if_clean: bool = True,
     progress_callback: Optional[callable] = None,
+    auto_quality_score: bool = True,
+    model_fingerprint: str = "",
+    model_filename: str = "",
 ) -> SlicerRepairResult:
     """
     Run the iterative slicer-driven repair loop using smart filter pipelines.
@@ -574,6 +592,7 @@ def run_slicer_repair_loop(
     3. Detects model profile (fragmented, holes, non-manifold, etc.)
     4. Gets profile-specific pipelines (multi-action sequences)
     5. Tries each pipeline FROM THE ORIGINAL MESH until one succeeds
+    6. **NEW: Automatically computes quality score for learning**
     
     IMPORTANT: Each pipeline is applied to the ORIGINAL mesh, not to
     the result of a previous failed pipeline. This prevents "stacking" damage.
@@ -585,6 +604,9 @@ def run_slicer_repair_loop(
         timeout: Slicer timeout in seconds
         skip_if_clean: If True, skip repair if pre-check passes (default: True)
         progress_callback: Optional callback(attempt_num, pipeline_name, total_attempts)
+        auto_quality_score: If True, automatically compute and record quality score
+        model_fingerprint: Model fingerprint for quality tracking (e.g., "MP:abc123")
+        model_filename: Original filename for quality tracking
         
     Returns:
         SlicerRepairResult with repair details
@@ -1077,5 +1099,40 @@ def run_slicer_repair_loop(
         result.geometry_loss_pct = best_face_loss_pct if best_mesh is not None else 0
         if not result.error:
             result.error = f"Failed after {result.total_attempts} pipeline attempts"
+    
+    # =========================================================================
+    # STEP 5: Auto-quality scoring for learning (if enabled and successful)
+    # =========================================================================
+    if auto_quality_score and result.success and result.final_mesh is not None:
+        try:
+            from .quality_feedback import record_auto_quality_rating
+            
+            # Get the winning pipeline name
+            winning_pipeline = ""
+            for attempt in result.attempts:
+                if attempt.success:
+                    winning_pipeline = attempt.pipeline_name
+                    break
+            
+            # Record auto-quality rating
+            quality_score, quality_details = record_auto_quality_rating(
+                model_fingerprint=model_fingerprint or f"unknown_{hash(id(original_mesh))}",
+                model_filename=model_filename or "unknown.stl",
+                pipeline_used=winning_pipeline,
+                profile=profile,
+                original_mesh=original_mesh,
+                repaired_mesh=result.final_mesh,
+                repair_duration_ms=result.total_duration_ms,
+                escalated=result.is_reconstruction,
+            )
+            
+            # Store quality info in result for reporting
+            result.auto_quality_score = quality_score
+            result.auto_quality_details = quality_details
+            
+            logger.info(f"  Auto-quality score: {quality_score}/5 ({quality_details.get('interpretation', '')})")
+            
+        except Exception as e:
+            logger.debug(f"Auto-quality scoring failed: {e}")
     
     return result

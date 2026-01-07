@@ -35,7 +35,7 @@ Primary: STL (ASCII/binary). Also: OBJ, PLY, 3MF, GLTF, CTM, STEP*, IGES* via tr
 3. **Profile Detection** - Match diagnostics to profile, generate filter script
 4. **Review** - Show suggested filter, allow editing
 5. **Execute** - Run filter actions in order
-6. **Validate** - Geometric + fidelity checks
+6. **Validate** - Geometric + fidelity + auto-quality checks
 7. **Escalate** - Blender if validation fails
 8. **Slicer Validate** - Run through slicer (recommended)
 9. **Output** - Export STL + reports
@@ -81,9 +81,69 @@ Enables community sharing: search fingerprint on Reddit to find working filter s
 | 1. Basic | Watertight, volume | ~80% | Internal |
 | 2. Full Geometry | + normals, self-intersections | ~90% | Internal |
 | **3. Slicer Validated** | + successful slicer pass | ~95% | **Output** |
-| 4. Quality Verified | + user rating ≥ 3 | ~99% | Recommended |
+| 4. Quality Verified | + auto/user rating ≥ 3 | ~99% | Recommended |
 
 See [Validation Guide](validation.md) for criteria details.
+
+---
+
+## Auto-Quality Scoring
+
+MeshPrep automatically computes a quality score (1-5) from geometric fidelity metrics, enabling fully automated training without manual ratings.
+
+### How It Works
+
+After a successful repair, the system computes:
+
+| Metric | What It Measures | Impact on Score |
+|--------|------------------|-----------------|
+| **Volume Change %** | Shape preservation | High (±30% = -2 points) |
+| **Hausdorff Distance** | Surface deviation | High (>5% = -1.5 points) |
+| **Bounding Box Change** | Overall size | Medium (>5% = -1 point) |
+| **Surface Area Change** | Detail changes | Low (>30% = -0.5 points) |
+| **Printability** | Geometric validity | Bonus/penalty (±0.5 points) |
+
+### Score Interpretation
+
+| Score | Meaning | Automated Action |
+|-------|---------|------------------|
+| 5 | Perfect - indistinguishable from original | Trust for training |
+| 4 | Good - minor smoothing, fully usable | Trust for training |
+| 3 | Acceptable - noticeable but recognizable | Flag for review |
+| 2 | Poor - significant detail loss | Penalize pipeline |
+| 1 | Rejected - unrecognizable | Exclude pipeline |
+
+### Training Flow
+
+```
+Repair Completes
+    ↓
+Compute Fidelity Metrics (Hausdorff, volume, bbox)
+    ↓
+Calculate Auto-Quality Score (1-5)
+    ↓
+Record to Quality Feedback Database
+    ↓
+Learning Engine Uses Score to:
+  • Rank pipelines by quality
+  • Penalize low-quality pipelines
+  • Learn profile-specific thresholds
+```
+
+### CLI Integration
+
+Auto-scoring is enabled by default during batch processing:
+
+```bash
+# Batch process with auto-scoring (default)
+python run_full_test.py --input-dir ./models/
+
+# Disable auto-scoring
+python run_full_test.py --input-dir ./models/ --no-auto-quality
+
+# View quality statistics
+python run_full_test.py --quality-stats
+```
 
 ---
 
@@ -125,7 +185,7 @@ MeshPrep includes self-learning capabilities that improve over time:
 | **Pipeline Evolution** | Create new action combinations via genetic algorithm |
 | **Profile Discovery** | Cluster similar meshes, discover new profiles |
 | **Adaptive Thresholds** | Learn optimal parameter values from outcomes |
-| **Quality Feedback** | Learn from user ratings (1-5 scale) |
+| **Quality Feedback** | Learn from auto-scores and user ratings (1-5 scale) |
 | **Error Learning** | Track failures to avoid repeated mistakes |
 
 Data stored in `learning_data/` at repo root. See [Learning Systems](learning_systems.md) for details.
@@ -173,6 +233,7 @@ See [Error Handling](error_handling.md) for complete details.
 - Filter script used
 - Per-step diagnostics and timing
 - Validation results (geometric + fidelity)
+- **Auto-quality score and breakdown**
 - Slicer validation results
 - Tool versions and platform
 - Reproducibility info (for exact reproduction)
