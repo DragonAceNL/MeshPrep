@@ -1,0 +1,362 @@
+[
+  {
+    "mesh_path": "C:\\Users\\Dragon Ace\\Source\\repos\\Thingi10K\\raw_meshes\\100026.stl",
+    "features": {
+      "vertex_count": 117,
+      "face_count": 270,
+      "body_count": 7,
+      "is_watertight": false,
+      "is_manifold": false
+    },
+    "best_pipeline": "standard",
+    "scores": {
+      "cleanup": 0.2,
+      "standard": 1.0,
+      "aggressive": 1.0,
+      "fragments": 1.0,
+      "reconstruction": 0.0
+    }
+  },
+  {
+    "mesh_path": "C:\\Users\\Dragon Ace\\Source\\repos\\Thingi10K\\raw_meshes\\100027.stl",
+    "features": {
+      "vertex_count": 218,
+      "face_count": 508,
+      "body_count": 38,
+      "is_watertight": false,
+      "is_manifold": false
+    },
+    "best_pipeline": "fragments",
+    "scores": {
+      "cleanup": 0.2,
+      "standard": 0.0,
+      "aggressive": 0.0,
+      "fragments": 0.8,
+      "reconstruction": 0.0
+    }
+  },
+  {
+    "mesh_path": "C:\\Users\\Dragon Ace\\Source\\repos\\Thingi10K\\raw_meshes\\100028.stl",
+    "features": {
+      "vertex_count": 120,
+      "face_count": 228,
+      "body_count": 3,
+      "is_watertight": true,
+      "is_manifold": true
+    },
+    "best_pipeline": "fragments",
+    "scores": {
+      "cleanup": 0.7,
+      "standard": 0.7,
+      "aggressive": 0.7,
+      "fragments": 0.8,
+      "reconstruction": 0.0
+    }
+  },
+  {
+    "mesh_path": "C:\\Users\\Dragon Ace\\Source\\repos\\Thingi10K\\raw_meshes\\100029.stl",
+    "features": {
+      "vertex_count": 202,
+      "face_count": 452,
+      "body_count": 5,
+      "is_watertight": false,
+      "is_manifold": false
+    },
+    "best_pipeline": "standard",
+    "scores": {
+      "cleanup": 0.2,
+      "standard": 1.0,
+      "aggressive": 1.0,
+      "fragments": 1.0,
+      "reconstruction": 0.3
+    }
+  },
+  {
+    "mesh_path": "C:\\Users\\Dragon Ace\\Source\\repos\\Thingi10K\\raw_meshes\\100030.stl",
+    "features": {
+      "vertex_count": 608,
+      "face_count": 1504,
+      "body_count": 39,
+      "is_watertight": false,
+      "is_manifold": false
+    },
+    "best_pipeline": "standard",
+    "scores": {
+      "cleanup": 0.2,
+      "standard": 0.8,
+      "aggressive": 0.8,
+      "fragments": 0.8,
+      "reconstruction": 0.0
+    }
+  },
+  {
+    "mesh_path": "C:\\Users\\Dragon Ace\\Source\\repos\\Thingi10K\\raw_meshes\\100031.stl",
+    "features": {
+      "vertex_count": 310,
+      "face_count": 640,
+      "body_count": 1,
+      "is_watertight": true,
+      "is_manifold": false
+    },
+    "best_pipeline": "cleanup",
+    "scores": {
+      "cleanup": 1.0,
+      "standard": 1.0,
+      "aggressive": 1.0,
+      "fragments": 1.0,
+      "reconstruction": 0.0
+    }
+  },
+  {
+    "mesh_path": "C:\\Users\\Dragon Ace\\Source\\repos\\Thingi10K\\raw_meshes\\100032.stl",
+    "features": {
+      "vertex_count": 1516,
+      "face_count": 3128,
+      "body_count": 5,
+      "is_watertight": true,
+      "is_manifold": false
+    },
+    "best_pipeline": "aggressive",
+    "scores": {
+      "cleanup": 0.7,
+      "standard": 0.7,
+      "aggressive": 0.8,
+      "fragments": 0.8,
+      "reconstruction": 0.0
+    }
+  },
+  {
+    "mesh_path": "C:\\Users\\Dragon Ace\\Source\\repos\\Thingi10K\\raw_meshes\\100033.stl",
+    "features": {
+      "vertex_count": 204,
+      "face_count": 420,
+      "body_count": 1,
+      "is_watertight": true,
+      "is_manifold": false
+    },
+    "best_pipeline": "cleanup",
+    "scores": {
+      "cleanup": 1.0,
+      "standard": 1.0,
+      "aggressive": 1.0,
+      "fragments": 1.0,
+      "reconstruction": 0.0
+    }
+  },
+  {
+    "mesh_path": "C:\\Users\\Dragon Ace\\Source\\repos\\Thingi10K\\raw_meshes\\100034.stl",
+    "features": {
+      "vertex_count": 84,
+      "face_count": 188,
+      "body_count": 1,
+      "is_watertight": true,
+      "is_manifold": true
+    },
+    "best_pipeline": "cleanup",
+    "scores": {
+      "cleanup": 1.0,
+      "standard": 1.0,
+      "aggressive": 1.0,
+      "fragments": 1.0,
+      "reconstruction": 0.3
+    }
+  },
+  {
+    "mesh_path": "C:\\Users\\Dragon Ace\\Source\\repos\\Thingi10K\\raw_meshes\\100035.stl",
+    "features": {
+      "vertex_count": 337,
+      "face_count": 670,
+      "body_count": 1,
+      "is_watertight": true,
+      "is_manifold": false
+    },
+    "best_pipeline": "cleanup",
+    "scores": {
+      "cleanup": 1.0,
+      "standard": 1.0,
+      "aggressive": 1.0,
+      "fragments": 1.0,
+      "reconstruction": 0.0
+    }
+  },
+  {
+    "mesh_path": "C:\\Users\\Dragon Ace\\Source\\repos\\Thingi10K\\raw_meshes\\100036.stl",
+    "features": {
+      "vertex_count": 123,
+      "face_count": 252,
+      "body_count": 16,
+      "is_watertight": false,
+      "is_manifold": false
+    },
+    "best_pipeline": "fragments",
+    "scores": {
+      "cleanup": 0.2,
+      "standard": 0.0,
+      "aggressive": 0.0,
+      "fragments": 1.0,
+      "reconstruction": 0.0
+    }
+  },
+  {
+    "mesh_path": "C:\\Users\\Dragon Ace\\Source\\repos\\Thingi10K\\raw_meshes\\100037.stl",
+    "features": {
+      "vertex_count": 181,
+      "face_count": 375,
+      "body_count": 2,
+      "is_watertight": false,
+      "is_manifold": false
+    },
+    "best_pipeline": "standard",
+    "scores": {
+      "cleanup": 0.2,
+      "standard": 1.0,
+      "aggressive": 1.0,
+      "fragments": 1.0,
+      "reconstruction": 0.0
+    }
+  },
+  {
+    "mesh_path": "C:\\Users\\Dragon Ace\\Source\\repos\\Thingi10K\\raw_meshes\\100040.stl",
+    "features": {
+      "vertex_count": 362,
+      "face_count": 736,
+      "body_count": 4,
+      "is_watertight": false,
+      "is_manifold": false
+    },
+    "best_pipeline": "standard",
+    "scores": {
+      "cleanup": 0.2,
+      "standard": 0.8,
+      "aggressive": 0.8,
+      "fragments": 0.8,
+      "reconstruction": 0.0
+    }
+  },
+  {
+    "mesh_path": "C:\\Users\\Dragon Ace\\Source\\repos\\Thingi10K\\raw_meshes\\100045.stl",
+    "features": {
+      "vertex_count": 208,
+      "face_count": 420,
+      "body_count": 3,
+      "is_watertight": true,
+      "is_manifold": true
+    },
+    "best_pipeline": "fragments",
+    "scores": {
+      "cleanup": 0.7,
+      "standard": 0.0,
+      "aggressive": 0.0,
+      "fragments": 0.8,
+      "reconstruction": 0.0
+    }
+  },
+  {
+    "mesh_path": "C:\\Users\\Dragon Ace\\Source\\repos\\Thingi10K\\raw_meshes\\100046.stl",
+    "features": {
+      "vertex_count": 656,
+      "face_count": 1316,
+      "body_count": 4,
+      "is_watertight": true,
+      "is_manifold": true
+    },
+    "best_pipeline": "fragments",
+    "scores": {
+      "cleanup": 0.7,
+      "standard": 0.0,
+      "aggressive": 0.0,
+      "fragments": 0.8,
+      "reconstruction": 0.0
+    }
+  },
+  {
+    "mesh_path": "C:\\Users\\Dragon Ace\\Source\\repos\\Thingi10K\\raw_meshes\\100047.stl",
+    "features": {
+      "vertex_count": 1098,
+      "face_count": 2196,
+      "body_count": 8,
+      "is_watertight": true,
+      "is_manifold": true
+    },
+    "best_pipeline": "standard",
+    "scores": {
+      "cleanup": 0.7,
+      "standard": 0.8,
+      "aggressive": 0.8,
+      "fragments": 0.8,
+      "reconstruction": 0.0
+    }
+  },
+  {
+    "mesh_path": "C:\\Users\\Dragon Ace\\Source\\repos\\Thingi10K\\raw_meshes\\100070.stl",
+    "features": {
+      "vertex_count": 2515,
+      "face_count": 5030,
+      "body_count": 1,
+      "is_watertight": true,
+      "is_manifold": true
+    },
+    "best_pipeline": "cleanup",
+    "scores": {
+      "cleanup": 1.0,
+      "standard": 1.0,
+      "aggressive": 1.0,
+      "fragments": 1.0,
+      "reconstruction": 0.0
+    }
+  },
+  {
+    "mesh_path": "C:\\Users\\Dragon Ace\\Source\\repos\\Thingi10K\\raw_meshes\\100071.stl",
+    "features": {
+      "vertex_count": 531,
+      "face_count": 1070,
+      "body_count": 1,
+      "is_watertight": true,
+      "is_manifold": true
+    },
+    "best_pipeline": "cleanup",
+    "scores": {
+      "cleanup": 1.0,
+      "standard": 0.8,
+      "aggressive": 0.8,
+      "fragments": 0.8,
+      "reconstruction": 0.0
+    }
+  },
+  {
+    "mesh_path": "C:\\Users\\Dragon Ace\\Source\\repos\\Thingi10K\\raw_meshes\\100072.stl",
+    "features": {
+      "vertex_count": 180,
+      "face_count": 360,
+      "body_count": 1,
+      "is_watertight": true,
+      "is_manifold": true
+    },
+    "best_pipeline": "cleanup",
+    "scores": {
+      "cleanup": 1.0,
+      "standard": 1.0,
+      "aggressive": 1.0,
+      "fragments": 1.0,
+      "reconstruction": 0.0
+    }
+  },
+  {
+    "mesh_path": "C:\\Users\\Dragon Ace\\Source\\repos\\Thingi10K\\raw_meshes\\100073.stl",
+    "features": {
+      "vertex_count": 246,
+      "face_count": 492,
+      "body_count": 1,
+      "is_watertight": true,
+      "is_manifold": true
+    },
+    "best_pipeline": "cleanup",
+    "scores": {
+      "cleanup": 1.0,
+      "standard": 1.0,
+      "aggressive": 1.0,
+      "fragments": 1.0,
+      "reconstruction": 0.0
+    }
+  }
+]

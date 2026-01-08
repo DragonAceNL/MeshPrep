@@ -15,15 +15,15 @@ ML-powered mesh repair using **PyTorch + PointNet++** architecture.
 ## Installation
 
 ```bash
-# Core PyTorch (required)
+# PyTorch with CUDA (for GPU acceleration)
+pip install torch torchvision --index-url https://download.pytorch.org/whl/cu124
+
+# Or CPU-only
 pip install torch torchvision
-
-# PyTorch3D (optional but recommended for advanced features)
-conda install pytorch3d -c pytorch3d
-
-# Or use pip
-pip install "git+https://github.com/facebookresearch/pytorch3d.git"
 ```
+
+**Note:** PyTorch3D is NOT required. The MeshEncoder uses a simplified PointNet
+architecture implemented in pure PyTorch.
 
 ---
 
@@ -258,15 +258,6 @@ Typical performance on Thingi10K test set:
 pip install torch torchvision
 ```
 
-### PyTorch3D Not Found
-
-PyTorch3D is optional. Core features work without it.
-
-To install:
-```bash
-conda install pytorch3d -c pytorch3d
-```
-
 ### CUDA Out of Memory
 
 Reduce batch size or use CPU:
@@ -289,5 +280,19 @@ predictor = PipelinePredictor(device="cpu")
 ## References
 
 - **PointNet++**: Qi et al. "PointNet++: Deep Hierarchical Feature Learning"
-- **PyTorch3D**: https://pytorch3d.org/
 - **MeshPrep**: https://github.com/DragonAceNL/MeshPrep
+
+## Note on PyTorch3D
+
+PyTorch3D was previously mentioned in this documentation but is **NOT required**.
+The MeshEncoder uses a simplified PointNet-style architecture that:
+- Uses Conv1d + BatchNorm + MaxPool (pure PyTorch)
+- Samples points using trimesh (not PyTorch3D)
+- Achieves 75%+ accuracy without complex 3D operations
+
+PyTorch3D would only be needed for:
+- Differentiable mesh rendering
+- Advanced point cloud operations (ball query, FPS)
+- Mesh-based loss functions
+
+None of these are required for pipeline prediction.
