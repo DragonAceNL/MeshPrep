@@ -28,6 +28,7 @@ setup(
         "numpy>=1.24",
         "trimesh>=4.0",
         "click>=8.0",
+        "scipy>=1.9",  # Required by trimesh
     ],
     extras_require={
         "ml": [

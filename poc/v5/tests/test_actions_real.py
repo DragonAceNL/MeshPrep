@@ -138,9 +138,10 @@ class TestBlenderActions:
     """Test Blender actions (3 actions) - SLOW."""
     
     @pytest.mark.slow
-    def test_blender_remesh(self, valid_mesh, setup_environment):
+    def test_blender_remesh(self, valid_mesh, check_test_dependencies):
         """Blender voxel remesh."""
-        manager = setup_environment
+        from meshprep.core.bootstrap import get_bootstrap_manager
+        manager = get_bootstrap_manager()
         
         if not manager._check_blender():
             pytest.skip("Blender not available")
@@ -157,9 +158,10 @@ class TestBlenderActions:
         assert result.mesh.metadata.is_watertight == True
     
     @pytest.mark.slow
-    def test_blender_boolean_union(self, fragmented_mesh, setup_environment):
+    def test_blender_boolean_union(self, fragmented_mesh, check_test_dependencies):
         """Blender boolean union merges components."""
-        manager = setup_environment
+        from meshprep.core.bootstrap import get_bootstrap_manager
+        manager = get_bootstrap_manager()
         
         if not manager._check_blender():
             pytest.skip("Blender not available")
@@ -173,9 +175,10 @@ class TestBlenderActions:
         assert result.mesh.metadata.body_count <= original_bodies
     
     @pytest.mark.slow
-    def test_blender_solidify(self, thin_mesh, setup_environment):
+    def test_blender_solidify(self, thin_mesh, check_test_dependencies):
         """Blender solidify adds thickness."""
-        manager = setup_environment
+        from meshprep.core.bootstrap import get_bootstrap_manager
+        manager = get_bootstrap_manager()
         
         if not manager._check_blender():
             pytest.skip("Blender not available")
