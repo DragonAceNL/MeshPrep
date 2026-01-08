@@ -62,21 +62,22 @@ def test_meshes_dir(tmp_path_factory):
     cube = trimesh.primitives.Box(extents=[10, 10, 10])
     cube.export(meshes_dir / "valid_cube.stl")
     
-    # 2. Mesh with holes
-    holed_temp = trimesh.primitives.Box(extents=[10, 10, 10])
-    faces_keep = [i for i in range(len(holed_temp.faces)) if i not in [0, 3, 6]]
+    # 2. Mesh with holes (use sphere for better geometry)
+    # Spheres have non-coplanar vertices, needed for Poisson/Ball Pivot
+    sphere_temp = trimesh.primitives.Sphere(radius=5, subdivisions=3)
+    faces_keep = [i for i in range(len(sphere_temp.faces)) if i % 10 != 0]  # Remove ~10% of faces
     holed = trimesh.Trimesh(
-        vertices=holed_temp.vertices,
-        faces=holed_temp.faces[faces_keep]
+        vertices=sphere_temp.vertices,
+        faces=sphere_temp.faces[faces_keep]
     )
     holed.export(meshes_dir / "broken_holes.stl")
     
-    # 3. Fragmented (3 disconnected parts)
+    # 3. Fragmented (3 OVERLAPPING parts for boolean union testing)
     cube1 = trimesh.primitives.Box(extents=[5, 5, 5])
-    cube2 = trimesh.primitives.Box(extents=[2, 2, 2])
-    cube2.apply_translation([15, 0, 0])
-    cube3 = trimesh.primitives.Sphere(radius=1)
-    cube3.apply_translation([0, 15, 0])
+    cube2 = trimesh.primitives.Box(extents=[4, 4, 4])
+    cube2.apply_translation([2, 0, 0])  # Overlaps with cube1
+    cube3 = trimesh.primitives.Sphere(radius=2)
+    cube3.apply_translation([0, 2, 0])  # Overlaps with cube1
     fragmented = trimesh.util.concatenate([cube1, cube2, cube3])
     fragmented.export(meshes_dir / "broken_fragments.stl")
     
@@ -99,9 +100,10 @@ def test_meshes_dir(tmp_path_factory):
     intersecting = trimesh.util.concatenate([cube_a, cube_b])
     intersecting.export(meshes_dir / "broken_intersections.stl")
     
-    # 7. Thin cylinder
-    thin = trimesh.creation.cylinder(radius=5, height=20, sections=20)
-    thin.export(meshes_dir / "thin_walls.stl")
+    # 7. Thin sheet (plane) - for solidify test
+    # Create a simple plane (thin sheet with no thickness)
+    thin_sheet = trimesh.creation.box(extents=[10, 10, 0.01])  # Very thin box
+    thin_sheet.export(meshes_dir / "thin_walls.stl")
     
     # 8. Non-manifold
     nm_temp = trimesh.primitives.Box(extents=[10, 10, 10])

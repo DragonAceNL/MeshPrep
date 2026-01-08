@@ -217,18 +217,61 @@ class BootstrapManager:
         import shutil
         from pathlib import Path
         
-        # Check common locations
-        candidates = [
-            "blender",
-            r"C:\Program Files\Blender Foundation\Blender 4.2\blender.exe",
-            r"C:\Program Files\Blender Foundation\Blender\blender.exe",
+        # Check if in PATH first
+        if shutil.which("blender"):
+            return True
+        
+        # Check common installation directories
+        blender_dirs = [
+            Path(r"C:\Program Files\Blender Foundation"),
+            Path(r"C:\Program Files (x86)\Blender Foundation"),
+            Path.home() / "AppData" / "Local" / "Blender Foundation",
         ]
         
-        for candidate in candidates:
-            if shutil.which(candidate) or Path(candidate).exists():
-                return True
+        for base_dir in blender_dirs:
+            if base_dir.exists():
+                # Look for any Blender version folder
+                for subdir in base_dir.iterdir():
+                    if subdir.is_dir() and subdir.name.lower().startswith("blender"):
+                        exe = subdir / "blender.exe"
+                        if exe.exists():
+                            return True
         
         return False
+    
+    def get_blender_path(self) -> Optional[Path]:
+        """Get the path to the Blender executable."""
+        import shutil
+        from pathlib import Path
+        
+        # Check if in PATH first
+        which_result = shutil.which("blender")
+        if which_result:
+            return Path(which_result)
+        
+        # Check common installation directories
+        blender_dirs = [
+            Path(r"C:\Program Files\Blender Foundation"),
+            Path(r"C:\Program Files (x86)\Blender Foundation"),
+            Path.home() / "AppData" / "Local" / "Blender Foundation",
+        ]
+        
+        for base_dir in blender_dirs:
+            if base_dir.exists():
+                # Look for any Blender version folder (prefer higher versions)
+                versions = []
+                for subdir in base_dir.iterdir():
+                    if subdir.is_dir() and subdir.name.lower().startswith("blender"):
+                        exe = subdir / "blender.exe"
+                        if exe.exists():
+                            versions.append(exe)
+                
+                if versions:
+                    # Sort by name (higher version numbers come last)
+                    versions.sort(key=lambda p: p.parent.name)
+                    return versions[-1]  # Return highest version
+        
+        return None
 
 
 # Singleton instance

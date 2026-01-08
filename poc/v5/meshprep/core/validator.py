@@ -30,6 +30,18 @@ class GeometricValidation:
     def is_printable(self) -> bool:
         """Check if mesh is printable."""
         return self.is_watertight and self.is_manifold and self.has_positive_volume
+    
+    @property
+    def quality_score(self) -> float:
+        """Simple quality score (1-5) based on geometric properties."""
+        score = 1.0
+        if self.is_watertight:
+            score += 1.5
+        if self.is_manifold:
+            score += 1.5
+        if self.has_positive_volume:
+            score += 1.0
+        return min(5.0, score)
 
 
 @dataclass

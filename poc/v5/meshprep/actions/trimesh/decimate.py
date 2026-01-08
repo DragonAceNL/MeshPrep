@@ -16,12 +16,13 @@ class DecimateAction(Action):
     name = "decimate"
     description = "Reduce face count (decimation)"
     risk_level = ActionRiskLevel.MEDIUM
-    default_params = {"face_count": 10000}
+    default_params = {"face_count": 10000, "aggression": 7}
     
     def execute(self, mesh: Mesh, params: Optional[Dict[str, Any]] = None) -> Mesh:
         """Decimate mesh to target face count."""
         params = self.get_params(params)
         target_faces = params["face_count"]
+        aggression = params.get("aggression", 5)
         
         result = mesh.copy()
         
@@ -31,15 +32,15 @@ class DecimateAction(Action):
             return result
         
         try:
-            # Calculate face ratio
-            face_ratio = target_faces / current_faces
-            
-            # Decimate
-            result.trimesh = result.trimesh.simplify_quadric_decimation(target_faces)
-            
+            # Use trimesh's simplify_quadric_decimation with face_count parameter
+            result.trimesh = result.trimesh.simplify_quadric_decimation(
+                face_count=target_faces,
+                aggression=aggression
+            )
             result._update_metadata_from_mesh()
             
-            self.logger.info(f"Decimated from {current_faces} to {len(result.trimesh.faces)} faces")
+            new_faces = len(result.trimesh.faces)
+            self.logger.info(f"Decimated from {current_faces} to {new_faces} faces (target: {target_faces})")
             
         except Exception as e:
             self.logger.error(f"Decimation failed: {e}")

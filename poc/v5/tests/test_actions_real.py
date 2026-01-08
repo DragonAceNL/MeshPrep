@@ -6,6 +6,9 @@
 import pytest
 from meshprep.core import ActionRegistry
 
+# Import actions to register them
+from meshprep.actions import trimesh, pymeshfix, blender, open3d, core
+
 
 class TestTrimeshActions:
     """Test trimesh actions (10 actions)."""
@@ -209,12 +212,13 @@ class TestOpen3DActions:
         # Reconstructed surface should be watertight
         assert result.mesh.metadata.is_watertight == True
     
-    def test_ball_pivot(self, valid_mesh):
+    def test_ball_pivot(self, high_poly_mesh):
         """Ball pivoting reconstruction."""
+        # Ball pivot needs non-coplanar vertices (sphere has them)
         result = ActionRegistry.execute(
             "ball_pivot",
-            valid_mesh,
-            {"radii": [0.01, 0.02, 0.04]}
+            high_poly_mesh,
+            {"radii": [0.5, 1.0, 2.0]}  # Larger radii for sphere
         )
         
         assert result.success == True

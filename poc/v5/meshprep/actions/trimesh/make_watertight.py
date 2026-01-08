@@ -36,8 +36,8 @@ class MakeWatertightAction(Action):
             # Attempt to make watertight
             result.trimesh.fill_holes()
             
-            # Remove degenerate faces
-            result.trimesh.remove_degenerate_faces()
+            # Fix normals
+            result.trimesh.fix_normals()
             
             result._update_metadata_from_mesh()
             

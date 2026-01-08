@@ -17,7 +17,7 @@ class BallPivotAction(Action):
     name = "ball_pivot"
     description = "Ball pivoting reconstruction (for point clouds)"
     risk_level = ActionRiskLevel.HIGH
-    default_params = {"radii": [0.005, 0.01, 0.02, 0.04]}
+    default_params = {"radii": None}  # Auto-calculate if None
     
     def execute(self, mesh: Mesh, params: Optional[Dict[str, Any]] = None) -> Mesh:
         """Reconstruct with ball pivoting."""
@@ -37,8 +37,16 @@ class BallPivotAction(Action):
             pcd.estimate_normals()
             pcd.orient_normals_consistent_tangent_plane(k=30)
             
-            # Ball pivoting
-            radii = params["radii"]
+            # Auto-calculate radii if not provided
+            radii = params.get("radii")
+            if radii is None:
+                # Calculate based on average edge length or bounding box
+                bbox = mesh.trimesh.bounding_box.extents
+                avg_extent = np.mean(bbox)
+                # Use multiple radii relative to mesh size
+                base_radius = avg_extent * 0.02
+                radii = [base_radius * m for m in [0.5, 1.0, 2.0, 4.0]]
+            
             self.logger.info(f"Ball pivoting with radii: {radii}")
             
             o3d_mesh = o3d.geometry.TriangleMesh.create_from_point_cloud_ball_pivoting(
@@ -47,14 +55,14 @@ class BallPivotAction(Action):
             )
             
             # Convert back to trimesh
-            import trimesh
+            import trimesh as trimesh_lib
             vertices = np.asarray(o3d_mesh.vertices)
             faces = np.asarray(o3d_mesh.triangles)
             
             if len(faces) == 0:
-                raise RuntimeError("Ball pivoting produced no faces")
+                raise RuntimeError("Ball pivoting produced no faces - try adjusting radii")
             
-            result_mesh = trimesh.Trimesh(vertices=vertices, faces=faces)
+            result_mesh = trimesh_lib.Trimesh(vertices=vertices, faces=faces)
             result = Mesh(result_mesh, mesh.metadata)
             result._update_metadata_from_mesh()
             

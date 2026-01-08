@@ -29,6 +29,7 @@ setup(
         "trimesh>=4.0",
         "click>=8.0",
         "scipy>=1.9",  # Required by trimesh
+        "fast-simplification>=0.1",  # Required for mesh decimation
     ],
     extras_require={
         "ml": [

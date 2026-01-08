@@ -91,14 +91,11 @@ sys.exit(0)
     
     def _find_blender(self) -> Optional[str]:
         """Find Blender executable."""
-        candidates = [
-            "blender",
-            r"C:\Program Files\Blender Foundation\Blender 4.2\blender.exe",
-            r"C:\Program Files\Blender Foundation\Blender\blender.exe",
-        ]
+        from meshprep.core.bootstrap import get_bootstrap_manager
+        manager = get_bootstrap_manager()
         
-        for candidate in candidates:
-            if shutil.which(candidate) or Path(candidate).exists():
-                return candidate
+        blender_path = manager.get_blender_path()
+        if blender_path:
+            return str(blender_path)
         
         return None

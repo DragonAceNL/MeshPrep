@@ -6,6 +6,9 @@
 import pytest
 from meshprep.core import Pipeline
 
+# Import actions to register them
+from meshprep.actions import trimesh, pymeshfix, blender, open3d, core
+
 
 class TestRepairPipelines:
     """Test complete repair workflows."""
@@ -137,9 +140,10 @@ class TestReconstructionPipelines:
         assert result.mesh.metadata.is_watertight == True
     
     @pytest.mark.slow
-    def test_blender_reconstruction_pipeline(self, fragmented_mesh, setup_environment):
+    def test_blender_reconstruction_pipeline(self, fragmented_mesh):
         """Complete Blender-based reconstruction."""
-        manager = setup_environment
+        from meshprep.core.bootstrap import get_bootstrap_manager
+        manager = get_bootstrap_manager()
         
         if not manager._check_blender():
             pytest.skip("Blender not available")

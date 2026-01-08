@@ -163,3 +163,14 @@ class HistoryTracker:
         h.update(faces_bytes)
         
         return f"MP:{h.hexdigest()[:12]}"
+    
+    def get_recent_repairs(self, limit: int = 100) -> List[Dict[str, Any]]:
+        """Get recent repair attempts."""
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            rows = conn.execute(
+                'SELECT * FROM repair_history ORDER BY timestamp DESC LIMIT ?',
+                (limit,)
+            ).fetchall()
+            
+            return [dict(row) for row in rows]
