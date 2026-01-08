@@ -1,48 +1,33 @@
 # Copyright 2025 Allard Peper (Dragon Ace / DragonAceNL)
 # Licensed under the Apache License, Version 2.0 (see LICENSE).
+# This file is part of MeshPrep — https://github.com/DragonAceNL/MeshPrep
 
 """
-ML components for MeshPrep v5.
+MeshPrep ML Module - Reinforcement Learning for Mesh Repair.
 
-Uses PyTorch + PyTorch3D for mesh encoding and prediction.
+This module provides a clean RL-based system for learning optimal
+mesh repair strategies. The agent learns through experience which
+actions work best for different types of broken meshes.
+
+Architecture:
+    meshprep/ml/
+    ├── __init__.py          # Public API
+    ├── encoder.py           # Mesh feature extraction
+    ├── environment.py       # RL environment
+    ├── policy.py            # Neural network policy
+    ├── agent.py             # RL agent (PPO)
+    └── repair_agent.py      # High-level repair interface
+
+Usage:
+    from meshprep.ml import RepairAgent
+    
+    agent = RepairAgent()
+    result = agent.repair("broken_model.stl")
+    
+    # Train on dataset
+    agent.train(mesh_dir="path/to/meshes", iterations=1000)
 """
 
-__version__ = "5.0.0"
+from .repair_agent import RepairAgent, RepairResult
 
-# Try to import ML components
-try:
-    from .encoder import MeshEncoder
-    from .predictor import PipelinePredictor
-    from .quality_scorer import QualityScorer
-    
-    __all__ = [
-        "MeshEncoder",
-        "PipelinePredictor",
-        "QualityScorer",
-    ]
-    
-    ML_AVAILABLE = True
-    
-except ImportError as e:
-    ML_AVAILABLE = False
-    
-    class MLNotAvailable:
-        """Placeholder when ML not available."""
-        def __init__(self, *args, **kwargs):
-            raise RuntimeError(
-                "ML components not available. Install dependencies:\n"
-                "  pip install torch torchvision\n"
-                "  conda install pytorch3d -c pytorch3d  # Optional but recommended"
-            )
-    
-    # Placeholder classes
-    MeshEncoder = MLNotAvailable
-    PipelinePredictor = MLNotAvailable
-    QualityScorer = MLNotAvailable
-    
-    __all__ = []
-
-
-def check_ml_available() -> bool:
-    """Check if ML components are available."""
-    return ML_AVAILABLE
+__all__ = ["RepairAgent", "RepairResult"]
