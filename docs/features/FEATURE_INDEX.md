@@ -23,7 +23,7 @@ This document provides an overview of all features for MeshPrep.
 | F-004 | ML Filter Generation (RL) | High | ⬜ Not Started | XL | ✅ POC-07 | [Link](FEATURE_04_ML_LEARNING.md) |
 | F-005 | Filter Script Application | High | ⬜ Not Started | Medium | ❌ No | [Link](FEATURE_05_FILTER_APPLICATION.md) |
 | F-006 | Slicer Validation | High | ⬜ Not Started | Medium | ✅ POC-03 | [Link](FEATURE_06_SLICER_VALIDATION.md) |
-| F-007 | Visual Fidelity Check | Medium | ⬜ Not Started | Large | ✅ POC-06 | [Link](FEATURE_07_VISUAL_COMPARISON.md) |
+| F-007 | Geometry Fidelity Check | Medium | ⬜ Not Started | Large | ✅ POC-06 | [Link](FEATURE_07_VISUAL_COMPARISON.md) |
 | F-008 | STL Export | High | ⬜ Not Started | Small | ❌ No | [Link](FEATURE_08_STL_EXPORT.md) |
 | F-009 | Script Import/Export | High | ⬜ Not Started | Small | ❌ No | [Link](FEATURE_09_SCRIPT_SHARING.md) |
 | F-010 | Batch Processing | Medium | ⬜ Not Started | Medium | ❌ No | [Link](FEATURE_10_BATCH_PROCESSING.md) |
@@ -44,9 +44,9 @@ This document provides an overview of all features for MeshPrep.
 | POC-02 | Fingerprinting | Design SHA-256 file hash, test with various formats | High | 1 day | ⬜ Not Started |
 | POC-03 | Slicer Integration | CLI calls to PrusaSlicer/Cura/OrcaSlicer, parse validation output | High | 1-2 days | ⬜ Not Started |
 | POC-04 | 3D Preview | Helix Toolkit with complex meshes (1M+ triangles), before/after view | Medium | 2-3 days | ⬜ Not Started |
-| POC-05 | Mesh Repair | Test geometry3Sharp + alternatives for complex spaceship models | High | 3-5 days | ⬜ Not Started |
-| POC-06 | Visual Comparison | Algorithm to score mesh similarity (geometry + appearance) | Medium | 2-3 days | ⬜ Not Started |
-| POC-07 | RL Pipeline | Reinforcement learning setup with ML.NET/ONNX, reward system | High | 5-7 days | ⬜ Not Started |
+| POC-05 | Mesh Repair | Test MeshLib (GPU/CUDA) for complex spaceship models | High | 3-5 days | ⬜ Not Started |
+| POC-06 | Geometry Comparison | Hybrid Hausdorff (max + mean) for physical accuracy | Medium | 2-3 days | ⬜ Not Started |
+| POC-07 | RL Pipeline | TorchSharp RL with GPU/CUDA, Hausdorff + Slicer rewards | High | 5-7 days | ⬜ Not Started |
 
 **Recommended POC Order:**
 1. POC-01 (Format Import) - Foundation for everything
