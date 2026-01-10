@@ -51,9 +51,16 @@
                         <KeyBinding Key="F" Command="hx:ViewportCommands.ZoomExtents"/>
                         <KeyBinding Key="R" Command="hx:ViewportCommands.Reset"/>
                     </hx:Viewport3DX.InputBindings>
+                    <!-- Key light from upper front-right -->
                     <hx:DirectionalLight3D Direction="-1,-1,-1" Color="White"/>
-                    <hx:DirectionalLight3D Direction="1,1,1" Color="#404040"/>
-                    <hx:AmbientLight3D Color="#202020"/>
+                    <!-- Fill light from lower back-left -->
+                    <hx:DirectionalLight3D Direction="1,1,1" Color="#909090"/>
+                    <!-- Bottom light shining up to illuminate when viewing from above -->
+                    <hx:DirectionalLight3D Direction="0,1,0" Color="#707070"/>
+                    <!-- Front light -->
+                    <hx:DirectionalLight3D Direction="0,0,-1" Color="#606060"/>
+                    <!-- Strong ambient for even base illumination -->
+                    <hx:AmbientLight3D Color="#505050"/>
                     <hx:LineGeometryModel3D x:Name="GridLines" Geometry="{Binding GridGeometry}" Color="Gray" Thickness="0.5"/>
                     <hx:MeshGeometryModel3D x:Name="MainModel" Geometry="{Binding MeshGeometry}" Material="{Binding MeshMaterial}"/>
                     <hx:LineGeometryModel3D x:Name="WireframeModel" Geometry="{Binding WireframeGeometry}" Color="Black" Thickness="0.5" Visibility="Collapsed"/>
@@ -79,8 +86,16 @@
                     ZoomExtentsWhenLoaded="True"
                                     BackgroundColor="#FF2D2D30"
                                     EnableSwapChainRendering="True">
+                        <!-- Key light from upper front-right -->
                         <hx:DirectionalLight3D Direction="-1,-1,-1" Color="White"/>
-                        <hx:AmbientLight3D Color="#202020"/>
+                        <!-- Fill light from lower back-left -->
+                        <hx:DirectionalLight3D Direction="1,1,1" Color="#909090"/>
+                        <!-- Bottom light shining up to illuminate when viewing from above -->
+                        <hx:DirectionalLight3D Direction="0,1,0" Color="#707070"/>
+                        <!-- Front light -->
+                        <hx:DirectionalLight3D Direction="0,0,-1" Color="#606060"/>
+                        <!-- Strong ambient for even base illumination -->
+                        <hx:AmbientLight3D Color="#505050"/>
                         <hx:MeshGeometryModel3D x:Name="LeftModel" Geometry="{Binding MeshGeometry}" Material="{Binding LeftMaterial}"/>
                     </hx:Viewport3DX>
                     <Label Content="ORIGINAL" Foreground="White" Background="#80000000" 
@@ -99,8 +114,16 @@
                     ZoomExtentsWhenLoaded="True"
                                     BackgroundColor="#FF2D2D30"
                                     EnableSwapChainRendering="True">
+                        <!-- Key light from upper front-right -->
                         <hx:DirectionalLight3D Direction="-1,-1,-1" Color="White"/>
-                        <hx:AmbientLight3D Color="#202020"/>
+                        <!-- Fill light from lower back-left -->
+                        <hx:DirectionalLight3D Direction="1,1,1" Color="#909090"/>
+                        <!-- Bottom light shining up to illuminate when viewing from above -->
+                        <hx:DirectionalLight3D Direction="0,1,0" Color="#707070"/>
+                        <!-- Front light -->
+                        <hx:DirectionalLight3D Direction="0,0,-1" Color="#606060"/>
+                        <!-- Strong ambient for even base illumination -->
+                        <hx:AmbientLight3D Color="#505050"/>
                         <hx:MeshGeometryModel3D x:Name="RightModel" Geometry="{Binding MeshGeometry}" Material="{Binding RightMaterial}"/>
                     </hx:Viewport3DX>
                     <Label Content="MODIFIED" Foreground="White" Background="#80000000" 
