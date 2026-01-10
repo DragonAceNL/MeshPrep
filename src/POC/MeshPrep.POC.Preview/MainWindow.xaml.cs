@@ -39,6 +39,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private PerspectiveCamera? _camera;
     private PerspectiveCamera? _leftCamera;
     private PerspectiveCamera? _rightCamera;
+    private EffectsManager? _effectsManager;
     
     private string? _currentFilePath;
     private bool _isWireframeMode;
@@ -49,6 +50,12 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     public event PropertyChangedEventHandler? PropertyChanged;
 
     #region Bindable Properties
+    
+    public EffectsManager? EffectsManager
+    {
+        get => _effectsManager;
+        set { _effectsManager = value; OnPropertyChanged(); }
+    }
     
     public MeshGeometry3D? MeshGeometry
     {
@@ -122,6 +129,9 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     {
         InitializeComponent();
         DataContext = this;
+        
+        // Initialize EffectsManager - required for SharpDX rendering
+        EffectsManager = new DefaultEffectsManager();
         
         // Set up test models path
         _testModelsPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "..", "samples", "test-models"));
@@ -343,6 +353,30 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             
             // Clear highlight
             HighlightGeometry = null;
+            
+            // Calculate bounding box and adjust camera
+            if (mesh.Positions != null && mesh.Positions.Count > 0)
+            {
+                var bounds = mesh.Bound;
+                var center = bounds.Center;
+                var size = bounds.Size;
+                var maxDim = Math.Max(Math.Max(size.X, size.Y), size.Z);
+                
+                // Adjust camera position based on model size
+                var distance = maxDim * 2.0;
+                Camera = new PerspectiveCamera
+                {
+                    Position = new System.Windows.Media.Media3D.Point3D(
+                        center.X + distance,
+                        center.Y + distance,
+                        center.Z + distance),
+                    LookDirection = new System.Windows.Media.Media3D.Vector3D(
+                        -distance, -distance, -distance),
+                    UpDirection = new System.Windows.Media.Media3D.Vector3D(0, 1, 0),
+                    FarPlaneDistance = maxDim * 100,
+                    NearPlaneDistance = maxDim * 0.001
+                };
+            }
             
             // Zoom to fit
             MainViewport.ZoomExtents();

@@ -38,6 +38,7 @@
             <Grid x:Name="SingleViewContainer">
                 <hx:Viewport3DX x:Name="MainViewport"
                 Camera="{Binding Camera}"
+                EffectsManager="{Binding EffectsManager}"
                 CoordinateSystemLabelForeground="White"
                 ShowCoordinateSystem="True"
                 ShowViewCube="False"
@@ -72,6 +73,7 @@
                 <Grid Grid.Column="0">
                     <hx:Viewport3DX x:Name="LeftViewport"
                     Camera="{Binding LeftCamera}"
+                    EffectsManager="{Binding EffectsManager}"
                     ShowCoordinateSystem="True"
                     ShowViewCube="False"
                     ZoomExtentsWhenLoaded="True"
@@ -91,6 +93,7 @@
                 <Grid Grid.Column="2">
                     <hx:Viewport3DX x:Name="RightViewport"
                     Camera="{Binding RightCamera}"
+                    EffectsManager="{Binding EffectsManager}"
                     ShowCoordinateSystem="True"
                     ShowViewCube="False"
                     ZoomExtentsWhenLoaded="True"
