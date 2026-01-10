@@ -25,9 +25,9 @@ MeshPrep is a two-part toolset designed to convert 3D models of any format into 
 
 | User Type | Description | Primary Tool |
 |-----------|-------------|--------------|
-| **Filter Creators** | Advanced users who develop repair strategies for specific models | MeshPrep Studio |
-| **End Users** | Users who apply existing filter scripts to make models printable | MeshPrep Runner |
-| **Automation Users** | Users who batch process multiple models | MeshPrep Runner CLI |
+| **Filter Creators** | Advanced users who develop repair strategies for specific models | MeshPrep.FilterScriptCreator |
+| **End Users** | Users who apply existing filter scripts to make models printable | MeshPrep.ModelFixer |
+| **Automation Users** | Users who batch process multiple models | MeshPrep.ModelFixer CLI |
 
 ---
 
@@ -36,8 +36,8 @@ MeshPrep is a two-part toolset designed to convert 3D models of any format into 
 ### 2.1 High-Level Description
 MeshPrep consists of two complementary applications:
 
-1. **MeshPrep Studio** - A GUI application for analyzing models, developing filter scripts, and training the ML system
-2. **MeshPrep Runner** - A GUI + CLI application for applying filter scripts to models
+1. **MeshPrep.FilterScriptCreator** - A GUI application for analyzing models, developing filter scripts, and training the ML system
+2. **MeshPrep.ModelFixer** - A GUI + CLI application for applying filter scripts to models
 
 ### 2.2 System Context
 
@@ -47,7 +47,7 @@ MeshPrep consists of two complementary applications:
 ├─────────────────────────────────────────────────────────────────────────────┤
 │                                                                             │
 │  ┌─────────────────────────────────────────────────────────────────────┐   │
-│  │                      MeshPrep Studio (GUI)                          │   │
+│  │                  MeshPrep.FilterScriptCreator (GUI)               │   │
 │  │                                                                     │   │
 │  │  [3D Model] ──► [Analysis] ──► [ML Learning] ──► [Filter Script]   │   │
 │  │                      │              │                    │          │   │
@@ -64,7 +64,7 @@ MeshPrep consists of two complementary applications:
 │                                        │                                    │
 │                                        ▼                                    │
 │  ┌─────────────────────────────────────────────────────────────────────┐   │
-│  │                   MeshPrep Runner (GUI + CLI)                       │   │
+│  │                   MeshPrep.ModelFixer (GUI + CLI)                  │   │
 │  │                                                                     │   │
 │  │  [3D Model] + [Filter Script] ──► [Apply] ──► [Printable STL]      │   │
 │  │       │              │                                              │   │
@@ -85,8 +85,8 @@ MeshPrep consists of two complementary applications:
 ├─────────────────────────────────────────────────────────────────────────────┤
 │  MeshPrep Approach (License Compliant)                                      │
 │  ─────────────────────────────────────                                      │
-│  Creator: Model ──► MeshPrep Studio ──► Share Filter Script ✓              │
-│  User:    Model + Filter Script ──► MeshPrep Runner ──► Own STL ✓          │
+│  Creator: Model ──► MeshPrep.FilterScriptCreator ──► Share Filter Script ✓     │
+│  User:    Model + Filter Script ──► MeshPrep.ModelFixer ──► Own STL ✓         │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -113,7 +113,7 @@ MeshPrep consists of two complementary applications:
 | FR-013 | Model scaling and unit conversion | Medium | [FEATURE_13](features/FEATURE_13_SCALING_UNITS.md) |
 | FR-014 | Build plate orientation/placement | Medium | [FEATURE_14](features/FEATURE_14_ORIENTATION.md) |
 | FR-015 | Multi-part model handling | High | [FEATURE_15](features/FEATURE_15_MULTI_PART.md) |
-| FR-016 | Undo/redo system (Studio) | Medium | [FEATURE_16](features/FEATURE_16_UNDO_REDO.md) |
+| FR-016 | Undo/redo system (Creator) | Medium | [FEATURE_16](features/FEATURE_16_UNDO_REDO.md) |
 
 ### 3.2 Input Requirements
 
@@ -208,16 +208,16 @@ MeshPrep consists of two complementary applications:
 
 | Application | Interface | Description |
 |-------------|-----------|-------------|
-| MeshPrep Studio | GUI | Full-featured interface for filter script development |
-| MeshPrep Runner | GUI | Simple interface for applying scripts |
-| MeshPrep Runner | CLI | Command-line for automation and batch processing |
+| MeshPrep.FilterScriptCreator | GUI | Full-featured interface for filter script development |
+| MeshPrep.ModelFixer | GUI | Simple interface for applying scripts |
+| MeshPrep.ModelFixer | CLI | Command-line for automation and batch processing |
 
 ### 5.2 User Interactions
 
-**MeshPrep Studio (GUI):**
+**MeshPrep.FilterScriptCreator (GUI):**
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
-│  MeshPrep Studio                                            [─][□][×]  │
+│  MeshPrep.FilterScriptCreator                               [─][□][×]  │
 ├─────────────────────────────────────────────────────────────────────────┤
 │  [File] [Edit] [Tools] [Help]                                          │
 ├───────────────────────┬─────────────────────────────────────────────────┤
@@ -245,10 +245,10 @@ MeshPrep consists of two complementary applications:
 └───────────────────────┴─────────────────────────────────────────────────┘
 ```
 
-**MeshPrep Runner (GUI):**
+**MeshPrep.ModelFixer (GUI):**
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
-│  MeshPrep Runner                                            [─][□][×]  │
+│  MeshPrep.ModelFixer                                        [─][□][×]  │
 ├─────────────────────────────────────────────────────────────────────────┤
 │                                                                         │
 │   ┌─────────────────────────────────────────────────────────────────┐  │
@@ -271,7 +271,7 @@ MeshPrep consists of two complementary applications:
 └─────────────────────────────────────────────────────────────────────────┘
 ```
 
-**MeshPrep Runner (CLI):**
+**MeshPrep.ModelFixer (CLI):**
 ```bash
 # Apply filter script to model
 meshprep run model.obj --script filter.json --output model_fixed.stl

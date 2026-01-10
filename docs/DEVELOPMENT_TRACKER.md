@@ -4,8 +4,8 @@
 **Project Name:** MeshPrep  
 **Start Date:** 2026-01-10  
 **Current Phase:** Planning & Documentation  
-**Technology Stack:** C# / .NET 10 / WPF / Helix Toolkit  
-**ML Approach:** Reinforcement Learning
+**Technology Stack:** C# / .NET 10 / WPF / Helix Toolkit / TorchSharp  
+**ML Approach:** Reinforcement Learning (TorchSharp with GPU/CUDA)
 
 ---
 
@@ -18,22 +18,24 @@ MeshPrep consists of two applications sharing a common core library:
 │                    MeshPrep Solution                        │
 ├─────────────────────────────────────────────────────────────┤
 │                                                             │
-│  ┌─────────────────┐  ┌─────────────────┐                  │
-│  │ MeshPrep.Studio │  │ MeshPrep.Runner │                  │
-│  │     (GUI)       │  │   (GUI + CLI)   │                  │
-│  └────────┬────────┘  └────────┬────────┘                  │
-│           │                    │                            │
-│           └──────────┬─────────┘                            │
-│                      ▼                                      │
-│           ┌─────────────────────┐                          │
-│           │   MeshPrep.Core     │                          │
-│           │  (Shared Library)   │                          │
-│           └─────────────────────┘                          │
-│                      │                                      │
-│    ┌─────────────────┼─────────────────┐                   │
-│    ▼                 ▼                 ▼                   │
-│ [Assimp.NET]  [geometry3Sharp]  [ML.NET/ONNX]              │
-│ [OpenCascade] [CGAL wrapper]    [SQLite]                   │
+│  ┌───────────────────────┐  ┌─────────────────────┐        │
+│  │ MeshPrep              │  │ MeshPrep            │        │
+│  │ .FilterScriptCreator  │  │ .ModelFixer         │        │
+│  │     (GUI)             │  │   (GUI + CLI)       │        │
+│  └───────────┬───────────┘  └──────────┬──────────┘        │
+│              │                         │                    │
+│              └───────────┬─────────────┘                    │
+│                          ▼                                  │
+│              ┌─────────────────────┐                        │
+│              │   MeshPrep.Core     │                        │
+│              │  (Shared Library)   │                        │
+│              └─────────────────────┘                        │
+│                          │                                  │
+│       ┌──────────────────┼──────────────────┐              │
+│       ▼                  ▼                  ▼              │
+│  [Assimp.NET]    [MeshLib]           [TorchSharp]          │
+│  [OpenCascade]   (GPU/CUDA)          (GPU/CUDA)            │
+│                  [SQLite]                                  │
 │                                                             │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -42,16 +44,16 @@ MeshPrep consists of two applications sharing a common core library:
 
 ## Development Phases
 
-### Phase 0: POC Validation (NEW)
+### Phase 0: POC Validation
 | POC ID | Feature Area | Status | Est. Effort | Notes |
 |--------|--------------|--------|-------------|-------|
 | POC-01 | Format Import | ⬜ Not Started | 2-3 days | Assimp.NET + OpenCascade |
 | POC-02 | Fingerprinting | ⬜ Not Started | 1 day | SHA-256 file hash |
 | POC-03 | Slicer Integration | ⬜ Not Started | 1-2 days | CLI validation |
 | POC-04 | 3D Preview | ⬜ Not Started | 2-3 days | Helix Toolkit, 1M+ triangles |
-| POC-05 | Mesh Repair | ⬜ Not Started | 3-5 days | geometry3Sharp + complex models |
-| POC-06 | Visual Comparison | ⬜ Not Started | 2-3 days | Similarity algorithm |
-| POC-07 | RL Pipeline | ⬜ Not Started | 5-7 days | ML.NET/ONNX, reward system |
+| POC-05 | Mesh Repair | ⬜ Not Started | 3-5 days | MeshLib (GPU/CUDA), MIT license |
+| POC-06 | Geometry Comparison | ⬜ Not Started | 2-3 days | Hybrid: Hausdorff + Mean Hausdorff (MeshLib) |
+| POC-07 | RL Pipeline | ⬜ Not Started | 5-7 days | TorchSharp with GPU/CUDA |
 
 **Recommended POC Order:** POC-01 → POC-03 → POC-05 → POC-02 → POC-04 → POC-06 → POC-07
 
@@ -61,7 +63,7 @@ MeshPrep consists of two applications sharing a common core library:
 | Create project structure | ✅ Complete | Directories created |
 | Functional Description Document | ✅ Complete | Full spec with RL approach |
 | Feature Documents | 🔄 In Progress | Index created, 16 features defined |
-| Technology Stack Decision | ✅ Complete | C# / .NET 10 |
+| Technology Stack Decision | ✅ Complete | C# / .NET 10 / WPF / TorchSharp |
 | POC Planning | ✅ Complete | 7 POCs identified |
 
 ### Phase 2: Core Infrastructure
@@ -93,12 +95,12 @@ MeshPrep consists of two applications sharing a common core library:
 | Feature | Document | Status | Notes |
 |---------|----------|--------|-------|
 | F-006 Slicer Validation | [Link](features/FEATURE_06_SLICER_VALIDATION.md) | ⬜ Not Started | PrusaSlicer, Cura, OrcaSlicer |
-| F-007 Visual Fidelity Check | [Link](features/FEATURE_07_VISUAL_COMPARISON.md) | ⬜ Not Started | Similarity scoring, RL reward |
+| F-007 Geometry Fidelity Check | [Link](features/FEATURE_07_VISUAL_COMPARISON.md) | ⬜ Not Started | Hybrid Hausdorff (max + mean), RL reward |
 
 #### Phase 3.4: Intelligence (Reinforcement Learning)
 | Feature | Document | Status | Notes |
 |---------|----------|--------|-------|
-| F-004 ML Filter Generation | [Link](features/FEATURE_04_ML_LEARNING.md) | ⬜ Not Started | RL agent, trial-and-error |
+| F-004 ML Filter Generation | [Link](features/FEATURE_04_ML_LEARNING.md) | ⬜ Not Started | TorchSharp RL, GPU support |
 | F-012 User Feedback System | [Link](features/FEATURE_12_USER_FEEDBACK.md) | ⬜ Not Started | RL reward signal |
 
 #### Phase 3.5: User Experience
@@ -108,14 +110,14 @@ MeshPrep consists of two applications sharing a common core library:
 | F-010 Batch Processing | [Link](features/FEATURE_10_BATCH_PROCESSING.md) | ⬜ Not Started | CLI implementation |
 | F-013 Scaling & Units | [Link](features/FEATURE_13_SCALING_UNITS.md) | ⬜ Not Started | Unit conversion |
 | F-014 Build Plate Orientation | [Link](features/FEATURE_14_ORIENTATION.md) | ⬜ Not Started | Print placement |
-| F-016 Undo/Redo | [Link](features/FEATURE_16_UNDO_REDO.md) | ⬜ Not Started | Studio only |
+| F-016 Undo/Redo | [Link](features/FEATURE_16_UNDO_REDO.md) | ⬜ Not Started | FilterScriptCreator only |
 
 ### Phase 4: Application Assembly
 | Task | Status | Notes |
 |------|--------|-------|
-| MeshPrep.Studio GUI | ⬜ Not Started | WPF application |
-| MeshPrep.Runner GUI | ⬜ Not Started | Simplified WPF app |
-| MeshPrep.Runner CLI | ⬜ Not Started | Command-line interface |
+| MeshPrep.FilterScriptCreator GUI | ⬜ Not Started | WPF application |
+| MeshPrep.ModelFixer GUI | ⬜ Not Started | Simplified WPF app |
+| MeshPrep.ModelFixer CLI | ⬜ Not Started | Command-line interface |
 
 ### Phase 5: Testing & Refinement
 | Task | Status | Notes |
@@ -153,8 +155,8 @@ MeshPrep consists of two applications sharing a common core library:
 | M2: Core Library MVP | TBD | ⬜ Not Started | Import, Export, Analysis working |
 | M3: Filter Pipeline | TBD | ⬜ Not Started | Scripts can be created and applied |
 | M4: RL Integration | TBD | ⬜ Not Started | RL agent learning from repairs |
-| M5: Studio Alpha | TBD | ⬜ Not Started | Full Studio GUI functional |
-| M6: Runner Alpha | TBD | ⬜ Not Started | GUI + CLI functional |
+| M5: FilterScriptCreator Alpha | TBD | ⬜ Not Started | Full Creator GUI functional |
+| M6: ModelFixer Alpha | TBD | ⬜ Not Started | GUI + CLI functional |
 | M7: Beta Release | TBD | ⬜ Not Started | Feature complete, testing |
 | M8: v1.0 Release | TBD | ⬜ Not Started | Production ready |
 
@@ -172,6 +174,11 @@ MeshPrep consists of two applications sharing a common core library:
 | 2026-01-10 | Added POC phase with 7 POCs | |
 | 2026-01-10 | Defined Reinforcement Learning approach | |
 | 2026-01-10 | Simplified to single-tier fingerprinting (SHA-256 file hash) | |
+| 2026-01-10 | Decided WPF only (no cross-platform needed) | |
+| 2026-01-10 | Renamed: MeshPrep.FilterScriptCreator and MeshPrep.ModelFixer | |
+| 2026-01-10 | Decided TorchSharp for RL (with GPU/CUDA support) | |
+| 2026-01-10 | Decided MeshLib as primary repair engine (MIT, GPU/CUDA, C# NuGet) | |
+| 2026-01-10 | Decided Hybrid Hausdorff (max + mean) for geometry comparison (physical accuracy for 3D printing) | |
 
 ---
 
@@ -188,14 +195,18 @@ MeshPrep consists of two applications sharing a common core library:
 | Reinforcement Learning | Learns from trial/error, no labeled data needed | 2026-01-10 |
 | Single-tier fingerprinting | SHA-256 file hash only; geometry hash adds complexity without benefit for online search | 2026-01-10 |
 | Thingi10K for training | Large dataset with various mesh issues | 2026-01-10 |
+| WPF for GUI | Windows only target, mature framework, excellent Helix Toolkit support | 2026-01-10 |
+| TorchSharp for RL | C# native, GPU support (CUDA), online training in app | 2026-01-10 |
+| MeshLib for mesh repair | MIT license, C# NuGet, GPU/CUDA support, handles complex models, 10x faster than CGAL | 2026-01-10 |
+| Hybrid Hausdorff for geometry comparison | Max Hausdorff catches worst-case deviation, Mean Hausdorff ensures overall quality; both required for RL reward; built into MeshLib | 2026-01-10 |
 
 ### Open Questions
 - [x] Which ML approach? → **Reinforcement Learning**
-- [ ] Which RL framework: ML.NET vs ONNX Runtime vs custom?
-- [ ] Cross-platform: WPF (Windows only) vs AvaloniaUI (cross-platform)?
-- [ ] CGAL integration: C++/CLI wrapper vs subprocess?
+- [x] Which RL framework? → **TorchSharp (C#, with GPU support via CUDA)**
+- [x] Cross-platform? → **WPF (Windows only)**
+- [x] Mesh repair library? → **MeshLib (MIT, NuGet, GPU/CUDA, handles complex models)**
 - [x] Fingerprint algorithm? → **SHA-256 file hash (single-tier)**
-- [ ] Visual similarity algorithm: Hausdorff distance? Image-based? Both?
+- [x] Geometry comparison algorithm? → **Hybrid: Hausdorff (max deviation) + Mean Hausdorff (overall quality); both in MeshLib**
 
 ### Blockers
 *None currently*
