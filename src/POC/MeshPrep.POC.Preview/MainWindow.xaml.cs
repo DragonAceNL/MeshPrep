@@ -146,33 +146,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         LeftViewport.OnRendered += Viewport_OnRendered;
         RightViewport.OnRendered += Viewport_OnRendered;
         
-        // Initialize cameras
-        Camera = new PerspectiveCamera
-        {
-            Position = new System.Windows.Media.Media3D.Point3D(50, 50, 50),
-            LookDirection = new System.Windows.Media.Media3D.Vector3D(-50, -50, -50),
-            UpDirection = new System.Windows.Media.Media3D.Vector3D(0, 1, 0),
-            FarPlaneDistance = 10000,
-            NearPlaneDistance = 0.1
-        };
-        
-        LeftCamera = new PerspectiveCamera
-        {
-            Position = new System.Windows.Media.Media3D.Point3D(50, 50, 50),
-            LookDirection = new System.Windows.Media.Media3D.Vector3D(-50, -50, -50),
-            UpDirection = new System.Windows.Media.Media3D.Vector3D(0, 1, 0),
-            FarPlaneDistance = 10000,
-            NearPlaneDistance = 0.1
-        };
-        
-        RightCamera = new PerspectiveCamera
-        {
-            Position = new System.Windows.Media.Media3D.Point3D(50, 50, 50),
-            LookDirection = new System.Windows.Media.Media3D.Vector3D(-50, -50, -50),
-            UpDirection = new System.Windows.Media.Media3D.Vector3D(0, 1, 0),
-            FarPlaneDistance = 10000,
-            NearPlaneDistance = 0.1
-        };
+        // Initialize cameras with default values
+        InitializeDefaultCameras();
         
         // Initialize materials
         MeshMaterial = new PhongMaterial
@@ -215,6 +190,88 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         
         // Update status
         UpdateStatus("Ready - Load a model or select a test model");
+    }
+
+    private void InitializeDefaultCameras()
+    {
+        Camera = new PerspectiveCamera
+        {
+            Position = new System.Windows.Media.Media3D.Point3D(50, 50, 50),
+            LookDirection = new System.Windows.Media.Media3D.Vector3D(-50, -50, -50),
+            UpDirection = new System.Windows.Media.Media3D.Vector3D(0, 1, 0),
+            FarPlaneDistance = 10000,
+            NearPlaneDistance = 0.1
+        };
+        
+        LeftCamera = new PerspectiveCamera
+        {
+            Position = new System.Windows.Media.Media3D.Point3D(50, 50, 50),
+            LookDirection = new System.Windows.Media.Media3D.Vector3D(-50, -50, -50),
+            UpDirection = new System.Windows.Media.Media3D.Vector3D(0, 1, 0),
+            FarPlaneDistance = 10000,
+            NearPlaneDistance = 0.1
+        };
+        
+        RightCamera = new PerspectiveCamera
+        {
+            Position = new System.Windows.Media.Media3D.Point3D(50, 50, 50),
+            LookDirection = new System.Windows.Media.Media3D.Vector3D(-50, -50, -50),
+            UpDirection = new System.Windows.Media.Media3D.Vector3D(0, 1, 0),
+            FarPlaneDistance = 10000,
+            NearPlaneDistance = 0.1
+        };
+    }
+
+    private void UpdateCamerasForMesh(MeshGeometry3D mesh)
+    {
+        var bounds = mesh.Bound;
+        var center = bounds.Center;
+        var size = bounds.Size;
+        var maxDim = Math.Max(Math.Max(size.X, size.Y), size.Z);
+        
+        // Adjust camera position based on model size
+        var distance = maxDim * 2.0;
+        var farPlane = maxDim * 100;
+        var nearPlane = maxDim * 0.001;
+        
+        Camera = new PerspectiveCamera
+        {
+            Position = new System.Windows.Media.Media3D.Point3D(
+                center.X + distance,
+                center.Y + distance,
+                center.Z + distance),
+            LookDirection = new System.Windows.Media.Media3D.Vector3D(
+                -distance, -distance, -distance),
+            UpDirection = new System.Windows.Media.Media3D.Vector3D(0, 1, 0),
+            FarPlaneDistance = farPlane,
+            NearPlaneDistance = nearPlane
+        };
+        
+        LeftCamera = new PerspectiveCamera
+        {
+            Position = new System.Windows.Media.Media3D.Point3D(
+                center.X + distance,
+                center.Y + distance,
+                center.Z + distance),
+            LookDirection = new System.Windows.Media.Media3D.Vector3D(
+                -distance, -distance, -distance),
+            UpDirection = new System.Windows.Media.Media3D.Vector3D(0, 1, 0),
+            FarPlaneDistance = farPlane,
+            NearPlaneDistance = nearPlane
+        };
+        
+        RightCamera = new PerspectiveCamera
+        {
+            Position = new System.Windows.Media.Media3D.Point3D(
+                center.X + distance,
+                center.Y + distance,
+                center.Z + distance),
+            LookDirection = new System.Windows.Media.Media3D.Vector3D(
+                -distance, -distance, -distance),
+            UpDirection = new System.Windows.Media.Media3D.Vector3D(0, 1, 0),
+            FarPlaneDistance = farPlane,
+            NearPlaneDistance = nearPlane
+        };
     }
 
     private void CreateGrid()
@@ -354,28 +411,10 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             // Clear highlight
             HighlightGeometry = null;
             
-            // Calculate bounding box and adjust camera
+            // Calculate bounding box and adjust all cameras
             if (mesh.Positions != null && mesh.Positions.Count > 0)
             {
-                var bounds = mesh.Bound;
-                var center = bounds.Center;
-                var size = bounds.Size;
-                var maxDim = Math.Max(Math.Max(size.X, size.Y), size.Z);
-                
-                // Adjust camera position based on model size
-                var distance = maxDim * 2.0;
-                Camera = new PerspectiveCamera
-                {
-                    Position = new System.Windows.Media.Media3D.Point3D(
-                        center.X + distance,
-                        center.Y + distance,
-                        center.Z + distance),
-                    LookDirection = new System.Windows.Media.Media3D.Vector3D(
-                        -distance, -distance, -distance),
-                    UpDirection = new System.Windows.Media.Media3D.Vector3D(0, 1, 0),
-                    FarPlaneDistance = maxDim * 100,
-                    NearPlaneDistance = maxDim * 0.001
-                };
+                UpdateCamerasForMesh(mesh);
             }
             
             // Zoom to fit
@@ -486,8 +525,18 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         
         if (compareMode)
         {
-            LeftViewport.ZoomExtents();
-            RightViewport.ZoomExtents();
+            // Ensure cameras are updated for current mesh
+            if (MeshGeometry?.Positions != null && MeshGeometry.Positions.Count > 0)
+            {
+                UpdateCamerasForMesh(MeshGeometry);
+            }
+            
+            // Defer ZoomExtents until layout is updated
+            Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Loaded, () =>
+            {
+                LeftViewport.ZoomExtents();
+                RightViewport.ZoomExtents();
+            });
         }
     }
 
@@ -500,15 +549,19 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private void BtnResetCamera_Click(object sender, RoutedEventArgs e)
     {
-        Camera = new PerspectiveCamera
+        // Reset cameras based on current mesh or default values
+        if (MeshGeometry?.Positions != null && MeshGeometry.Positions.Count > 0)
         {
-            Position = new System.Windows.Media.Media3D.Point3D(50, 50, 50),
-            LookDirection = new System.Windows.Media.Media3D.Vector3D(-50, -50, -50),
-            UpDirection = new System.Windows.Media.Media3D.Vector3D(0, 1, 0),
-            FarPlaneDistance = 10000,
-            NearPlaneDistance = 0.1
-        };
+            UpdateCamerasForMesh(MeshGeometry);
+        }
+        else
+        {
+            InitializeDefaultCameras();
+        }
+        
         MainViewport.ZoomExtents();
+        LeftViewport?.ZoomExtents();
+        RightViewport?.ZoomExtents();
     }
 
     private void BtnTestHighlight_Click(object sender, RoutedEventArgs e)
