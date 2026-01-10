@@ -8,8 +8,8 @@
 3D Model Preview with Helix Toolkit
 
 ## Status
-- [x] Not Started
-- [ ] In Progress
+- [ ] Not Started
+- [x] In Progress
 - [ ] Completed - Success
 - [ ] Completed - Failed
 - [ ] Blocked

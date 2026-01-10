@@ -1,0 +1,40 @@
+# Simple cube OBJ file
+# Test file for POC-01 Format Import
+
+# Vertices
+v 0.0 0.0 0.0
+v 1.0 0.0 0.0
+v 1.0 1.0 0.0
+v 0.0 1.0 0.0
+v 0.0 0.0 1.0
+v 1.0 0.0 1.0
+v 1.0 1.0 1.0
+v 0.0 1.0 1.0
+
+# Normals
+vn 0.0 0.0 -1.0
+vn 0.0 0.0 1.0
+vn 0.0 -1.0 0.0
+vn 0.0 1.0 0.0
+vn -1.0 0.0 0.0
+vn 1.0 0.0 0.0
+
+# Faces (with normals)
+# Front face
+f 1//1 2//1 3//1
+f 1//1 3//1 4//1
+# Back face
+f 5//2 7//2 6//2
+f 5//2 8//2 7//2
+# Bottom face
+f 1//3 6//3 2//3
+f 1//3 5//3 6//3
+# Top face
+f 4//4 3//4 7//4
+f 4//4 7//4 8//4
+# Left face
+f 1//5 4//5 8//5
+f 1//5 8//5 5//5
+# Right face
+f 2//6 7//6 3//6
+f 2//6 6//6 7//6

@@ -47,10 +47,10 @@ MeshPrep consists of two applications sharing a common core library:
 ### Phase 0: POC Validation
 | POC ID | Feature Area | Status | Est. Effort | Notes |
 |--------|--------------|--------|-------------|-------|
-| POC-01 | Format Import | ⬜ Not Started | 2-3 days | Assimp.NET + OpenCascade |
-| POC-02 | Fingerprinting | ⬜ Not Started | 1 day | SHA-256 file hash |
-| POC-03 | Slicer Integration | ⬜ Not Started | 1-2 days | CLI validation |
-| POC-04 | 3D Preview | ⬜ Not Started | 2-3 days | Helix Toolkit, 1M+ triangles |
+| POC-01 | Format Import | ✅ Complete | 2-3 days | 9 formats validated, all passing |
+| POC-02 | Fingerprinting | ✅ Complete | 1 day | SHA-256, 833 MB/s, all 7 tests pass |
+| POC-03 | Slicer Integration | ✅ Complete | 1-2 days | PrusaSlicer + OrcaSlicer validated (Cura deferred) |
+| POC-04 | 3D Preview | 🔄 In Progress | 2-3 days | Helix Toolkit SharpDX, WPF app built |
 | POC-05 | Mesh Repair | ⬜ Not Started | 3-5 days | MeshLib (GPU/CUDA), MIT license |
 | POC-06 | Geometry Comparison | ⬜ Not Started | 2-3 days | Hybrid: Hausdorff + Mean Hausdorff (MeshLib) |
 | POC-07 | RL Pipeline | ⬜ Not Started | 5-7 days | TorchSharp with GPU/CUDA |
@@ -182,6 +182,15 @@ MeshPrep consists of two applications sharing a common core library:
 | 2026-01-10 | Created all 16 feature documents (F-001 through F-016) | |
 | 2026-01-10 | Created POC document templates and all 7 POC documents | |
 | 2026-01-10 | Set up .NET 10 solution structure with 11 projects | |
+| 2026-01-10 | Started POC-01: Format Import - STL/OBJ/PLY working | |
+| 2026-01-10 | POC-01 Complete: 9 formats validated (STL,OBJ,PLY,DAE,glTF,GLB,3MF,OFF,FBX) | |
+| 2026-01-10 | POC-02 Complete: SHA-256 fingerprinting, 833 MB/s, all 7 tests pass | |
+| 2026-01-10 | Thingi10K sample models downloaded to external folder (includes CTM files) | |
+| 2026-01-10 | POC-03 Complete: PrusaSlicer CLI integration validated, auto-repair detection | |
+| 2026-01-10 | POC-03 improved: Use `--info` for mesh analysis (manifold, open_edges, volume) | |
+| 2026-01-10 | POC-03 extended: OrcaSlicer validated (all 6 tests pass, Cura not installed) | |
+| 2026-01-10 | POC-03: Cura deferred - CuraEngine requires extensive config, no --info, >30s slice | |
+| 2026-01-10 | POC-04 Started: Helix Toolkit SharpDX WPF app created with viewport, materials, lighting | |
 
 ---
 
@@ -220,6 +229,9 @@ MeshPrep consists of two applications sharing a common core library:
 
 1. ✅ Create individual feature documents (F-001 through F-016)
 2. ✅ Create POC document templates
-3. ⬜ Start POC-01: Format Import
+3. ✅ POC-01: Format Import (9 formats validated)
 4. ✅ Set up .NET 10 solution structure
-5. ⬜ Download Thingi10K sample models for testing
+5. ✅ Download Thingi10K sample models for testing (located at `C:\Users\Dragon Ace\Source\repos\Thingi10K\raw_meshes`, includes CTM files)
+6. ✅ POC-02: Fingerprinting (SHA-256, 833 MB/s)
+7. ✅ POC-03: Slicer Integration (PrusaSlicer validated, auto-repair detection)
+8. ⬜ Start POC-04: 3D Preview (Helix Toolkit)
