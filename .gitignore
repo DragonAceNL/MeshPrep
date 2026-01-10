@@ -1,81 +1,13 @@
 # Visual Studio
 .vs/
-# Python
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
+*.user
+*.suo
+
+# Build outputs
+bin/
+obj/
 build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
 
-# Virtual environments
-.venv/
-venv/
-ENV/
-env/
-
-# IDE
-.idea/
-.vscode/
-*.swp
-*.swo
-*~
-
-# Testing
-.pytest_cache/
-.coverage
-htmlcov/
-.tox/
-.nox/
-
-# Type checking
-.mypy_cache/
-.dmypy.json
-dmypy.json
-
-# Output and logs
-output/
-*.log
-logs/
-
-# OS
-.DS_Store
+# OS files
 Thumbs.db
-
-# Project specific
-*.stl
-!tests/fixtures/**/*.stl
-# POC reports - include small files, exclude large after.stl files
-!poc/v2/reports/**/before.stl
-!poc/v3/reports/**/before.stl
-# Exclude after.stl files as they can exceed GitHub's 100MB limit
-# poc/v2/reports/**/after.stl  # Explicitly excluded (covered by *.stl)
-# poc/v3/reports/**/after.stl  # Explicitly excluded (covered by *.stl)
-report.json
-!poc/v2/reports/**/report.json
-!poc/v3/reports/**/report.json
-report.csv
-
-# Thingi10K test fixtures - NOW SAFE TO COMMIT
-# All fixtures have permissive licenses (CC-BY, CC-BY-SA, Public Domain, GPL, BSD)
-# See scripts/manage_fixtures.py for how these are selected
-# tests/fixtures/thingi10k/  # Uncomment to exclude if fixtures get too large
-
-# Data files (can be rebuilt)
-data/thingi10k/thingi10k.db
-data/thingi10k/thingi10k_metadata.json
-/poc/v2/.venv312
+.DS_Store
