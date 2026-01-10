@@ -37,8 +37,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private PhongMaterial? _rightMaterial;
     private PhongMaterial? _highlightMaterial;
     private PerspectiveCamera? _camera;
-    private PerspectiveCamera? _leftCamera;
-    private PerspectiveCamera? _rightCamera;
+    private PerspectiveCamera? _compareCamera;
     private EffectsManager? _effectsManager;
     
     private string? _currentFilePath;
@@ -111,16 +110,10 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         set { _camera = value; OnPropertyChanged(); }
     }
     
-    public PerspectiveCamera? LeftCamera
+    public PerspectiveCamera? CompareCamera
     {
-        get => _leftCamera;
-        set { _leftCamera = value; OnPropertyChanged(); }
-    }
-    
-    public PerspectiveCamera? RightCamera
-    {
-        get => _rightCamera;
-        set { _rightCamera = value; OnPropertyChanged(); }
+        get => _compareCamera;
+        set { _compareCamera = value; OnPropertyChanged(); }
     }
     
     #endregion
@@ -203,16 +196,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             NearPlaneDistance = 0.1
         };
         
-        LeftCamera = new PerspectiveCamera
-        {
-            Position = new System.Windows.Media.Media3D.Point3D(50, 50, 50),
-            LookDirection = new System.Windows.Media.Media3D.Vector3D(-50, -50, -50),
-            UpDirection = new System.Windows.Media.Media3D.Vector3D(0, 1, 0),
-            FarPlaneDistance = 10000,
-            NearPlaneDistance = 0.1
-        };
-        
-        RightCamera = new PerspectiveCamera
+        CompareCamera = new PerspectiveCamera
         {
             Position = new System.Windows.Media.Media3D.Point3D(50, 50, 50),
             LookDirection = new System.Windows.Media.Media3D.Vector3D(-50, -50, -50),
@@ -247,20 +231,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             NearPlaneDistance = nearPlane
         };
         
-        LeftCamera = new PerspectiveCamera
-        {
-            Position = new System.Windows.Media.Media3D.Point3D(
-                center.X + distance,
-                center.Y + distance,
-                center.Z + distance),
-            LookDirection = new System.Windows.Media.Media3D.Vector3D(
-                -distance, -distance, -distance),
-            UpDirection = new System.Windows.Media.Media3D.Vector3D(0, 1, 0),
-            FarPlaneDistance = farPlane,
-            NearPlaneDistance = nearPlane
-        };
-        
-        RightCamera = new PerspectiveCamera
+        CompareCamera = new PerspectiveCamera
         {
             Position = new System.Windows.Media.Media3D.Point3D(
                 center.X + distance,
@@ -534,8 +505,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             // Defer ZoomExtents until layout is updated
             Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Loaded, () =>
             {
+                // Only need to zoom one viewport since they share the same camera
                 LeftViewport.ZoomExtents();
-                RightViewport.ZoomExtents();
             });
         }
     }
@@ -543,8 +514,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private void BtnZoomExtents_Click(object sender, RoutedEventArgs e)
     {
         MainViewport.ZoomExtents();
+        // Only need to zoom one comparison viewport since they share the same camera
         LeftViewport?.ZoomExtents();
-        RightViewport?.ZoomExtents();
     }
 
     private void BtnResetCamera_Click(object sender, RoutedEventArgs e)
@@ -560,8 +531,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
         
         MainViewport.ZoomExtents();
+        // Only need to zoom one comparison viewport since they share the same camera
         LeftViewport?.ZoomExtents();
-        RightViewport?.ZoomExtents();
     }
 
     private void BtnTestHighlight_Click(object sender, RoutedEventArgs e)

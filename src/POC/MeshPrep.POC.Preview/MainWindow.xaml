@@ -72,7 +72,7 @@
                 <!-- Left Viewport - Original -->
                 <Grid Grid.Column="0">
                     <hx:Viewport3DX x:Name="LeftViewport"
-                    Camera="{Binding LeftCamera}"
+                    Camera="{Binding CompareCamera}"
                     EffectsManager="{Binding EffectsManager}"
                     ShowCoordinateSystem="True"
                     ShowViewCube="False"
@@ -92,7 +92,7 @@
                 <!-- Right Viewport - Modified -->
                 <Grid Grid.Column="2">
                     <hx:Viewport3DX x:Name="RightViewport"
-                    Camera="{Binding RightCamera}"
+                    Camera="{Binding CompareCamera}"
                     EffectsManager="{Binding EffectsManager}"
                     ShowCoordinateSystem="True"
                     ShowViewCube="False"
